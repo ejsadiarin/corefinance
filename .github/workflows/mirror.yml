@@ -16,5 +16,5 @@ jobs:
 
       - name: Push to Codeberg
         run: |
-          git remote add codeberg https://ejsadiarin:${{ secrets.CODEBERG_TOKEN }}@codeberg.org/ejsadiarin/YOUR_REPO_NAME.git
+          git remote add codeberg https://ejsadiarin:${{ secrets.CODEBERG_TOKEN }}@codeberg.org/ejsadiarin/corefinance.git
           git push --mirror codeberg
