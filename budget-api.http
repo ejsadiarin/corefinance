@@ -1,0 +1,254 @@
+### Budget API Testing
+
+
+### Base URL
+
+@baseUrl = http://localhost:8080
+@sessionToken = rv3mOZk-7LSrIHw_5g6QC3YsoefvJmixYql2KSyFoIc=
+
+
+### ============================================
+
+
+### Authentication
+
+
+### ============================================
+
+
+### Login
+
+POST {{baseUrl}}/api/auth/login HTTP/1.1
+Content-Type: application/json
+
+{
+  "email": "your-email@example.com",
+  "password": "your-password"
+}
+
+
+### Register
+
+POST {{baseUrl}}/api/auth/register HTTP/1.1
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "password123"
+}
+
+
+### Logout
+
+POST {{baseUrl}}/api/auth/logout HTTP/1.1
+Cookie: session_token={{sessionToken}}
+
+
+### ============================================
+
+
+### Budget - Savings Rate (TESTING PERIOD FIX)
+
+
+### ============================================
+
+
+### Get Savings Rate (Current Month - should use tracking period)
+
+GET {{baseUrl}}/api/budget/stats/savings-rate HTTP/1.1
+Cookie: session_token={{sessionToken}}
+
+
+### Get Savings Rate (Custom Period - Jan 15 to Feb 17)
+
+GET {{baseUrl}}/api/budget/stats/savings-rate?start_date=2026-01-15&end_date=2026-02-17 HTTP/1.1
+Cookie: session_token={{sessionToken}}
+
+
+### Get Savings Rate (Before tracking start - should auto-adjust to Jan 15)
+
+GET {{baseUrl}}/api/budget/stats/savings-rate?start_date=2025-12-01&end_date=2026-02-17 HTTP/1.1
+Cookie: session_token={{sessionToken}}
+
+
+### Get Savings Rate (Full tracking period to now)
+
+GET {{baseUrl}}/api/budget/stats/savings-rate?start_date=2026-01-15&end_date=2026-02-17 HTTP/1.1
+Cookie: session_token={{sessionToken}}
+
+
+### ============================================
+
+
+### Budget - 50/30/20 Analysis (TODO: needs fix)
+
+
+### ============================================
+
+
+### Get 50/30/20 Analysis (Current Month)
+
+GET {{baseUrl}}/api/budget/analysis/503020 HTTP/1.1
+Cookie: session_token={{sessionToken}}
+
+
+### Get 50/30/20 Analysis (Custom Period)
+
+GET {{baseUrl}}/api/budget/analysis/503020?start_date=2026-02-01&end_date=2026-02-17 HTTP/1.1
+Cookie: session_token={{sessionToken}}
+
+
+### ============================================
+
+
+### Budget - Health Score (TODO: needs fix)
+
+
+### ============================================
+
+
+### Get Health Score
+
+GET {{baseUrl}}/api/budget/stats/health-score HTTP/1.1
+Cookie: session_token={{sessionToken}}
+
+
+### ============================================
+
+
+### Budget - Income
+
+
+### ============================================
+
+
+### List Incomes
+
+GET {{baseUrl}}/api/budget/incomes?limit=20&offset=0 HTTP/1.1
+Cookie: session_token={{sessionToken}}
+
+
+### Get Income by ID
+
+GET {{baseUrl}}/api/budget/incomes/{income_id} HTTP/1.1
+Cookie: session_token={{sessionToken}}
+
+
+### Create Income
+
+POST {{baseUrl}}/api/budget/incomes HTTP/1.1
+Cookie: session_token={{sessionToken}}
+Content-Type: application/json
+
+{
+  "amount": 3000.00,
+  "currency": "PHP",
+  "date": "2026-02-15",
+  "description": "Salary - February",
+  "recurring_type": null
+}
+
+
+### ============================================
+
+
+### Budget - Expenses
+
+
+### ============================================
+
+
+### List Expenses
+
+GET {{baseUrl}}/api/budget/expenses?limit=20&offset=0 HTTP/1.1
+Cookie: session_token={{sessionToken}}
+
+
+### Get Expense by ID
+
+GET {{baseUrl}}/api/budget/expenses/{expense_id} HTTP/1.1
+Cookie: session_token={{sessionToken}}
+
+
+### Create Expense
+
+POST {{baseUrl}}/api/budget/expenses HTTP/1.1
+Cookie: session_token={{sessionToken}}
+Content-Type: application/json
+
+{
+  "amount": 500.00,
+  "currency": "PHP",
+  "description": "Groceries",
+  "expense_date": "2026-02-17",
+  "notes": "Weekly grocery shopping",
+  "priority_group_id": "need-priority-group-id-here"
+}
+
+
+### ============================================
+
+
+### Budget - Categories
+
+
+### ============================================
+
+
+### List Categories
+
+GET {{baseUrl}}/api/budget/categories HTTP/1.1
+Cookie: session_token={{sessionToken}}
+
+
+### ============================================
+
+
+### Budget - Priority Groups
+
+
+### ============================================
+
+
+### List Priority Groups
+
+GET {{baseUrl}}/api/budget/priority-groups HTTP/1.1
+Cookie: session_token={{sessionToken}}
+
+
+### ============================================
+
+
+### User Info
+
+
+### ============================================
+
+
+### Get Current User (includes tracking_start_date and money_baseline)
+
+GET {{baseUrl}}/api/auth/me HTTP/1.1
+Cookie: session_token={{sessionToken}}
+
+
+### ============================================
+
+
+### Testing Notes
+
+
+### ============================================
+
+# How to use this file:
+# 1. Login using the Login request to get a session_token cookie
+# 2. Copy the session_token value from the response cookies
+# 3. Update @sessionToken at the top of this file
+# 4. Run any request - the Cookie header will be automatically set
+# # Expected Results After Fix:
+# - Savings Rate should show period-based calculation (not cumulative)
+# - Income/expenses only counted from tracking_start_date forward
+# - Excluded income (before Jan 15) should not affect calculations
+# # To verify baseline:
+# - Check /api/auth/me for tracking_start_date and money_baseline fields
+# - money_baseline should be your calculated Jan 15 baseline
+# - tracking_start_date should be 2026-01-15
