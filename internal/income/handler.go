@@ -1,4 +1,4 @@
-package expense
+package income
 
 import (
 	"encoding/json"
@@ -79,12 +79,12 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	expense, err := h.service.Create(r.Context(), userID, req)
+	income, err := h.service.Create(r.Context(), userID, req)
 	if err != nil {
 		h.respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	h.respond(w, http.StatusCreated, expense)
+	h.respond(w, http.StatusCreated, income)
 }
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
@@ -96,12 +96,12 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	expense, err := h.service.Get(r.Context(), id, userID)
+	income, err := h.service.Get(r.Context(), id, userID)
 	if err != nil {
-		h.respondError(w, http.StatusNotFound, "expense not found")
+		h.respondError(w, http.StatusNotFound, "income not found")
 		return
 	}
-	h.respond(w, http.StatusOK, expense)
+	h.respond(w, http.StatusOK, income)
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
@@ -113,41 +113,17 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		StartDate:     h.parseQueryString(r, "start_date"),
 		EndDate:       h.parseQueryString(r, "end_date"),
 		CategoryID:    h.parseQueryString(r, "category_id"),
-		Priority:      h.parseQueryString(r, "priority"),
 		Status:        h.parseQueryString(r, "status"),
 		RecurringType: h.parseQueryString(r, "recurring_type"),
 		Page:          h.parseQueryInt(r, "page", 1),
 		PageSize:      h.parseQueryInt(r, "page_size", 50),
 	}
-	expenses, err := h.service.List(r.Context(), userID, params)
+	incomes, err := h.service.List(r.Context(), userID, params)
 	if err != nil {
 		h.respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	h.respond(w, http.StatusOK, expenses)
-}
-
-func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
-	userID, ok := h.getUserID(w, r)
-	if !ok {
-		return
-	}
-	query := r.URL.Query().Get("q")
-	if query == "" {
-		h.respondError(w, http.StatusBadRequest, "query parameter 'q' is required")
-		return
-	}
-	params := SearchParams{
-		Query:    query,
-		Page:     h.parseQueryInt(r, "page", 1),
-		PageSize: h.parseQueryInt(r, "page_size", 50),
-	}
-	expenses, err := h.service.Search(r.Context(), userID, params)
-	if err != nil {
-		h.respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	h.respond(w, http.StatusOK, expenses)
+	h.respond(w, http.StatusOK, incomes)
 }
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
@@ -164,12 +140,12 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	expense, err := h.service.Update(r.Context(), id, userID, req)
+	income, err := h.service.Update(r.Context(), id, userID, req)
 	if err != nil {
 		h.respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	h.respond(w, http.StatusOK, expense)
+	h.respond(w, http.StatusOK, income)
 }
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -198,7 +174,7 @@ func (h *Handler) Skip(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := uuid.Parse(req.ID)
 	if err != nil {
-		h.respondError(w, http.StatusBadRequest, "invalid expense id")
+		h.respondError(w, http.StatusBadRequest, "invalid income id")
 		return
 	}
 	userID, ok := h.getUserID(w, r)
@@ -229,4 +205,19 @@ func (h *Handler) CheckSkipped(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.respond(w, http.StatusOK, map[string]bool{"is_skipped": skipped})
+}
+
+func (h *Handler) GetOccurrences(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.getUserID(w, r)
+	if !ok {
+		return
+	}
+	startDate := h.parseQueryString(r, "start_date")
+	endDate := h.parseQueryString(r, "end_date")
+	occurrences, err := h.service.Occurrences(r.Context(), userID, startDate, endDate)
+	if err != nil {
+		h.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	h.respond(w, http.StatusOK, occurrences)
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 )
 
 const createRecurringExpenseRule = `-- name: CreateRecurringExpenseRule :one
@@ -19,16 +20,16 @@ RETURNING id, user_id, description, amount, currency, category_id, notes, recurr
 `
 
 type CreateRecurringExpenseRuleParams struct {
-	UserID        uuid.UUID      `db:"user_id" json:"user_id"`
-	Description   string         `db:"description" json:"description"`
-	Amount        pgtype.Numeric `db:"amount" json:"amount"`
-	Currency      string         `db:"currency" json:"currency"`
-	CategoryID    pgtype.UUID    `db:"category_id" json:"category_id"`
-	Notes         pgtype.Text    `db:"notes" json:"notes"`
-	RecurringType string         `db:"recurring_type" json:"recurring_type"`
-	StartDate     pgtype.Date    `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date    `db:"end_date" json:"end_date"`
-	Priority      string         `db:"priority" json:"priority"`
+	UserID        uuid.UUID       `db:"user_id" json:"user_id"`
+	Description   string          `db:"description" json:"description"`
+	Amount        decimal.Decimal `db:"amount" json:"amount"`
+	Currency      string          `db:"currency" json:"currency"`
+	CategoryID    pgtype.UUID     `db:"category_id" json:"category_id"`
+	Notes         pgtype.Text     `db:"notes" json:"notes"`
+	RecurringType string          `db:"recurring_type" json:"recurring_type"`
+	StartDate     pgtype.Date     `db:"start_date" json:"start_date"`
+	EndDate       pgtype.Date     `db:"end_date" json:"end_date"`
+	Priority      string          `db:"priority" json:"priority"`
 }
 
 func (q *Queries) CreateRecurringExpenseRule(ctx context.Context, arg CreateRecurringExpenseRuleParams) (RecurringExpenseRule, error) {
@@ -95,7 +96,7 @@ type GetRecurringExpenseRuleRow struct {
 	ID            uuid.UUID          `db:"id" json:"id"`
 	UserID        uuid.UUID          `db:"user_id" json:"user_id"`
 	Description   string             `db:"description" json:"description"`
-	Amount        pgtype.Numeric     `db:"amount" json:"amount"`
+	Amount        decimal.Decimal    `db:"amount" json:"amount"`
 	Currency      string             `db:"currency" json:"currency"`
 	CategoryID    pgtype.UUID        `db:"category_id" json:"category_id"`
 	Notes         pgtype.Text        `db:"notes" json:"notes"`
@@ -148,7 +149,7 @@ type ListRecurringExpenseRulesRow struct {
 	ID            uuid.UUID          `db:"id" json:"id"`
 	UserID        uuid.UUID          `db:"user_id" json:"user_id"`
 	Description   string             `db:"description" json:"description"`
-	Amount        pgtype.Numeric     `db:"amount" json:"amount"`
+	Amount        decimal.Decimal    `db:"amount" json:"amount"`
 	Currency      string             `db:"currency" json:"currency"`
 	CategoryID    pgtype.UUID        `db:"category_id" json:"category_id"`
 	Notes         pgtype.Text        `db:"notes" json:"notes"`
@@ -212,17 +213,17 @@ RETURNING id, user_id, description, amount, currency, category_id, notes, recurr
 `
 
 type UpdateRecurringExpenseRuleParams struct {
-	ID            uuid.UUID      `db:"id" json:"id"`
-	UserID        uuid.UUID      `db:"user_id" json:"user_id"`
-	Description   string         `db:"description" json:"description"`
-	Amount        pgtype.Numeric `db:"amount" json:"amount"`
-	Currency      string         `db:"currency" json:"currency"`
-	CategoryID    pgtype.UUID    `db:"category_id" json:"category_id"`
-	Notes         pgtype.Text    `db:"notes" json:"notes"`
-	RecurringType string         `db:"recurring_type" json:"recurring_type"`
-	StartDate     pgtype.Date    `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date    `db:"end_date" json:"end_date"`
-	Priority      string         `db:"priority" json:"priority"`
+	ID            uuid.UUID       `db:"id" json:"id"`
+	UserID        uuid.UUID       `db:"user_id" json:"user_id"`
+	Description   string          `db:"description" json:"description"`
+	Amount        decimal.Decimal `db:"amount" json:"amount"`
+	Currency      string          `db:"currency" json:"currency"`
+	CategoryID    pgtype.UUID     `db:"category_id" json:"category_id"`
+	Notes         pgtype.Text     `db:"notes" json:"notes"`
+	RecurringType string          `db:"recurring_type" json:"recurring_type"`
+	StartDate     pgtype.Date     `db:"start_date" json:"start_date"`
+	EndDate       pgtype.Date     `db:"end_date" json:"end_date"`
+	Priority      string          `db:"priority" json:"priority"`
 }
 
 func (q *Queries) UpdateRecurringExpenseRule(ctx context.Context, arg UpdateRecurringExpenseRuleParams) (RecurringExpenseRule, error) {

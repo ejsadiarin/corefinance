@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 )
 
 const createRecurringIncomeRule = `-- name: CreateRecurringIncomeRule :one
@@ -19,13 +20,13 @@ RETURNING id, user_id, amount, currency, description, recurring_type, start_date
 `
 
 type CreateRecurringIncomeRuleParams struct {
-	UserID        uuid.UUID      `db:"user_id" json:"user_id"`
-	Amount        pgtype.Numeric `db:"amount" json:"amount"`
-	Currency      string         `db:"currency" json:"currency"`
-	Description   string         `db:"description" json:"description"`
-	RecurringType string         `db:"recurring_type" json:"recurring_type"`
-	StartDate     pgtype.Date    `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date    `db:"end_date" json:"end_date"`
+	UserID        uuid.UUID       `db:"user_id" json:"user_id"`
+	Amount        decimal.Decimal `db:"amount" json:"amount"`
+	Currency      string          `db:"currency" json:"currency"`
+	Description   string          `db:"description" json:"description"`
+	RecurringType string          `db:"recurring_type" json:"recurring_type"`
+	StartDate     pgtype.Date     `db:"start_date" json:"start_date"`
+	EndDate       pgtype.Date     `db:"end_date" json:"end_date"`
 }
 
 func (q *Queries) CreateRecurringIncomeRule(ctx context.Context, arg CreateRecurringIncomeRuleParams) (RecurringIncomeRule, error) {
@@ -143,14 +144,14 @@ RETURNING id, user_id, amount, currency, description, recurring_type, start_date
 `
 
 type UpdateRecurringIncomeRuleParams struct {
-	ID            uuid.UUID      `db:"id" json:"id"`
-	UserID        uuid.UUID      `db:"user_id" json:"user_id"`
-	Amount        pgtype.Numeric `db:"amount" json:"amount"`
-	Currency      string         `db:"currency" json:"currency"`
-	Description   string         `db:"description" json:"description"`
-	RecurringType string         `db:"recurring_type" json:"recurring_type"`
-	StartDate     pgtype.Date    `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date    `db:"end_date" json:"end_date"`
+	ID            uuid.UUID       `db:"id" json:"id"`
+	UserID        uuid.UUID       `db:"user_id" json:"user_id"`
+	Amount        decimal.Decimal `db:"amount" json:"amount"`
+	Currency      string          `db:"currency" json:"currency"`
+	Description   string          `db:"description" json:"description"`
+	RecurringType string          `db:"recurring_type" json:"recurring_type"`
+	StartDate     pgtype.Date     `db:"start_date" json:"start_date"`
+	EndDate       pgtype.Date     `db:"end_date" json:"end_date"`
 }
 
 func (q *Queries) UpdateRecurringIncomeRule(ctx context.Context, arg UpdateRecurringIncomeRuleParams) (RecurringIncomeRule, error) {

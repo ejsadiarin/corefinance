@@ -7,13 +7,14 @@ package db
 import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 )
 
 type Expense struct {
 	ID            uuid.UUID          `db:"id" json:"id"`
 	UserID        uuid.UUID          `db:"user_id" json:"user_id"`
 	CategoryID    pgtype.UUID        `db:"category_id" json:"category_id"`
-	Amount        pgtype.Numeric     `db:"amount" json:"amount"`
+	Amount        decimal.Decimal    `db:"amount" json:"amount"`
 	Currency      string             `db:"currency" json:"currency"`
 	Description   string             `db:"description" json:"description"`
 	Notes         pgtype.Text        `db:"notes" json:"notes"`
@@ -49,7 +50,7 @@ type Income struct {
 	ID            uuid.UUID          `db:"id" json:"id"`
 	UserID        uuid.UUID          `db:"user_id" json:"user_id"`
 	CategoryID    pgtype.UUID        `db:"category_id" json:"category_id"`
-	Amount        pgtype.Numeric     `db:"amount" json:"amount"`
+	Amount        decimal.Decimal    `db:"amount" json:"amount"`
 	Currency      string             `db:"currency" json:"currency"`
 	Description   string             `db:"description" json:"description"`
 	Notes         pgtype.Text        `db:"notes" json:"notes"`
@@ -84,7 +85,7 @@ type RecurringExpenseRule struct {
 	ID            uuid.UUID          `db:"id" json:"id"`
 	UserID        uuid.UUID          `db:"user_id" json:"user_id"`
 	Description   string             `db:"description" json:"description"`
-	Amount        pgtype.Numeric     `db:"amount" json:"amount"`
+	Amount        decimal.Decimal    `db:"amount" json:"amount"`
 	Currency      string             `db:"currency" json:"currency"`
 	CategoryID    pgtype.UUID        `db:"category_id" json:"category_id"`
 	Notes         pgtype.Text        `db:"notes" json:"notes"`
@@ -100,7 +101,7 @@ type RecurringExpenseRule struct {
 type RecurringIncomeRule struct {
 	ID            uuid.UUID          `db:"id" json:"id"`
 	UserID        uuid.UUID          `db:"user_id" json:"user_id"`
-	Amount        pgtype.Numeric     `db:"amount" json:"amount"`
+	Amount        decimal.Decimal    `db:"amount" json:"amount"`
 	Currency      string             `db:"currency" json:"currency"`
 	Description   string             `db:"description" json:"description"`
 	RecurringType string             `db:"recurring_type" json:"recurring_type"`

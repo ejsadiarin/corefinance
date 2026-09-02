@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 )
 
 const checkSkippedIncome = `-- name: CheckSkippedIncome :one
@@ -42,19 +43,19 @@ RETURNING id, user_id, category_id, amount, currency, description, notes, date, 
 `
 
 type CreateIncomeParams struct {
-	UserID        uuid.UUID      `db:"user_id" json:"user_id"`
-	CategoryID    pgtype.UUID    `db:"category_id" json:"category_id"`
-	Amount        pgtype.Numeric `db:"amount" json:"amount"`
-	Currency      string         `db:"currency" json:"currency"`
-	Description   string         `db:"description" json:"description"`
-	Notes         pgtype.Text    `db:"notes" json:"notes"`
-	Date          pgtype.Date    `db:"date" json:"date"`
-	RecurringType string         `db:"recurring_type" json:"recurring_type"`
-	Priority      string         `db:"priority" json:"priority"`
-	Status        string         `db:"status" json:"status"`
-	StartDate     pgtype.Date    `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date    `db:"end_date" json:"end_date"`
-	SourceRuleID  pgtype.UUID    `db:"source_rule_id" json:"source_rule_id"`
+	UserID        uuid.UUID       `db:"user_id" json:"user_id"`
+	CategoryID    pgtype.UUID     `db:"category_id" json:"category_id"`
+	Amount        decimal.Decimal `db:"amount" json:"amount"`
+	Currency      string          `db:"currency" json:"currency"`
+	Description   string          `db:"description" json:"description"`
+	Notes         pgtype.Text     `db:"notes" json:"notes"`
+	Date          pgtype.Date     `db:"date" json:"date"`
+	RecurringType string          `db:"recurring_type" json:"recurring_type"`
+	Priority      string          `db:"priority" json:"priority"`
+	Status        string          `db:"status" json:"status"`
+	StartDate     pgtype.Date     `db:"start_date" json:"start_date"`
+	EndDate       pgtype.Date     `db:"end_date" json:"end_date"`
+	SourceRuleID  pgtype.UUID     `db:"source_rule_id" json:"source_rule_id"`
 }
 
 func (q *Queries) CreateIncome(ctx context.Context, arg CreateIncomeParams) (Income, error) {
@@ -126,7 +127,7 @@ type GetIncomeRow struct {
 	ID            uuid.UUID          `db:"id" json:"id"`
 	UserID        uuid.UUID          `db:"user_id" json:"user_id"`
 	CategoryID    pgtype.UUID        `db:"category_id" json:"category_id"`
-	Amount        pgtype.Numeric     `db:"amount" json:"amount"`
+	Amount        decimal.Decimal    `db:"amount" json:"amount"`
 	Currency      string             `db:"currency" json:"currency"`
 	Description   string             `db:"description" json:"description"`
 	Notes         pgtype.Text        `db:"notes" json:"notes"`
@@ -181,13 +182,13 @@ ORDER BY date DESC
 `
 
 type GetIncomeOccurrencesParams struct {
-	UserID  uuid.UUID   `db:"user_id" json:"user_id"`
-	Column2 pgtype.Date `db:"column_2" json:"column_2"`
-	Column3 pgtype.Date `db:"column_3" json:"column_3"`
+	UserID    uuid.UUID   `db:"user_id" json:"user_id"`
+	StartDate pgtype.Date `db:"start_date" json:"start_date"`
+	EndDate   pgtype.Date `db:"end_date" json:"end_date"`
 }
 
 func (q *Queries) GetIncomeOccurrences(ctx context.Context, arg GetIncomeOccurrencesParams) ([]Income, error) {
-	rows, err := q.db.Query(ctx, getIncomeOccurrences, arg.UserID, arg.Column2, arg.Column3)
+	rows, err := q.db.Query(ctx, getIncomeOccurrences, arg.UserID, arg.StartDate, arg.EndDate)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +225,7 @@ func (q *Queries) GetIncomeOccurrences(ctx context.Context, arg GetIncomeOccurre
 }
 
 const getTotalIncomesByDateRange = `-- name: GetTotalIncomesByDateRange :one
-SELECT COALESCE(SUM(amount), 0) AS total
+SELECT COALESCE(SUM(amount), 0)::numeric AS total
 FROM incomes
 WHERE user_id = $1
   AND date >= $2
@@ -238,9 +239,9 @@ type GetTotalIncomesByDateRangeParams struct {
 	Date_2 pgtype.Date `db:"date_2" json:"date_2"`
 }
 
-func (q *Queries) GetTotalIncomesByDateRange(ctx context.Context, arg GetTotalIncomesByDateRangeParams) (interface{}, error) {
+func (q *Queries) GetTotalIncomesByDateRange(ctx context.Context, arg GetTotalIncomesByDateRangeParams) (decimal.Decimal, error) {
 	row := q.db.QueryRow(ctx, getTotalIncomesByDateRange, arg.UserID, arg.Date, arg.Date_2)
-	var total interface{}
+	var total decimal.Decimal
 	err := row.Scan(&total)
 	return total, err
 }
@@ -256,25 +257,25 @@ WHERE i.user_id = $1
   AND ($5::varchar IS NULL OR i.status = $5)
   AND ($6::varchar IS NULL OR i.recurring_type = $6)
 ORDER BY i.date DESC, i.created_at DESC
-LIMIT $7 OFFSET $8
+LIMIT $8 OFFSET $7
 `
 
 type ListIncomesParams struct {
-	UserID  uuid.UUID   `db:"user_id" json:"user_id"`
-	Column2 pgtype.Date `db:"column_2" json:"column_2"`
-	Column3 pgtype.Date `db:"column_3" json:"column_3"`
-	Column4 uuid.UUID   `db:"column_4" json:"column_4"`
-	Column5 string      `db:"column_5" json:"column_5"`
-	Column6 string      `db:"column_6" json:"column_6"`
-	Limit   int32       `db:"limit" json:"limit"`
-	Offset  int32       `db:"offset" json:"offset"`
+	UserID        uuid.UUID   `db:"user_id" json:"user_id"`
+	StartDate     pgtype.Date `db:"start_date" json:"start_date"`
+	EndDate       pgtype.Date `db:"end_date" json:"end_date"`
+	CategoryID    uuid.UUID   `db:"category_id" json:"category_id"`
+	Status        string      `db:"status" json:"status"`
+	RecurringType string      `db:"recurring_type" json:"recurring_type"`
+	PageOffset    int32       `db:"page_offset" json:"page_offset"`
+	PageLimit     int32       `db:"page_limit" json:"page_limit"`
 }
 
 type ListIncomesRow struct {
 	ID            uuid.UUID          `db:"id" json:"id"`
 	UserID        uuid.UUID          `db:"user_id" json:"user_id"`
 	CategoryID    pgtype.UUID        `db:"category_id" json:"category_id"`
-	Amount        pgtype.Numeric     `db:"amount" json:"amount"`
+	Amount        decimal.Decimal    `db:"amount" json:"amount"`
 	Currency      string             `db:"currency" json:"currency"`
 	Description   string             `db:"description" json:"description"`
 	Notes         pgtype.Text        `db:"notes" json:"notes"`
@@ -295,13 +296,13 @@ type ListIncomesRow struct {
 func (q *Queries) ListIncomes(ctx context.Context, arg ListIncomesParams) ([]ListIncomesRow, error) {
 	rows, err := q.db.Query(ctx, listIncomes,
 		arg.UserID,
-		arg.Column2,
-		arg.Column3,
-		arg.Column4,
-		arg.Column5,
-		arg.Column6,
-		arg.Limit,
-		arg.Offset,
+		arg.StartDate,
+		arg.EndDate,
+		arg.CategoryID,
+		arg.Status,
+		arg.RecurringType,
+		arg.PageOffset,
+		arg.PageLimit,
 	)
 	if err != nil {
 		return nil, err
@@ -368,20 +369,20 @@ RETURNING id, user_id, category_id, amount, currency, description, notes, date, 
 `
 
 type UpdateIncomeParams struct {
-	ID            uuid.UUID      `db:"id" json:"id"`
-	UserID        uuid.UUID      `db:"user_id" json:"user_id"`
-	CategoryID    pgtype.UUID    `db:"category_id" json:"category_id"`
-	Amount        pgtype.Numeric `db:"amount" json:"amount"`
-	Currency      string         `db:"currency" json:"currency"`
-	Description   string         `db:"description" json:"description"`
-	Notes         pgtype.Text    `db:"notes" json:"notes"`
-	Date          pgtype.Date    `db:"date" json:"date"`
-	RecurringType string         `db:"recurring_type" json:"recurring_type"`
-	Priority      string         `db:"priority" json:"priority"`
-	Status        string         `db:"status" json:"status"`
-	StartDate     pgtype.Date    `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date    `db:"end_date" json:"end_date"`
-	SourceRuleID  pgtype.UUID    `db:"source_rule_id" json:"source_rule_id"`
+	ID            uuid.UUID       `db:"id" json:"id"`
+	UserID        uuid.UUID       `db:"user_id" json:"user_id"`
+	CategoryID    pgtype.UUID     `db:"category_id" json:"category_id"`
+	Amount        decimal.Decimal `db:"amount" json:"amount"`
+	Currency      string          `db:"currency" json:"currency"`
+	Description   string          `db:"description" json:"description"`
+	Notes         pgtype.Text     `db:"notes" json:"notes"`
+	Date          pgtype.Date     `db:"date" json:"date"`
+	RecurringType string          `db:"recurring_type" json:"recurring_type"`
+	Priority      string          `db:"priority" json:"priority"`
+	Status        string          `db:"status" json:"status"`
+	StartDate     pgtype.Date     `db:"start_date" json:"start_date"`
+	EndDate       pgtype.Date     `db:"end_date" json:"end_date"`
+	SourceRuleID  pgtype.UUID     `db:"source_rule_id" json:"source_rule_id"`
 }
 
 func (q *Queries) UpdateIncome(ctx context.Context, arg UpdateIncomeParams) (Income, error) {

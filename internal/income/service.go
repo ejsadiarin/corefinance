@@ -1,4 +1,4 @@
-package expense
+package income
 
 import (
 	"context"
@@ -22,33 +22,32 @@ func NewService(pool *pgxpool.Pool) *Service {
 	}
 }
 
-func (s *Service) Create(ctx context.Context, userID uuid.UUID, req CreateRequest) (db.Expense, error) {
-	return s.queries.CreateExpense(ctx, db.CreateExpenseParams{
+func (s *Service) Create(ctx context.Context, userID uuid.UUID, req CreateRequest) (db.Income, error) {
+	return s.queries.CreateIncome(ctx, db.CreateIncomeParams{
 		UserID:        userID,
 		CategoryID:    toPgUUID(req.CategoryID),
 		Amount:        decimal.NewFromFloat(req.Amount),
 		Currency:      req.Currency,
 		Description:   req.Description,
 		Notes:         toPgText(req.Notes),
-		ExpenseDate:   toPgDate(req.ExpenseDate),
+		Date:          toPgDate(req.Date),
 		RecurringType: req.RecurringType,
 		Priority:      req.Priority,
 		Status:        req.Status,
-		IsDebt:        req.IsDebt,
 		StartDate:     toPgDatePtr(req.StartDate),
 		EndDate:       toPgDatePtr(req.EndDate),
 		SourceRuleID:  toPgUUID(req.SourceRuleID),
 	})
 }
 
-func (s *Service) Get(ctx context.Context, id uuid.UUID, userID uuid.UUID) (db.GetExpenseRow, error) {
-	return s.queries.GetExpense(ctx, db.GetExpenseParams{
+func (s *Service) Get(ctx context.Context, id uuid.UUID, userID uuid.UUID) (db.GetIncomeRow, error) {
+	return s.queries.GetIncome(ctx, db.GetIncomeParams{
 		ID:     id,
 		UserID: userID,
 	})
 }
 
-func (s *Service) List(ctx context.Context, userID uuid.UUID, params ListParams) ([]db.ListExpensesRow, error) {
+func (s *Service) List(ctx context.Context, userID uuid.UUID, params ListParams) ([]db.ListIncomesRow, error) {
 	page, pageSize := int32(params.Page), int32(params.PageSize)
 	if page <= 0 {
 		page = 1
@@ -56,12 +55,11 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID, params ListParams)
 	if pageSize <= 0 {
 		pageSize = 50
 	}
-	return s.queries.ListExpenses(ctx, db.ListExpensesParams{
+	return s.queries.ListIncomes(ctx, db.ListIncomesParams{
 		UserID:        userID,
 		StartDate:     toPgDatePtr(params.StartDate),
 		EndDate:       toPgDatePtr(params.EndDate),
 		CategoryID:    toUUID(params.CategoryID),
-		Priority:      strVal(params.Priority),
 		Status:        strVal(params.Status),
 		RecurringType: strVal(params.RecurringType),
 		PageLimit:     pageSize,
@@ -69,24 +67,8 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID, params ListParams)
 	})
 }
 
-func (s *Service) Search(ctx context.Context, userID uuid.UUID, params SearchParams) ([]db.SearchExpensesRow, error) {
-	page, pageSize := int32(params.Page), int32(params.PageSize)
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 {
-		pageSize = 50
-	}
-	return s.queries.SearchExpenses(ctx, db.SearchExpensesParams{
-		UserID:      userID,
-		Query:       toPgText(&params.Query),
-		PageLimit:   pageSize,
-		PageOffset:  (page - 1) * pageSize,
-	})
-}
-
-func (s *Service) Update(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateRequest) (db.Expense, error) {
-	return s.queries.UpdateExpense(ctx, db.UpdateExpenseParams{
+func (s *Service) Update(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateRequest) (db.Income, error) {
+	return s.queries.UpdateIncome(ctx, db.UpdateIncomeParams{
 		ID:            id,
 		UserID:        userID,
 		CategoryID:    toPgUUID(req.CategoryID),
@@ -94,11 +76,10 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, userID uuid.UUID, re
 		Currency:      req.Currency,
 		Description:   req.Description,
 		Notes:         toPgText(req.Notes),
-		ExpenseDate:   toPgDate(req.ExpenseDate),
+		Date:          toPgDate(req.Date),
 		RecurringType: req.RecurringType,
 		Priority:      req.Priority,
 		Status:        req.Status,
-		IsDebt:        req.IsDebt,
 		StartDate:     toPgDatePtr(req.StartDate),
 		EndDate:       toPgDatePtr(req.EndDate),
 		SourceRuleID:  toPgUUID(req.SourceRuleID),
@@ -106,29 +87,29 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, userID uuid.UUID, re
 }
 
 func (s *Service) Delete(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
-	return s.queries.DeleteExpense(ctx, db.DeleteExpenseParams{
+	return s.queries.DeleteIncome(ctx, db.DeleteIncomeParams{
 		ID:     id,
 		UserID: userID,
 	})
 }
 
 func (s *Service) Skip(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
-	return s.queries.SkipExpense(ctx, db.SkipExpenseParams{
+	return s.queries.SkipIncome(ctx, db.SkipIncomeParams{
 		ID:     id,
 		UserID: userID,
 	})
 }
 
 func (s *Service) CheckSkipped(ctx context.Context, userID uuid.UUID, startDate, endDate string) (bool, error) {
-	return s.queries.CheckSkippedExpense(ctx, db.CheckSkippedExpenseParams{
-		UserID:        userID,
-		ExpenseDate:   toPgDate(startDate),
-		ExpenseDate_2: toPgDate(endDate),
+	return s.queries.CheckSkippedIncome(ctx, db.CheckSkippedIncomeParams{
+		UserID: userID,
+		Date:   toPgDate(startDate),
+		Date_2: toPgDate(endDate),
 	})
 }
 
-func (s *Service) StatsByCategory(ctx context.Context, userID uuid.UUID, startDate, endDate *string) ([]db.GetExpenseStatsByCategoryRow, error) {
-	return s.queries.GetExpenseStatsByCategory(ctx, db.GetExpenseStatsByCategoryParams{
+func (s *Service) Occurrences(ctx context.Context, userID uuid.UUID, startDate, endDate *string) ([]db.Income, error) {
+	return s.queries.GetIncomeOccurrences(ctx, db.GetIncomeOccurrencesParams{
 		UserID:    userID,
 		StartDate: toPgDatePtr(startDate),
 		EndDate:   toPgDatePtr(endDate),
@@ -136,10 +117,10 @@ func (s *Service) StatsByCategory(ctx context.Context, userID uuid.UUID, startDa
 }
 
 func (s *Service) TotalByDateRange(ctx context.Context, userID uuid.UUID, startDate, endDate string) (decimal.Decimal, error) {
-	return s.queries.GetTotalExpensesByDateRange(ctx, db.GetTotalExpensesByDateRangeParams{
-		UserID:        userID,
-		ExpenseDate:   toPgDate(startDate),
-		ExpenseDate_2: toPgDate(endDate),
+	return s.queries.GetTotalIncomesByDateRange(ctx, db.GetTotalIncomesByDateRangeParams{
+		UserID: userID,
+		Date:   toPgDate(startDate),
+		Date_2: toPgDate(endDate),
 	})
 }
 

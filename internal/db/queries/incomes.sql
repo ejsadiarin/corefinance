@@ -13,14 +13,14 @@ WHERE i.id = $1 AND i.user_id = $2;
 SELECT i.*, ic.name AS category_name, ic.color AS category_color, ic.icon AS category_icon
 FROM incomes i
 LEFT JOIN income_categories ic ON i.category_id = ic.id
-WHERE i.user_id = $1
-  AND ($2::date IS NULL OR i.date >= $2)
-  AND ($3::date IS NULL OR i.date <= $3)
-  AND ($4::uuid IS NULL OR i.category_id = $4)
-  AND ($5::varchar IS NULL OR i.status = $5)
-  AND ($6::varchar IS NULL OR i.recurring_type = $6)
+WHERE i.user_id = @user_id
+  AND (@start_date::date IS NULL OR i.date >= @start_date)
+  AND (@end_date::date IS NULL OR i.date <= @end_date)
+  AND (@category_id::uuid IS NULL OR i.category_id = @category_id)
+  AND (@status::varchar IS NULL OR i.status = @status)
+  AND (@recurring_type::varchar IS NULL OR i.recurring_type = @recurring_type)
 ORDER BY i.date DESC, i.created_at DESC
-LIMIT $7 OFFSET $8;
+LIMIT @page_limit OFFSET @page_offset;
 
 -- name: UpdateIncome :one
 UPDATE incomes
@@ -51,14 +51,14 @@ SELECT EXISTS (
 
 -- name: GetIncomeOccurrences :many
 SELECT * FROM incomes
-WHERE user_id = $1
+WHERE user_id = @user_id
   AND recurring_type != 'one-time'
-  AND ($2::date IS NULL OR date >= $2)
-  AND ($3::date IS NULL OR date <= $3)
+  AND (@start_date::date IS NULL OR date >= @start_date)
+  AND (@end_date::date IS NULL OR date <= @end_date)
 ORDER BY date DESC;
 
 -- name: GetTotalIncomesByDateRange :one
-SELECT COALESCE(SUM(amount), 0) AS total
+SELECT COALESCE(SUM(amount), 0)::numeric AS total
 FROM incomes
 WHERE user_id = $1
   AND date >= $2

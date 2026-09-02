@@ -13,24 +13,24 @@ WHERE e.id = $1 AND e.user_id = $2;
 SELECT e.*, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
 FROM expenses e
 LEFT JOIN expense_categories ec ON e.category_id = ec.id
-WHERE e.user_id = $1
-  AND ($2::date IS NULL OR e.expense_date >= $2)
-  AND ($3::date IS NULL OR e.expense_date <= $3)
-  AND ($4::uuid IS NULL OR e.category_id = $4)
-  AND ($5::varchar IS NULL OR e.priority = $5)
-  AND ($6::varchar IS NULL OR e.status = $6)
-  AND ($7::varchar IS NULL OR e.recurring_type = $7)
+WHERE e.user_id = @user_id
+  AND (@start_date::date IS NULL OR e.expense_date >= @start_date)
+  AND (@end_date::date IS NULL OR e.expense_date <= @end_date)
+  AND (@category_id::uuid IS NULL OR e.category_id = @category_id)
+  AND (@priority::varchar IS NULL OR e.priority = @priority)
+  AND (@status::varchar IS NULL OR e.status = @status)
+  AND (@recurring_type::varchar IS NULL OR e.recurring_type = @recurring_type)
 ORDER BY e.expense_date DESC, e.created_at DESC
-LIMIT $8 OFFSET $9;
+LIMIT @page_limit OFFSET @page_offset;
 
 -- name: SearchExpenses :many
 SELECT e.*, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
 FROM expenses e
 LEFT JOIN expense_categories ec ON e.category_id = ec.id
-WHERE e.user_id = $1
-  AND (e.description ILIKE '%' || $2 || '%' OR e.notes ILIKE '%' || $2 || '%')
+WHERE e.user_id = @user_id
+  AND (e.description ILIKE '%' || @query || '%' OR e.notes ILIKE '%' || @query || '%')
 ORDER BY e.expense_date DESC, e.created_at DESC
-LIMIT $3 OFFSET $4;
+LIMIT @page_limit OFFSET @page_offset;
 
 -- name: UpdateExpense :one
 UPDATE expenses
@@ -65,19 +65,19 @@ SELECT
     ec.name AS category_name,
     ec.color AS category_color,
     COUNT(e.id) AS expense_count,
-    COALESCE(SUM(e.amount), 0) AS total_amount
+    COALESCE(SUM(e.amount), 0)::numeric AS total_amount
 FROM expense_categories ec
 LEFT JOIN expenses e ON ec.id = e.category_id
-    AND e.user_id = $1
-    AND ($2::date IS NULL OR e.expense_date >= $2)
-    AND ($3::date IS NULL OR e.expense_date <= $3)
+    AND e.user_id = @user_id
+    AND (@start_date::date IS NULL OR e.expense_date >= @start_date)
+    AND (@end_date::date IS NULL OR e.expense_date <= @end_date)
     AND e.status != 'skipped'
-WHERE ec.user_id = $1 AND ec.is_active = true
+WHERE ec.user_id = @user_id AND ec.is_active = true
 GROUP BY ec.id, ec.name, ec.color
 ORDER BY total_amount DESC;
 
 -- name: GetTotalExpensesByDateRange :one
-SELECT COALESCE(SUM(amount), 0) AS total
+SELECT COALESCE(SUM(amount), 0)::numeric AS total
 FROM expenses
 WHERE user_id = $1
   AND expense_date >= $2
