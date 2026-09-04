@@ -246,6 +246,49 @@ func (q *Queries) GetTotalIncomesByDateRange(ctx context.Context, arg GetTotalIn
 	return total, err
 }
 
+const listAllIncomesByUser = `-- name: ListAllIncomesByUser :many
+SELECT id, user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id, created_at, updated_at FROM incomes
+WHERE user_id = $1
+ORDER BY date DESC, created_at DESC
+`
+
+func (q *Queries) ListAllIncomesByUser(ctx context.Context, userID uuid.UUID) ([]Income, error) {
+	rows, err := q.db.Query(ctx, listAllIncomesByUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Income{}
+	for rows.Next() {
+		var i Income
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.CategoryID,
+			&i.Amount,
+			&i.Currency,
+			&i.Description,
+			&i.Notes,
+			&i.Date,
+			&i.RecurringType,
+			&i.Priority,
+			&i.Status,
+			&i.StartDate,
+			&i.EndDate,
+			&i.SourceRuleID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listIncomes = `-- name: ListIncomes :many
 SELECT i.id, i.user_id, i.category_id, i.amount, i.currency, i.description, i.notes, i.date, i.recurring_type, i.priority, i.status, i.start_date, i.end_date, i.source_rule_id, i.created_at, i.updated_at, ic.name AS category_name, ic.color AS category_color, ic.icon AS category_icon
 FROM incomes i

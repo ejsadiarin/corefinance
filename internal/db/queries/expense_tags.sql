@@ -12,3 +12,8 @@ SELECT t.* FROM tags t
 JOIN expense_tags et ON t.id = et.tag_id
 WHERE et.expense_id = $1
 ORDER BY t.name;
+
+-- name: ListAllExpenseTagsByUser :many
+SELECT et.expense_id, et.tag_id FROM expense_tags et
+JOIN expenses e ON et.expense_id = e.id
+WHERE e.user_id = $1;

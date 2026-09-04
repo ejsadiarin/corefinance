@@ -60,6 +60,32 @@ func (q *Queries) GetTagsByExpenseID(ctx context.Context, expenseID uuid.UUID) (
 	return items, nil
 }
 
+const listAllExpenseTagsByUser = `-- name: ListAllExpenseTagsByUser :many
+SELECT et.expense_id, et.tag_id FROM expense_tags et
+JOIN expenses e ON et.expense_id = e.id
+WHERE e.user_id = $1
+`
+
+func (q *Queries) ListAllExpenseTagsByUser(ctx context.Context, userID uuid.UUID) ([]ExpenseTag, error) {
+	rows, err := q.db.Query(ctx, listAllExpenseTagsByUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExpenseTag{}
+	for rows.Next() {
+		var i ExpenseTag
+		if err := rows.Scan(&i.ExpenseID, &i.TagID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const removeTagFromExpense = `-- name: RemoveTagFromExpense :exec
 DELETE FROM expense_tags
 WHERE expense_id = $1 AND tag_id = $2

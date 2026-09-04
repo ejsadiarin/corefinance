@@ -12,3 +12,8 @@ SELECT t.* FROM tags t
 JOIN income_tags it ON t.id = it.tag_id
 WHERE it.income_id = $1
 ORDER BY t.name;
+
+-- name: ListAllIncomeTagsByUser :many
+SELECT it.income_id, it.tag_id FROM income_tags it
+JOIN incomes i ON it.income_id = i.id
+WHERE i.user_id = $1;

@@ -60,6 +60,32 @@ func (q *Queries) GetTagsByIncomeID(ctx context.Context, incomeID uuid.UUID) ([]
 	return items, nil
 }
 
+const listAllIncomeTagsByUser = `-- name: ListAllIncomeTagsByUser :many
+SELECT it.income_id, it.tag_id FROM income_tags it
+JOIN incomes i ON it.income_id = i.id
+WHERE i.user_id = $1
+`
+
+func (q *Queries) ListAllIncomeTagsByUser(ctx context.Context, userID uuid.UUID) ([]IncomeTag, error) {
+	rows, err := q.db.Query(ctx, listAllIncomeTagsByUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IncomeTag{}
+	for rows.Next() {
+		var i IncomeTag
+		if err := rows.Scan(&i.IncomeID, &i.TagID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const removeTagFromIncome = `-- name: RemoveTagFromIncome :exec
 DELETE FROM income_tags
 WHERE income_id = $1 AND tag_id = $2

@@ -4,7 +4,7 @@
 ### Base URL
 
 @baseUrl = http://localhost:8080
-@sessionToken = rv3mOZk-7LSrIHw_5g6QC3YsoefvJmixYql2KSyFoIc=
+@userId = 00000000-0000-0000-0000-000000000001
 
 
 ### ============================================
@@ -38,143 +38,159 @@ Content-Type: application/json
 }
 
 
-### Logout
+### ============================================
 
-POST {{baseUrl}}/api/auth/logout HTTP/1.1
-Cookie: session_token={{sessionToken}}
+
+### Expense Categories
 
 
 ### ============================================
 
 
-### Budget - Savings Rate (TESTING PERIOD FIX)
+### Create Expense Category
 
-
-### ============================================
-
-
-### Get Savings Rate (Current Month - should use tracking period)
-
-GET {{baseUrl}}/api/budget/stats/savings-rate HTTP/1.1
-Cookie: session_token={{sessionToken}}
-
-
-### Get Savings Rate (Custom Period - Jan 15 to Feb 17)
-
-GET {{baseUrl}}/api/budget/stats/savings-rate?start_date=2026-01-15&end_date=2026-02-17 HTTP/1.1
-Cookie: session_token={{sessionToken}}
-
-
-### Get Savings Rate (Before tracking start - should auto-adjust to Jan 15)
-
-GET {{baseUrl}}/api/budget/stats/savings-rate?start_date=2025-12-01&end_date=2026-02-17 HTTP/1.1
-Cookie: session_token={{sessionToken}}
-
-
-### Get Savings Rate (Full tracking period to now)
-
-GET {{baseUrl}}/api/budget/stats/savings-rate?start_date=2026-01-15&end_date=2026-02-17 HTTP/1.1
-Cookie: session_token={{sessionToken}}
-
-
-### ============================================
-
-
-### Budget - 50/30/20 Analysis (TODO: needs fix)
-
-
-### ============================================
-
-
-### Get 50/30/20 Analysis (Current Month)
-
-GET {{baseUrl}}/api/budget/analysis/503020 HTTP/1.1
-Cookie: session_token={{sessionToken}}
-
-
-### Get 50/30/20 Analysis (Custom Period)
-
-GET {{baseUrl}}/api/budget/analysis/503020?start_date=2026-02-01&end_date=2026-02-17 HTTP/1.1
-Cookie: session_token={{sessionToken}}
-
-
-### ============================================
-
-
-### Budget - Health Score (TODO: needs fix)
-
-
-### ============================================
-
-
-### Get Health Score
-
-GET {{baseUrl}}/api/budget/stats/health-score HTTP/1.1
-Cookie: session_token={{sessionToken}}
-
-
-### ============================================
-
-
-### Budget - Income
-
-
-### ============================================
-
-
-### List Incomes
-
-GET {{baseUrl}}/api/budget/incomes?limit=20&offset=0 HTTP/1.1
-Cookie: session_token={{sessionToken}}
-
-
-### Get Income by ID
-
-GET {{baseUrl}}/api/budget/incomes/{income_id} HTTP/1.1
-Cookie: session_token={{sessionToken}}
-
-
-### Create Income
-
-POST {{baseUrl}}/api/budget/incomes HTTP/1.1
-Cookie: session_token={{sessionToken}}
+POST {{baseUrl}}/budget/expense-categories HTTP/1.1
 Content-Type: application/json
+X-User-ID: {{userId}}
 
 {
-  "amount": 3000.00,
-  "currency": "PHP",
-  "date": "2026-02-15",
-  "description": "Salary - February",
-  "recurring_type": null
+  "name": "Food & Dining",
+  "color": "#FF5733",
+  "icon": "utensils"
 }
 
 
+### List Expense Categories
+
+GET {{baseUrl}}/budget/expense-categories HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Update Expense Category
+
+PUT {{baseUrl}}/budget/expense-categories/{category_id} HTTP/1.1
+Content-Type: application/json
+X-User-ID: {{userId}}
+
+{
+  "name": "Food & Dining (Updated)",
+  "color": "#FF0000",
+  "icon": "utensils"
+}
+
+
+### Delete Expense Category
+
+DELETE {{baseUrl}}/budget/expense-categories/{category_id} HTTP/1.1
+X-User-ID: {{userId}}
+
+
 ### ============================================
 
 
-### Budget - Expenses
+### Income Categories
 
 
 ### ============================================
 
 
-### List Expenses
+### Create Income Category
 
-GET {{baseUrl}}/api/budget/expenses?limit=20&offset=0 HTTP/1.1
-Cookie: session_token={{sessionToken}}
+POST {{baseUrl}}/budget/income-categories HTTP/1.1
+Content-Type: application/json
+X-User-ID: {{userId}}
+
+{
+  "name": "Salary",
+  "color": "#00FF00",
+  "icon": "briefcase"
+}
 
 
-### Get Expense by ID
+### List Income Categories
 
-GET {{baseUrl}}/api/budget/expenses/{expense_id} HTTP/1.1
-Cookie: session_token={{sessionToken}}
+GET {{baseUrl}}/budget/income-categories HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Update Income Category
+
+PUT {{baseUrl}}/budget/income-categories/{category_id} HTTP/1.1
+Content-Type: application/json
+X-User-ID: {{userId}}
+
+{
+  "name": "Salary (Updated)",
+  "color": "#00CC00",
+  "icon": "briefcase"
+}
+
+
+### Delete Income Category
+
+DELETE {{baseUrl}}/budget/income-categories/{category_id} HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### ============================================
+
+
+### Tags
+
+
+### ============================================
+
+
+### Create Tag
+
+POST {{baseUrl}}/budget/tags HTTP/1.1
+Content-Type: application/json
+X-User-ID: {{userId}}
+
+{
+  "name": "essential",
+  "color": "#FF0000"
+}
+
+
+### List Tags
+
+GET {{baseUrl}}/budget/tags HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Update Tag
+
+PUT {{baseUrl}}/budget/tags/{tag_id} HTTP/1.1
+Content-Type: application/json
+X-User-ID: {{userId}}
+
+{
+  "name": "essential-updated",
+  "color": "#CC0000"
+}
+
+
+### Delete Tag
+
+DELETE {{baseUrl}}/budget/tags/{tag_id} HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### ============================================
+
+
+### Expenses
+
+
+### ============================================
 
 
 ### Create Expense
 
-POST {{baseUrl}}/api/budget/expenses HTTP/1.1
-Cookie: session_token={{sessionToken}}
+POST {{baseUrl}}/budget/expenses HTTP/1.1
 Content-Type: application/json
+X-User-ID: {{userId}}
 
 {
   "amount": 500.00,
@@ -182,29 +198,173 @@ Content-Type: application/json
   "description": "Groceries",
   "expense_date": "2026-02-17",
   "notes": "Weekly grocery shopping",
-  "priority_group_id": "need-priority-group-id-here"
+  "recurring_type": "one-time",
+  "priority": "need",
+  "status": "posted",
+  "is_debt": false
 }
 
 
+### List Expenses
+
+GET {{baseUrl}}/budget/expenses?page=1&page_size=20 HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### List Expenses (Filtered)
+
+GET {{baseUrl}}/budget/expenses?start_date=2026-02-01&end_date=2026-02-28&priority=need&status=posted&page=1&page_size=50 HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Get Expense by ID
+
+GET {{baseUrl}}/budget/expenses/{expense_id} HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Update Expense
+
+PUT {{baseUrl}}/budget/expenses/{expense_id} HTTP/1.1
+Content-Type: application/json
+X-User-ID: {{userId}}
+
+{
+  "amount": 550.00,
+  "currency": "PHP",
+  "description": "Groceries (Updated)",
+  "expense_date": "2026-02-17",
+  "notes": "Weekly grocery shopping - updated",
+  "recurring_type": "one-time",
+  "priority": "need",
+  "status": "posted",
+  "is_debt": false
+}
+
+
+### Delete Expense
+
+DELETE {{baseUrl}}/budget/expenses/{expense_id} HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Search Expenses
+
+GET {{baseUrl}}/budget/expenses/search?q=groceries&page=1&page_size=20 HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Skip Expense
+
+POST {{baseUrl}}/budget/expenses/skip HTTP/1.1
+Content-Type: application/json
+X-User-ID: {{userId}}
+
+{
+  "id": "{expense_id}"
+}
+
+
+### Check Skipped Expenses
+
+GET {{baseUrl}}/budget/expenses/check-skipped?start_date=2026-02-01&end_date=2026-02-28 HTTP/1.1
+X-User-ID: {{userId}}
+
+
 ### ============================================
 
 
-### Budget - Categories
+### Incomes
 
 
 ### ============================================
 
 
-### List Categories
+### Create Income
 
-GET {{baseUrl}}/api/budget/categories HTTP/1.1
-Cookie: session_token={{sessionToken}}
+POST {{baseUrl}}/budget/incomes HTTP/1.1
+Content-Type: application/json
+X-User-ID: {{userId}}
+
+{
+  "amount": 30000.00,
+  "currency": "PHP",
+  "description": "Salary - February",
+  "date": "2026-02-15",
+  "recurring_type": "monthly",
+  "priority": "need",
+  "status": "posted"
+}
+
+
+### List Incomes
+
+GET {{baseUrl}}/budget/incomes?page=1&page_size=20 HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### List Incomes (Filtered)
+
+GET {{baseUrl}}/budget/incomes?start_date=2026-02-01&end_date=2026-02-28&status=posted&page=1&page_size=50 HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Get Income by ID
+
+GET {{baseUrl}}/budget/incomes/{income_id} HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Update Income
+
+PUT {{baseUrl}}/budget/incomes/{income_id} HTTP/1.1
+Content-Type: application/json
+X-User-ID: {{userId}}
+
+{
+  "amount": 32000.00,
+  "currency": "PHP",
+  "description": "Salary - February (Updated)",
+  "date": "2026-02-15",
+  "recurring_type": "monthly",
+  "priority": "need",
+  "status": "posted"
+}
+
+
+### Delete Income
+
+DELETE {{baseUrl}}/budget/incomes/{income_id} HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Skip Income
+
+POST {{baseUrl}}/budget/incomes/skip HTTP/1.1
+Content-Type: application/json
+X-User-ID: {{userId}}
+
+{
+  "id": "{income_id}"
+}
+
+
+### Check Skipped Incomes
+
+GET {{baseUrl}}/budget/incomes/check-skipped?start_date=2026-02-01&end_date=2026-02-28 HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Get Income Occurrences
+
+GET {{baseUrl}}/budget/incomes/occurrences?start_date=2026-01-01&end_date=2026-12-31 HTTP/1.1
+X-User-ID: {{userId}}
 
 
 ### ============================================
 
 
-### Budget - Priority Groups
+### Priority Groups
 
 
 ### ============================================
@@ -212,8 +372,239 @@ Cookie: session_token={{sessionToken}}
 
 ### List Priority Groups
 
-GET {{baseUrl}}/api/budget/priority-groups HTTP/1.1
-Cookie: session_token={{sessionToken}}
+GET {{baseUrl}}/budget/priority-groups HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### ============================================
+
+
+### Budget Overview
+
+
+### ============================================
+
+
+### Get Budget Remaining (Current Month)
+
+GET {{baseUrl}}/budget/remaining HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### ============================================
+
+
+### Stats
+
+
+### ============================================
+
+
+### Get Summary
+
+GET {{baseUrl}}/budget/stats/summary HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Get Summary (Custom Period)
+
+GET {{baseUrl}}/budget/stats/summary?start_date=2026-02-01&end_date=2026-02-28 HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Get Trends
+
+GET {{baseUrl}}/budget/stats/trends HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Get Trends (Custom Period)
+
+GET {{baseUrl}}/budget/stats/trends?start_date=2026-01-01&end_date=2026-12-31 HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Get Category Breakdown
+
+GET {{baseUrl}}/budget/stats/category-breakdown HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Get Category Breakdown (Custom Period)
+
+GET {{baseUrl}}/budget/stats/category-breakdown?start_date=2026-02-01&end_date=2026-02-28 HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Get Savings Rate
+
+GET {{baseUrl}}/budget/stats/savings-rate HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Get Savings Rate (Custom Period)
+
+GET {{baseUrl}}/budget/stats/savings-rate?start_date=2026-01-15&end_date=2026-02-17 HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### ============================================
+
+
+### Financial Health Analysis
+
+
+### ============================================
+
+
+### Get 50/30/20 Analysis
+
+GET {{baseUrl}}/budget/analysis/503020 HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Get 50/30/20 Analysis (Custom Period)
+
+GET {{baseUrl}}/budget/analysis/503020?start_date=2026-02-01&end_date=2026-02-28 HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Get Spending Velocity
+
+GET {{baseUrl}}/budget/velocity HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Get Upcoming Bills
+
+GET {{baseUrl}}/budget/forecast/upcoming HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Get Current Total Money
+
+GET {{baseUrl}}/budget/current-total-money HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Get Month-over-Month Trends
+
+GET {{baseUrl}}/budget/trends/month-over-month HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Get Month-over-Month Trends (Custom Period)
+
+GET {{baseUrl}}/budget/trends/month-over-month?start_date=2026-01-01&end_date=2026-12-31 HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### ============================================
+
+
+### Recurring Expenses (Read-Only)
+
+
+### ============================================
+
+
+### List Recurring Expense Rules
+
+GET {{baseUrl}}/budget/recurring-expenses HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### ============================================
+
+
+### Recurring Incomes
+
+
+### ============================================
+
+
+### Create Recurring Income Rule
+
+POST {{baseUrl}}/budget/recurring-incomes HTTP/1.1
+Content-Type: application/json
+X-User-ID: {{userId}}
+
+{
+  "amount": 30000.00,
+  "currency": "PHP",
+  "description": "Monthly Salary",
+  "recurring_type": "monthly",
+  "start_date": "2026-01-01",
+  "end_date": "2026-12-31"
+}
+
+
+### List Recurring Income Rules
+
+GET {{baseUrl}}/budget/recurring-incomes HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Get Recurring Income Rule
+
+GET {{baseUrl}}/budget/recurring-incomes/{rule_id} HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Update Recurring Income Rule
+
+PUT {{baseUrl}}/budget/recurring-incomes/{rule_id} HTTP/1.1
+Content-Type: application/json
+X-User-ID: {{userId}}
+
+{
+  "amount": 32000.00,
+  "currency": "PHP",
+  "description": "Monthly Salary (Updated)",
+  "recurring_type": "monthly",
+  "start_date": "2026-01-01",
+  "end_date": "2026-12-31"
+}
+
+
+### Delete Recurring Income Rule
+
+DELETE {{baseUrl}}/budget/recurring-incomes/{rule_id} HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### ============================================
+
+
+### Export / Import
+
+
+### ============================================
+
+
+### Export Budget Data
+
+GET {{baseUrl}}/budget/export HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Import Budget Data
+
+POST {{baseUrl}}/budget/import HTTP/1.1
+Content-Type: application/json
+X-User-ID: {{userId}}
+
+{
+  "expense_categories": [],
+  "income_categories": [],
+  "tags": [],
+  "expenses": [],
+  "incomes": [],
+  "recurring_expense_rules": [],
+  "recurring_income_rules": [],
+  "expense_tags": [],
+  "income_tags": []
+}
 
 
 ### ============================================
@@ -225,10 +616,10 @@ Cookie: session_token={{sessionToken}}
 ### ============================================
 
 
-### Get Current User (includes tracking_start_date and money_baseline)
+### Get Current User
 
 GET {{baseUrl}}/api/auth/me HTTP/1.1
-Cookie: session_token={{sessionToken}}
+X-User-ID: {{userId}}
 
 
 ### ============================================
@@ -242,13 +633,23 @@ Cookie: session_token={{sessionToken}}
 # How to use this file:
 # 1. Login using the Login request to get a session_token cookie
 # 2. Copy the session_token value from the response cookies
-# 3. Update @sessionToken at the top of this file
-# 4. Run any request - the Cookie header will be automatically set
-# # Expected Results After Fix:
-# - Savings Rate should show period-based calculation (not cumulative)
-# - Income/expenses only counted from tracking_start_date forward
-# - Excluded income (before Jan 15) should not affect calculations
-# # To verify baseline:
-# - Check /api/auth/me for tracking_start_date and money_baseline fields
-# - money_baseline should be your calculated Jan 15 baseline
-# - tracking_start_date should be 2026-01-15
+# 3. Update @userId at the top of this file with your user ID
+# 4. Run any request - the X-User-ID header will be automatically set
+#
+# Endpoints implemented:
+# - Expense Categories: full CRUD (soft delete via is_active)
+# - Income Categories: full CRUD (soft delete via is_active)
+# - Tags: full CRUD (hard delete)
+# - Expenses: full CRUD + search + skip + check-skipped
+# - Incomes: full CRUD + skip + check-skipped + occurrences
+# - Priority Groups: hardcoded reference data
+# - Budget Remaining: current month income - expenses
+# - Stats: summary, trends, category-breakdown, savings-rate
+# - Analysis: 50/30/20 breakdown by priority
+# - Velocity: average monthly spending
+# - Forecast: upcoming recurring expenses
+# - Current Total Money: total income - total expenses
+# - Month-over-Month: combined monthly trends
+# - Recurring Expenses: read-only list of active rules
+# - Recurring Incomes: full CRUD
+# - Export/Import: JSON backup with ID remapping

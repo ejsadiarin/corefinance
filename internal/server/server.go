@@ -12,9 +12,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ejsadiarin/corefinance/internal/category"
+	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/database"
 	"github.com/ejsadiarin/corefinance/internal/expense"
 	"github.com/ejsadiarin/corefinance/internal/income"
+	"github.com/ejsadiarin/corefinance/internal/recurring"
+	"github.com/ejsadiarin/corefinance/internal/stats"
 	"github.com/ejsadiarin/corefinance/internal/tag"
 
 	_ "github.com/joho/godotenv/autoload"
@@ -25,10 +28,14 @@ type Server struct {
 
 	db database.Service
 
-	ExpenseHandler    *expense.Handler
-	IncomeHandler     *income.Handler
-	CategoryHandler   *category.Handler
-	TagHandler        *tag.Handler
+	ExpenseHandler   *expense.Handler
+	IncomeHandler    *income.Handler
+	CategoryHandler  *category.Handler
+	TagHandler       *tag.Handler
+	StatsHandler     *stats.Handler
+	RecurringHandler *recurring.Handler
+	Queries          *db.Queries
+	Pool             *pgxpool.Pool
 }
 
 func NewServer() *http.Server {
@@ -50,6 +57,10 @@ func NewServer() *http.Server {
 	NewServer.IncomeHandler = income.NewHandler(income.NewService(pool))
 	NewServer.CategoryHandler = category.NewHandler(category.NewService(pool))
 	NewServer.TagHandler = tag.NewHandler(tag.NewService(pool))
+	NewServer.StatsHandler = stats.NewHandler(stats.NewService(pool))
+	NewServer.RecurringHandler = recurring.NewHandler(recurring.NewService(pool))
+	NewServer.Queries = db.New(pool)
+	NewServer.Pool = pool
 
 	// Declare Server config
 	server := &http.Server{

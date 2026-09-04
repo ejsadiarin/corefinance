@@ -64,3 +64,8 @@ WHERE user_id = $1
   AND date >= $2
   AND date <= $3
   AND status != 'skipped';
+
+-- name: ListAllIncomesByUser :many
+SELECT * FROM incomes
+WHERE user_id = $1
+ORDER BY date DESC, created_at DESC;

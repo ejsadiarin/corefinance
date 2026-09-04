@@ -83,3 +83,8 @@ WHERE user_id = $1
   AND expense_date >= $2
   AND expense_date <= $3
   AND status != 'skipped';
+
+-- name: ListAllExpensesByUser :many
+SELECT * FROM expenses
+WHERE user_id = $1
+ORDER BY expense_date DESC, created_at DESC;
