@@ -4,10 +4,10 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
+	"github.com/ejsadiarin/corefinance/internal/helper"
 )
 
 type Service struct {
@@ -24,7 +24,7 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, req CreateReques
 	return s.queries.CreateTag(ctx, db.CreateTagParams{
 		UserID: userID,
 		Name:   req.Name,
-		Color:  toPgText(req.Color),
+		Color:  helper.ToPgText(req.Color),
 	})
 }
 
@@ -44,7 +44,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, userID uuid.UUID, re
 		ID:     id,
 		UserID: userID,
 		Name:   req.Name,
-		Color:  toPgText(req.Color),
+		Color:  helper.ToPgText(req.Color),
 	})
 }
 
@@ -55,9 +55,38 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID, userID uuid.UUID) er
 	})
 }
 
-func toPgText(s *string) pgtype.Text {
-	if s == nil {
-		return pgtype.Text{Valid: false}
-	}
-	return pgtype.Text{String: *s, Valid: true}
+func (s *Service) AddTagToExpense(ctx context.Context, expenseID, tagID uuid.UUID) error {
+	return s.queries.AddTagToExpense(ctx, db.AddTagToExpenseParams{
+		ExpenseID: expenseID,
+		TagID:     tagID,
+	})
+}
+
+func (s *Service) RemoveTagFromExpense(ctx context.Context, expenseID, tagID uuid.UUID) error {
+	return s.queries.RemoveTagFromExpense(ctx, db.RemoveTagFromExpenseParams{
+		ExpenseID: expenseID,
+		TagID:     tagID,
+	})
+}
+
+func (s *Service) GetTagsByExpenseID(ctx context.Context, expenseID uuid.UUID) ([]db.Tag, error) {
+	return s.queries.GetTagsByExpenseID(ctx, expenseID)
+}
+
+func (s *Service) AddTagToIncome(ctx context.Context, incomeID, tagID uuid.UUID) error {
+	return s.queries.AddTagToIncome(ctx, db.AddTagToIncomeParams{
+		IncomeID: incomeID,
+		TagID:    tagID,
+	})
+}
+
+func (s *Service) RemoveTagFromIncome(ctx context.Context, incomeID, tagID uuid.UUID) error {
+	return s.queries.RemoveTagFromIncome(ctx, db.RemoveTagFromIncomeParams{
+		IncomeID: incomeID,
+		TagID:    tagID,
+	})
+}
+
+func (s *Service) GetTagsByIncomeID(ctx context.Context, incomeID uuid.UUID) ([]db.Tag, error) {
+	return s.queries.GetTagsByIncomeID(ctx, incomeID)
 }

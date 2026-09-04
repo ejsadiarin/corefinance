@@ -11,12 +11,10 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/shopspring/decimal"
 
 	"github.com/coder/websocket"
-	"github.com/ejsadiarin/corefinance/internal/auth"
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
+	"github.com/ejsadiarin/corefinance/internal/helper"
 )
 
 func (s *Server) RegisterRoutes() http.Handler {
@@ -76,6 +74,10 @@ func (s *Server) RegisterRoutes() http.Handler {
 			r.Get("/{id}", s.ExpenseHandler.Get)
 			r.Put("/{id}", s.ExpenseHandler.Update)
 			r.Delete("/{id}", s.ExpenseHandler.Delete)
+
+			r.Post("/{id}/tags", s.TagHandler.AddTagToExpense)
+			r.Get("/{id}/tags", s.TagHandler.GetTagsByExpenseID)
+			r.Delete("/{id}/tags/{tag_id}", s.TagHandler.RemoveTagFromExpense)
 		})
 
 		// incomes
@@ -88,6 +90,10 @@ func (s *Server) RegisterRoutes() http.Handler {
 			r.Get("/{id}", s.IncomeHandler.Get)
 			r.Put("/{id}", s.IncomeHandler.Update)
 			r.Delete("/{id}", s.IncomeHandler.Delete)
+
+			r.Post("/{id}/tags", s.TagHandler.AddTagToIncome)
+			r.Get("/{id}/tags", s.TagHandler.GetTagsByIncomeID)
+			r.Delete("/{id}/tags/{tag_id}", s.TagHandler.RemoveTagFromIncome)
 		})
 
 		// budget remaining (income - expenses for current period)
@@ -114,8 +120,14 @@ func (s *Server) RegisterRoutes() http.Handler {
 		// trends
 		r.Get("/trends/month-over-month", s.StatsHandler.MonthOverMonthTrends)
 
-		// recurring expense rules (read-only)
-		r.Get("/recurring-expenses", s.RecurringHandler.ListExpenseRules)
+		// recurring expense rules (full CRUD)
+		r.Route("/recurring-expenses", func(r chi.Router) {
+			r.Post("/", s.RecurringHandler.CreateExpenseRule)
+			r.Get("/", s.RecurringHandler.ListExpenseRules)
+			r.Get("/{id}", s.RecurringHandler.GetExpenseRule)
+			r.Put("/{id}", s.RecurringHandler.UpdateExpenseRule)
+			r.Delete("/{id}", s.RecurringHandler.DeleteExpenseRule)
+		})
 
 		// recurring income rules (full CRUD)
 		r.Route("/recurring-incomes", func(r chi.Router) {
@@ -145,11 +157,8 @@ func (s *Server) GetPriorityGroups(w http.ResponseWriter, r *http.Request) {
 // --- Budget Remaining (income - expenses for current month) ---
 
 func (s *Server) GetBudgetRemaining(w http.ResponseWriter, r *http.Request) {
-	userID, ok := auth.GetUserID(r)
+	userID, ok := helper.GetUserID(w, r)
 	if !ok {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "X-User-ID header is required"})
 		return
 	}
 
@@ -161,8 +170,8 @@ func (s *Server) GetBudgetRemaining(w http.ResponseWriter, r *http.Request) {
 
 	totalIncome, err := s.Queries.GetTotalIncomesByDateRange(r.Context(), db.GetTotalIncomesByDateRangeParams{
 		UserID: userID,
-		Date:   toPgDate(startStr),
-		Date_2: toPgDate(endStr),
+		Date:   helper.ToPgDate(startStr),
+		Date_2: helper.ToPgDate(endStr),
 	})
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -173,8 +182,8 @@ func (s *Server) GetBudgetRemaining(w http.ResponseWriter, r *http.Request) {
 
 	totalExpenses, err := s.Queries.GetTotalExpensesByDateRange(r.Context(), db.GetTotalExpensesByDateRangeParams{
 		UserID:        userID,
-		ExpenseDate:   toPgDate(startStr),
-		ExpenseDate_2: toPgDate(endStr),
+		ExpenseDate:   helper.ToPgDate(startStr),
+		ExpenseDate_2: helper.ToPgDate(endStr),
 	})
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -183,8 +192,8 @@ func (s *Server) GetBudgetRemaining(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	incomeDec := toDecimal(totalIncome)
-	expenseDec := toDecimal(totalExpenses)
+	incomeDec := helper.ToDecimal(totalIncome)
+	expenseDec := helper.ToDecimal(totalExpenses)
 	remaining := incomeDec.Sub(expenseDec)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -212,11 +221,8 @@ type BudgetExport struct {
 }
 
 func (s *Server) ExportBudgetJSON(w http.ResponseWriter, r *http.Request) {
-	userID, ok := auth.GetUserID(r)
+	userID, ok := helper.GetUserID(w, r)
 	if !ok {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "X-User-ID header is required"})
 		return
 	}
 
@@ -312,11 +318,8 @@ func (s *Server) ExportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) ImportBudgetJSON(w http.ResponseWriter, r *http.Request) {
-	userID, ok := auth.GetUserID(r)
+	userID, ok := helper.GetUserID(w, r)
 	if !ok {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "X-User-ID header is required"})
 		return
 	}
 
@@ -412,7 +415,7 @@ func (s *Server) ImportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 		}
 		newExp, err := q.CreateExpense(ctx, db.CreateExpenseParams{
 			UserID:        userID,
-			CategoryID:    toPgUUIDFromUUID(newCatID),
+			CategoryID:    helper.ToPgUUIDFromUUID(newCatID),
 			Amount:        exp.Amount,
 			Currency:      exp.Currency,
 			Description:   exp.Description,
@@ -424,7 +427,7 @@ func (s *Server) ImportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 			IsDebt:        exp.IsDebt,
 			StartDate:     exp.StartDate,
 			EndDate:       exp.EndDate,
-			SourceRuleID:  toPgUUIDFromUUID(newRuleID),
+			SourceRuleID:  helper.ToPgUUIDFromUUID(newRuleID),
 		})
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -449,7 +452,7 @@ func (s *Server) ImportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 		}
 		newInc, err := q.CreateIncome(ctx, db.CreateIncomeParams{
 			UserID:        userID,
-			CategoryID:    toPgUUIDFromUUID(newCatID),
+			CategoryID:    helper.ToPgUUIDFromUUID(newCatID),
 			Amount:        inc.Amount,
 			Currency:      inc.Currency,
 			Description:   inc.Description,
@@ -460,7 +463,7 @@ func (s *Server) ImportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 			Status:        inc.Status,
 			StartDate:     inc.StartDate,
 			EndDate:       inc.EndDate,
-			SourceRuleID:  toPgUUIDFromUUID(newRuleID),
+			SourceRuleID:  helper.ToPgUUIDFromUUID(newRuleID),
 		})
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -484,7 +487,7 @@ func (s *Server) ImportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 			Description:   rule.Description,
 			Amount:        rule.Amount,
 			Currency:      rule.Currency,
-			CategoryID:    toPgUUIDFromUUID(newCatID),
+			CategoryID:    helper.ToPgUUIDFromUUID(newCatID),
 			Notes:         rule.Notes,
 			RecurringType: rule.RecurringType,
 			StartDate:     rule.StartDate,
@@ -592,42 +595,4 @@ func (s *Server) websocketHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		time.Sleep(time.Second * 2)
 	}
-}
-
-// --- Helpers ---
-
-func toPgDate(date string) pgtype.Date {
-	if date == "" {
-		return pgtype.Date{Valid: false}
-	}
-	t, err := time.Parse("2006-01-02", date)
-	if err != nil {
-		return pgtype.Date{Valid: false}
-	}
-	return pgtype.Date{Time: t, Valid: true}
-}
-
-func toDecimal(v interface{}) decimal.Decimal {
-	if v == nil {
-		return decimal.Zero
-	}
-	switch val := v.(type) {
-	case decimal.Decimal:
-		return val
-	case float64:
-		return decimal.NewFromFloat(val)
-	case int64:
-		return decimal.NewFromInt(val)
-	case int:
-		return decimal.NewFromInt(int64(val))
-	default:
-		return decimal.Zero
-	}
-}
-
-func toPgUUIDFromUUID(id uuid.UUID) pgtype.UUID {
-	if id == uuid.Nil {
-		return pgtype.UUID{Valid: false}
-	}
-	return pgtype.UUID{Bytes: id, Valid: true}
 }

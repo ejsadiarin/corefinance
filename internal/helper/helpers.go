@@ -3,6 +3,7 @@ package helper
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -19,7 +20,7 @@ func Respond(w http.ResponseWriter, status int, data any) {
 		err := json.NewEncoder(w).Encode(data)
 		if err != nil {
 			// if encoding fails then connection must be broken or data is invalid
-			slog.Info("failed to encode response %v", err.Error())
+			slog.Info("failed to encode response", "error", err.Error())
 		}
 	}
 }
@@ -64,4 +65,58 @@ func GetUserID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return userID, true
+}
+
+// ValidateRequired returns an error if the value is empty
+func ValidateRequired(value, fieldName string) error {
+	if value == "" {
+		return fmt.Errorf("%s is required", fieldName)
+	}
+	return nil
+}
+
+// ValidateAmount returns an error if the amount is negative
+func ValidateAmount(amount float64, fieldName string) error {
+	if amount < 0 {
+		return fmt.Errorf("%s must not be negative", fieldName)
+	}
+	return nil
+}
+
+// ValidatePriority returns an error if the priority is not one of the allowed values
+func ValidatePriority(priority string) error {
+	switch priority {
+	case "need", "want", "savings":
+		return nil
+	default:
+		return fmt.Errorf("priority must be one of: need, want, savings")
+	}
+}
+
+// ValidateRecurringType returns an error if the recurring_type is not one of the allowed values
+func ValidateRecurringType(recurringType string) error {
+	switch recurringType {
+	case "one-time", "daily", "weekly", "monthly", "yearly":
+		return nil
+	default:
+		return fmt.Errorf("recurring_type must be one of: one-time, daily, weekly, monthly, yearly")
+	}
+}
+
+// ValidateStatus returns an error if the status is not one of the allowed values
+func ValidateStatus(status string) error {
+	switch status {
+	case "pending", "posted", "skipped":
+		return nil
+	default:
+		return fmt.Errorf("status must be one of: pending, posted, skipped")
+	}
+}
+
+type PaginatedResponse struct {
+	Data     interface{} `json:"data"`
+	Total    int64       `json:"total"`
+	Page     int         `json:"page"`
+	PageSize int         `json:"page_size"`
+	HasMore  bool        `json:"has_more"`
 }

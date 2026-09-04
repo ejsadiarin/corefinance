@@ -1,0 +1,4 @@
+*.sql
+!internal/db/queries/*.sql
+!internal/db/schema.sql
+

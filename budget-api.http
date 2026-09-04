@@ -1,5 +1,30 @@
 ### Budget API Testing
 
+### Notes
+### ============================================
+# How to use this file:
+# 1. Login using the Login request to get a session_token cookie
+# 2. Copy the session_token value from the response cookies
+# 3. Update @userId at the top of this file with your user ID
+# 4. Run any request - the X-User-ID header will be automatically set
+#
+# Endpoints implemented:
+# - Expense Categories: full CRUD (soft delete via is_active)
+# - Income Categories: full CRUD (soft delete via is_active)
+# - Tags: full CRUD (hard delete)
+# - Expenses: full CRUD + search + skip + check-skipped
+# - Incomes: full CRUD + skip + check-skipped + occurrences
+# - Priority Groups: hardcoded reference data
+# - Budget Remaining: current month income - expenses
+# - Stats: summary, trends, category-breakdown, savings-rate
+# - Analysis: 50/30/20 breakdown by priority
+# - Velocity: average monthly spending
+# - Forecast: upcoming recurring expenses
+# - Current Total Money: total income - total expenses
+# - Month-over-Month: combined monthly trends
+# - Recurring Expenses: read-only list of active rules
+# - Recurring Incomes: full CRUD
+# - Export/Import: JSON backup with ID remapping
 
 ### Base URL
 
@@ -625,31 +650,3 @@ X-User-ID: {{userId}}
 ### ============================================
 
 
-### Testing Notes
-
-
-### ============================================
-
-# How to use this file:
-# 1. Login using the Login request to get a session_token cookie
-# 2. Copy the session_token value from the response cookies
-# 3. Update @userId at the top of this file with your user ID
-# 4. Run any request - the X-User-ID header will be automatically set
-#
-# Endpoints implemented:
-# - Expense Categories: full CRUD (soft delete via is_active)
-# - Income Categories: full CRUD (soft delete via is_active)
-# - Tags: full CRUD (hard delete)
-# - Expenses: full CRUD + search + skip + check-skipped
-# - Incomes: full CRUD + skip + check-skipped + occurrences
-# - Priority Groups: hardcoded reference data
-# - Budget Remaining: current month income - expenses
-# - Stats: summary, trends, category-breakdown, savings-rate
-# - Analysis: 50/30/20 breakdown by priority
-# - Velocity: average monthly spending
-# - Forecast: upcoming recurring expenses
-# - Current Total Money: total income - total expenses
-# - Month-over-Month: combined monthly trends
-# - Recurring Expenses: read-only list of active rules
-# - Recurring Incomes: full CRUD
-# - Export/Import: JSON backup with ID remapping

@@ -2,14 +2,13 @@ package recurring
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
+	"github.com/ejsadiarin/corefinance/internal/helper"
 )
 
 type Service struct {
@@ -31,8 +30,8 @@ func (s *Service) CreateIncomeRule(ctx context.Context, userID uuid.UUID, req Cr
 		Currency:      req.Currency,
 		Description:   req.Description,
 		RecurringType: req.RecurringType,
-		StartDate:     toPgDate(req.StartDate),
-		EndDate:       toPgDatePtr(req.EndDate),
+		StartDate:     helper.ToPgDate(req.StartDate),
+		EndDate:       helper.ToPgDatePtr(req.EndDate),
 	})
 }
 
@@ -55,8 +54,8 @@ func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 		Currency:      req.Currency,
 		Description:   req.Description,
 		RecurringType: req.RecurringType,
-		StartDate:     toPgDate(req.StartDate),
-		EndDate:       toPgDatePtr(req.EndDate),
+		StartDate:     helper.ToPgDate(req.StartDate),
+		EndDate:       helper.ToPgDatePtr(req.EndDate),
 	})
 }
 
@@ -69,26 +68,51 @@ func (s *Service) DeleteIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 
 // --- Expense Rules ---
 
+func (s *Service) CreateExpenseRule(ctx context.Context, userID uuid.UUID, req CreateExpenseRuleRequest) (db.RecurringExpenseRule, error) {
+	return s.queries.CreateRecurringExpenseRule(ctx, db.CreateRecurringExpenseRuleParams{
+		UserID:        userID,
+		Description:   req.Description,
+		Amount:        decimal.NewFromFloat(req.Amount),
+		Currency:      req.Currency,
+		CategoryID:    helper.ToPgUUID(req.CategoryID),
+		Notes:         helper.ToPgText(req.Notes),
+		RecurringType: req.RecurringType,
+		StartDate:     helper.ToPgDate(req.StartDate),
+		EndDate:       helper.ToPgDatePtr(req.EndDate),
+		Priority:      req.Priority,
+	})
+}
+
+func (s *Service) GetExpenseRule(ctx context.Context, id uuid.UUID, userID uuid.UUID) (db.GetRecurringExpenseRuleRow, error) {
+	return s.queries.GetRecurringExpenseRule(ctx, db.GetRecurringExpenseRuleParams{
+		ID:     id,
+		UserID: userID,
+	})
+}
+
+func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateExpenseRuleRequest) (db.RecurringExpenseRule, error) {
+	return s.queries.UpdateRecurringExpenseRule(ctx, db.UpdateRecurringExpenseRuleParams{
+		ID:            id,
+		UserID:        userID,
+		Description:   req.Description,
+		Amount:        decimal.NewFromFloat(req.Amount),
+		Currency:      req.Currency,
+		CategoryID:    helper.ToPgUUID(req.CategoryID),
+		Notes:         helper.ToPgText(req.Notes),
+		RecurringType: req.RecurringType,
+		StartDate:     helper.ToPgDate(req.StartDate),
+		EndDate:       helper.ToPgDatePtr(req.EndDate),
+		Priority:      req.Priority,
+	})
+}
+
+func (s *Service) DeleteExpenseRule(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
+	return s.queries.DeleteRecurringExpenseRule(ctx, db.DeleteRecurringExpenseRuleParams{
+		ID:     id,
+		UserID: userID,
+	})
+}
+
 func (s *Service) ListExpenseRules(ctx context.Context, userID uuid.UUID) ([]db.ListRecurringExpenseRulesRow, error) {
 	return s.queries.ListRecurringExpenseRules(ctx, userID)
-}
-
-// --- Helpers ---
-
-func toPgDate(date string) pgtype.Date {
-	if date == "" {
-		return pgtype.Date{Valid: false}
-	}
-	t, err := time.Parse("2006-01-02", date)
-	if err != nil {
-		return pgtype.Date{Valid: false}
-	}
-	return pgtype.Date{Time: t, Valid: true}
-}
-
-func toPgDatePtr(date *string) pgtype.Date {
-	if date == nil {
-		return pgtype.Date{Valid: false}
-	}
-	return toPgDate(*date)
 }

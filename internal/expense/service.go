@@ -2,14 +2,13 @@ package expense
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
+	"github.com/ejsadiarin/corefinance/internal/helper"
 )
 
 type Service struct {
@@ -25,19 +24,19 @@ func NewService(pool *pgxpool.Pool) *Service {
 func (s *Service) Create(ctx context.Context, userID uuid.UUID, req CreateRequest) (db.Expense, error) {
 	return s.queries.CreateExpense(ctx, db.CreateExpenseParams{
 		UserID:        userID,
-		CategoryID:    toPgUUID(req.CategoryID),
+		CategoryID:    helper.ToPgUUID(req.CategoryID),
 		Amount:        decimal.NewFromFloat(req.Amount),
 		Currency:      req.Currency,
 		Description:   req.Description,
-		Notes:         toPgText(req.Notes),
-		ExpenseDate:   toPgDate(req.ExpenseDate),
+		Notes:         helper.ToPgText(req.Notes),
+		ExpenseDate:   helper.ToPgDate(req.ExpenseDate),
 		RecurringType: req.RecurringType,
 		Priority:      req.Priority,
 		Status:        req.Status,
 		IsDebt:        req.IsDebt,
-		StartDate:     toPgDatePtr(req.StartDate),
-		EndDate:       toPgDatePtr(req.EndDate),
-		SourceRuleID:  toPgUUID(req.SourceRuleID),
+		StartDate:     helper.ToPgDatePtr(req.StartDate),
+		EndDate:       helper.ToPgDatePtr(req.EndDate),
+		SourceRuleID:  helper.ToPgUUID(req.SourceRuleID),
 	})
 }
 
@@ -58,12 +57,12 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID, params ListParams)
 	}
 	return s.queries.ListExpenses(ctx, db.ListExpensesParams{
 		UserID:        userID,
-		StartDate:     toPgDatePtr(params.StartDate),
-		EndDate:       toPgDatePtr(params.EndDate),
-		CategoryID:    toUUID(params.CategoryID),
-		Priority:      strVal(params.Priority),
-		Status:        strVal(params.Status),
-		RecurringType: strVal(params.RecurringType),
+		StartDate:     helper.ToPgDatePtr(params.StartDate),
+		EndDate:       helper.ToPgDatePtr(params.EndDate),
+		CategoryID:    helper.ToUUID(params.CategoryID),
+		Priority:      helper.StrVal(params.Priority),
+		Status:        helper.StrVal(params.Status),
+		RecurringType: helper.StrVal(params.RecurringType),
 		PageLimit:     pageSize,
 		PageOffset:    (page - 1) * pageSize,
 	})
@@ -79,7 +78,7 @@ func (s *Service) Search(ctx context.Context, userID uuid.UUID, params SearchPar
 	}
 	return s.queries.SearchExpenses(ctx, db.SearchExpensesParams{
 		UserID:      userID,
-		Query:       toPgText(&params.Query),
+		Query:       helper.ToPgText(&params.Query),
 		PageLimit:   pageSize,
 		PageOffset:  (page - 1) * pageSize,
 	})
@@ -89,19 +88,19 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, userID uuid.UUID, re
 	return s.queries.UpdateExpense(ctx, db.UpdateExpenseParams{
 		ID:            id,
 		UserID:        userID,
-		CategoryID:    toPgUUID(req.CategoryID),
+		CategoryID:    helper.ToPgUUID(req.CategoryID),
 		Amount:        decimal.NewFromFloat(req.Amount),
 		Currency:      req.Currency,
 		Description:   req.Description,
-		Notes:         toPgText(req.Notes),
-		ExpenseDate:   toPgDate(req.ExpenseDate),
+		Notes:         helper.ToPgText(req.Notes),
+		ExpenseDate:   helper.ToPgDate(req.ExpenseDate),
 		RecurringType: req.RecurringType,
 		Priority:      req.Priority,
 		Status:        req.Status,
 		IsDebt:        req.IsDebt,
-		StartDate:     toPgDatePtr(req.StartDate),
-		EndDate:       toPgDatePtr(req.EndDate),
-		SourceRuleID:  toPgUUID(req.SourceRuleID),
+		StartDate:     helper.ToPgDatePtr(req.StartDate),
+		EndDate:       helper.ToPgDatePtr(req.EndDate),
+		SourceRuleID:  helper.ToPgUUID(req.SourceRuleID),
 	})
 }
 
@@ -122,79 +121,23 @@ func (s *Service) Skip(ctx context.Context, id uuid.UUID, userID uuid.UUID) erro
 func (s *Service) CheckSkipped(ctx context.Context, userID uuid.UUID, startDate, endDate string) (bool, error) {
 	return s.queries.CheckSkippedExpense(ctx, db.CheckSkippedExpenseParams{
 		UserID:        userID,
-		ExpenseDate:   toPgDate(startDate),
-		ExpenseDate_2: toPgDate(endDate),
+		ExpenseDate:   helper.ToPgDate(startDate),
+		ExpenseDate_2: helper.ToPgDate(endDate),
 	})
 }
 
 func (s *Service) StatsByCategory(ctx context.Context, userID uuid.UUID, startDate, endDate *string) ([]db.GetExpenseStatsByCategoryRow, error) {
 	return s.queries.GetExpenseStatsByCategory(ctx, db.GetExpenseStatsByCategoryParams{
 		UserID:    userID,
-		StartDate: toPgDatePtr(startDate),
-		EndDate:   toPgDatePtr(endDate),
+		StartDate: helper.ToPgDatePtr(startDate),
+		EndDate:   helper.ToPgDatePtr(endDate),
 	})
 }
 
 func (s *Service) TotalByDateRange(ctx context.Context, userID uuid.UUID, startDate, endDate string) (decimal.Decimal, error) {
 	return s.queries.GetTotalExpensesByDateRange(ctx, db.GetTotalExpensesByDateRangeParams{
 		UserID:        userID,
-		ExpenseDate:   toPgDate(startDate),
-		ExpenseDate_2: toPgDate(endDate),
+		ExpenseDate:   helper.ToPgDate(startDate),
+		ExpenseDate_2: helper.ToPgDate(endDate),
 	})
-}
-
-// --- Helpers ---
-
-func toPgText(s *string) pgtype.Text {
-	if s == nil {
-		return pgtype.Text{Valid: false}
-	}
-	return pgtype.Text{String: *s, Valid: true}
-}
-
-func strVal(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
-}
-
-func toPgUUID(id *string) pgtype.UUID {
-	if id == nil {
-		return pgtype.UUID{Valid: false}
-	}
-	parsed, err := uuid.Parse(*id)
-	if err != nil {
-		return pgtype.UUID{Valid: false}
-	}
-	return pgtype.UUID{Bytes: parsed, Valid: true}
-}
-
-func toUUID(id *string) uuid.UUID {
-	if id == nil {
-		return uuid.Nil
-	}
-	parsed, err := uuid.Parse(*id)
-	if err != nil {
-		return uuid.Nil
-	}
-	return parsed
-}
-
-func toPgDate(date string) pgtype.Date {
-	if date == "" {
-		return pgtype.Date{Valid: false}
-	}
-	t, err := time.Parse("2006-01-02", date)
-	if err != nil {
-		return pgtype.Date{Valid: false}
-	}
-	return pgtype.Date{Time: t, Valid: true}
-}
-
-func toPgDatePtr(date *string) pgtype.Date {
-	if date == nil {
-		return pgtype.Date{Valid: false}
-	}
-	return toPgDate(*date)
 }

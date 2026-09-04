@@ -3,11 +3,8 @@ package expense
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 
-	"github.com/ejsadiarin/corefinance/internal/auth"
-
-	"github.com/go-chi/chi/v5"
+	"github.com/ejsadiarin/corefinance/internal/helper"
 	"github.com/google/uuid"
 )
 
@@ -19,173 +16,155 @@ func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
-func (h *Handler) respond(w http.ResponseWriter, status int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if data != nil {
-		json.NewEncoder(w).Encode(data)
-	}
-}
-
-func (h *Handler) respondError(w http.ResponseWriter, status int, message string) {
-	h.respond(w, status, map[string]string{"error": message})
-}
-
-func (h *Handler) parseUUID(w http.ResponseWriter, r *http.Request, param string) (uuid.UUID, bool) {
-	id, err := uuid.Parse(chi.URLParam(r, param))
-	if err != nil {
-		h.respondError(w, http.StatusBadRequest, "invalid "+param)
-		return uuid.Nil, false
-	}
-	return id, true
-}
-
-func (h *Handler) parseQueryInt(r *http.Request, key string, defaultVal int) int {
-	val := r.URL.Query().Get(key)
-	if val == "" {
-		return defaultVal
-	}
-	parsed, err := strconv.Atoi(val)
-	if err != nil {
-		return defaultVal
-	}
-	return parsed
-}
-
-func (h *Handler) parseQueryString(r *http.Request, key string) *string {
-	val := r.URL.Query().Get(key)
-	if val == "" {
-		return nil
-	}
-	return &val
-}
-
-func (h *Handler) getUserID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	userID, ok := auth.GetUserID(r)
-	if !ok {
-		h.respondError(w, http.StatusUnauthorized, "X-User-ID header is required")
-		return uuid.Nil, false
-	}
-	return userID, true
-}
-
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var req CreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "invalid request body")
+		helper.RespondError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	userID, ok := h.getUserID(w, r)
+	if err := helper.ValidateAmount(req.Amount, "amount"); err != nil {
+		helper.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := helper.ValidatePriority(req.Priority); err != nil {
+		helper.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := helper.ValidateRecurringType(req.RecurringType); err != nil {
+		helper.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := helper.ValidateStatus(req.Status); err != nil {
+		helper.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	userID, ok := helper.GetUserID(w, r)
 	if !ok {
 		return
 	}
 	expense, err := h.service.Create(r.Context(), userID, req)
 	if err != nil {
-		h.respondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	h.respond(w, http.StatusCreated, expense)
+	helper.Respond(w, http.StatusCreated, expense)
 }
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
-	id, ok := h.parseUUID(w, r, "id")
+	id, ok := helper.ParseUUID(w, r, "id")
 	if !ok {
 		return
 	}
-	userID, ok := h.getUserID(w, r)
+	userID, ok := helper.GetUserID(w, r)
 	if !ok {
 		return
 	}
 	expense, err := h.service.Get(r.Context(), id, userID)
 	if err != nil {
-		h.respondError(w, http.StatusNotFound, "expense not found")
+		helper.RespondError(w, http.StatusNotFound, "expense not found")
 		return
 	}
-	h.respond(w, http.StatusOK, expense)
+	helper.Respond(w, http.StatusOK, expense)
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	userID, ok := h.getUserID(w, r)
+	userID, ok := helper.GetUserID(w, r)
 	if !ok {
 		return
 	}
 	params := ListParams{
-		StartDate:     h.parseQueryString(r, "start_date"),
-		EndDate:       h.parseQueryString(r, "end_date"),
-		CategoryID:    h.parseQueryString(r, "category_id"),
-		Priority:      h.parseQueryString(r, "priority"),
-		Status:        h.parseQueryString(r, "status"),
-		RecurringType: h.parseQueryString(r, "recurring_type"),
-		Page:          h.parseQueryInt(r, "page", 1),
-		PageSize:      h.parseQueryInt(r, "page_size", 50),
+		StartDate:     helper.ParseQueryString(r, "start_date"),
+		EndDate:       helper.ParseQueryString(r, "end_date"),
+		CategoryID:    helper.ParseQueryString(r, "category_id"),
+		Priority:      helper.ParseQueryString(r, "priority"),
+		Status:        helper.ParseQueryString(r, "status"),
+		RecurringType: helper.ParseQueryString(r, "recurring_type"),
+		Page:          helper.ParseQueryInt(r, "page", 1),
+		PageSize:      helper.ParseQueryInt(r, "page_size", 50),
 	}
 	expenses, err := h.service.List(r.Context(), userID, params)
 	if err != nil {
-		h.respondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	h.respond(w, http.StatusOK, expenses)
+	helper.Respond(w, http.StatusOK, expenses)
 }
 
 func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
-	userID, ok := h.getUserID(w, r)
+	userID, ok := helper.GetUserID(w, r)
 	if !ok {
 		return
 	}
 	query := r.URL.Query().Get("q")
 	if query == "" {
-		h.respondError(w, http.StatusBadRequest, "query parameter 'q' is required")
+		helper.RespondError(w, http.StatusBadRequest, "query parameter 'q' is required")
 		return
 	}
 	params := SearchParams{
 		Query:    query,
-		Page:     h.parseQueryInt(r, "page", 1),
-		PageSize: h.parseQueryInt(r, "page_size", 50),
+		Page:     helper.ParseQueryInt(r, "page", 1),
+		PageSize: helper.ParseQueryInt(r, "page_size", 50),
 	}
 	expenses, err := h.service.Search(r.Context(), userID, params)
 	if err != nil {
-		h.respondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	h.respond(w, http.StatusOK, expenses)
+	helper.Respond(w, http.StatusOK, expenses)
 }
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
-	id, ok := h.parseUUID(w, r, "id")
+	id, ok := helper.ParseUUID(w, r, "id")
 	if !ok {
 		return
 	}
 	var req UpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "invalid request body")
+		helper.RespondError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	userID, ok := h.getUserID(w, r)
+	if err := helper.ValidateAmount(req.Amount, "amount"); err != nil {
+		helper.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := helper.ValidatePriority(req.Priority); err != nil {
+		helper.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := helper.ValidateRecurringType(req.RecurringType); err != nil {
+		helper.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := helper.ValidateStatus(req.Status); err != nil {
+		helper.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	userID, ok := helper.GetUserID(w, r)
 	if !ok {
 		return
 	}
 	expense, err := h.service.Update(r.Context(), id, userID, req)
 	if err != nil {
-		h.respondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	h.respond(w, http.StatusOK, expense)
+	helper.Respond(w, http.StatusOK, expense)
 }
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, ok := h.parseUUID(w, r, "id")
+	id, ok := helper.ParseUUID(w, r, "id")
 	if !ok {
 		return
 	}
-	userID, ok := h.getUserID(w, r)
+	userID, ok := helper.GetUserID(w, r)
 	if !ok {
 		return
 	}
 	if err := h.service.Delete(r.Context(), id, userID); err != nil {
-		h.respondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	h.respond(w, http.StatusNoContent, nil)
+	helper.Respond(w, http.StatusNoContent, nil)
 }
 
 func (h *Handler) Skip(w http.ResponseWriter, r *http.Request) {
@@ -193,40 +172,40 @@ func (h *Handler) Skip(w http.ResponseWriter, r *http.Request) {
 		ID string `json:"id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "invalid request body")
+		helper.RespondError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	id, err := uuid.Parse(req.ID)
 	if err != nil {
-		h.respondError(w, http.StatusBadRequest, "invalid expense id")
+		helper.RespondError(w, http.StatusBadRequest, "invalid expense id")
 		return
 	}
-	userID, ok := h.getUserID(w, r)
+	userID, ok := helper.GetUserID(w, r)
 	if !ok {
 		return
 	}
 	if err := h.service.Skip(r.Context(), id, userID); err != nil {
-		h.respondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	h.respond(w, http.StatusOK, map[string]string{"status": "skipped"})
+	helper.Respond(w, http.StatusOK, map[string]string{"status": "skipped"})
 }
 
 func (h *Handler) CheckSkipped(w http.ResponseWriter, r *http.Request) {
-	userID, ok := h.getUserID(w, r)
+	userID, ok := helper.GetUserID(w, r)
 	if !ok {
 		return
 	}
 	startDate := r.URL.Query().Get("start_date")
 	endDate := r.URL.Query().Get("end_date")
 	if startDate == "" || endDate == "" {
-		h.respondError(w, http.StatusBadRequest, "start_date and end_date are required")
+		helper.RespondError(w, http.StatusBadRequest, "start_date and end_date are required")
 		return
 	}
 	skipped, err := h.service.CheckSkipped(r.Context(), userID, startDate, endDate)
 	if err != nil {
-		h.respondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	h.respond(w, http.StatusOK, map[string]bool{"is_skipped": skipped})
+	helper.Respond(w, http.StatusOK, map[string]bool{"is_skipped": skipped})
 }

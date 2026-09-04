@@ -4,10 +4,10 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
+	"github.com/ejsadiarin/corefinance/internal/helper"
 )
 
 type Service struct {
@@ -26,8 +26,8 @@ func (s *Service) CreateExpense(ctx context.Context, userID uuid.UUID, req Creat
 	return s.queries.CreateExpenseCategory(ctx, db.CreateExpenseCategoryParams{
 		UserID: userID,
 		Name:   req.Name,
-		Color:  toPgText(req.Color),
-		Icon:   toPgText(req.Icon),
+		Color:  helper.ToPgText(req.Color),
+		Icon:   helper.ToPgText(req.Icon),
 	})
 }
 
@@ -47,8 +47,8 @@ func (s *Service) UpdateExpense(ctx context.Context, id uuid.UUID, userID uuid.U
 		ID:     id,
 		UserID: userID,
 		Name:   req.Name,
-		Color:  toPgText(req.Color),
-		Icon:   toPgText(req.Icon),
+		Color:  helper.ToPgText(req.Color),
+		Icon:   helper.ToPgText(req.Icon),
 	})
 }
 
@@ -65,8 +65,8 @@ func (s *Service) CreateIncome(ctx context.Context, userID uuid.UUID, req Create
 	return s.queries.CreateIncomeCategory(ctx, db.CreateIncomeCategoryParams{
 		UserID: userID,
 		Name:   req.Name,
-		Color:  toPgText(req.Color),
-		Icon:   toPgText(req.Icon),
+		Color:  helper.ToPgText(req.Color),
+		Icon:   helper.ToPgText(req.Icon),
 	})
 }
 
@@ -86,8 +86,8 @@ func (s *Service) UpdateIncome(ctx context.Context, id uuid.UUID, userID uuid.UU
 		ID:     id,
 		UserID: userID,
 		Name:   req.Name,
-		Color:  toPgText(req.Color),
-		Icon:   toPgText(req.Icon),
+		Color:  helper.ToPgText(req.Color),
+		Icon:   helper.ToPgText(req.Icon),
 	})
 }
 
@@ -96,11 +96,4 @@ func (s *Service) DeleteIncome(ctx context.Context, id uuid.UUID, userID uuid.UU
 		ID:     id,
 		UserID: userID,
 	})
-}
-
-func toPgText(s *string) pgtype.Text {
-	if s == nil {
-		return pgtype.Text{Valid: false}
-	}
-	return pgtype.Text{String: *s, Valid: true}
 }

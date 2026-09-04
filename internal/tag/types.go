@@ -9,3 +9,7 @@ type UpdateRequest struct {
 	Name  string  `json:"name"`
 	Color *string `json:"color,omitempty"`
 }
+
+type TagAssociationRequest struct {
+	TagID string `json:"tag_id"`
+}
