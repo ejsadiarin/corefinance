@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
@@ -36,7 +35,4 @@ type Querier interface {
 	CreateRecurringIncomeRule(ctx context.Context, arg db.CreateRecurringIncomeRuleParams) (db.RecurringIncomeRule, error)
 	AddTagToExpense(ctx context.Context, arg db.AddTagToExpenseParams) error
 	AddTagToIncome(ctx context.Context, arg db.AddTagToIncomeParams) error
-
-	// Transaction support
-	WithTx(tx pgx.Tx) *db.Queries
 }

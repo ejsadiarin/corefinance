@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
@@ -154,7 +153,7 @@ func (s *Service) Import(ctx context.Context, userID uuid.UUID, export *BudgetEx
 	}
 	defer tx.Rollback(ctx)
 
-	q := s.queries.WithTx(tx)
+	q := db.New(tx)
 
 	// Track ID mappings: old ID -> new ID
 	categoryMap := make(map[uuid.UUID]uuid.UUID)
@@ -352,6 +351,3 @@ func (s *Service) Import(ctx context.Context, userID uuid.UUID, export *BudgetEx
 	slog.Info("budget.Service.Import: completed", "user_id", userID)
 	return nil
 }
-
-// Ensure pgx.Tx is used (for compile check)
-var _ pgx.Tx = (pgx.Tx)(nil)
