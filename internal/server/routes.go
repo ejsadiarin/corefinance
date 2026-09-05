@@ -599,7 +599,23 @@ func (s *Server) HelloWorldHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
-	jsonResp, _ := json.Marshal(s.db.Health())
+	stats := make(map[string]string)
+
+	ctx := r.Context()
+	if err := s.Pool.Ping(ctx); err != nil {
+		stats["status"] = "down"
+		stats["error"] = err.Error()
+	} else {
+		stats["status"] = "up"
+		stats["message"] = "It's healthy"
+	}
+
+	poolStats := s.Pool.Stat()
+	stats["total_conns"] = fmt.Sprintf("%d", poolStats.TotalConns())
+	stats["acquired_conns"] = fmt.Sprintf("%d", poolStats.AcquiredConns())
+	stats["idle_conns"] = fmt.Sprintf("%d", poolStats.IdleConns())
+
+	jsonResp, _ := json.Marshal(stats)
 	_, _ = w.Write(jsonResp)
 }
 

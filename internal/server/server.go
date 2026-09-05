@@ -13,7 +13,6 @@ import (
 
 	"github.com/ejsadiarin/corefinance/internal/category"
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
-	"github.com/ejsadiarin/corefinance/internal/database"
 	"github.com/ejsadiarin/corefinance/internal/expense"
 	"github.com/ejsadiarin/corefinance/internal/income"
 	"github.com/ejsadiarin/corefinance/internal/recurring"
@@ -25,8 +24,6 @@ import (
 
 type Server struct {
 	port int
-
-	db database.Service
 
 	ExpenseHandler   *expense.Handler
 	IncomeHandler    *income.Handler
@@ -42,7 +39,6 @@ func NewServer() *http.Server {
 	port, _ := strconv.Atoi(os.Getenv("PORT"))
 	NewServer := &Server{
 		port: port,
-		db:   database.New(),
 	}
 
 	// Create pgxpool connection for sqlc queries
