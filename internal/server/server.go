@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/ejsadiarin/corefinance/internal/budget"
 	"github.com/ejsadiarin/corefinance/internal/category"
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/expense"
@@ -25,6 +26,7 @@ type Server struct {
 	TagHandler       *tag.Handler
 	StatsHandler     *stats.Handler
 	RecurringHandler *recurring.Handler
+	BudgetHandler    *budget.Handler
 	Queries          *db.Queries
 	Pool             *pgxpool.Pool
 }
@@ -42,6 +44,7 @@ func New(port int, pool *pgxpool.Pool, queries *db.Queries) *http.Server {
 	s.TagHandler = tag.NewHandler(tag.NewService(queries))
 	s.StatsHandler = stats.NewHandler(stats.NewService(queries))
 	s.RecurringHandler = recurring.NewHandler(recurring.NewService(queries))
+	s.BudgetHandler = budget.NewHandler(budget.NewService(queries, pool))
 
 	return &http.Server{
 		Addr:         fmt.Sprintf(":%d", port),
