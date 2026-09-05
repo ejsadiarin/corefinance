@@ -83,7 +83,7 @@ func buildPool() *pgxpool.Pool {
 }
 
 func main() {
-	logger.New()
+	logger.Setup()
 
 	pool := buildPool()
 	defer pool.Close()

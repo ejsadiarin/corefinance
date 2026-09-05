@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -21,7 +22,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r := chi.NewRouter()
 
 	// Middleware stack
-	r.Use(middleware.RequestID)
+	r.Use(requestIDMiddleware)
 	r.Use(middleware.RealIP)
 	r.Use(slogMiddleware)
 	r.Use(middleware.Recoverer)
@@ -646,6 +647,20 @@ func (s *Server) websocketHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		time.Sleep(time.Second * 2)
 	}
+}
+
+func requestIDMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := r.Header.Get("X-Request-ID")
+		if id == "" {
+			id = r.Header.Get("X-Correlation-ID")
+		}
+		if id == "" {
+			id = uuid.New().String()
+		}
+		ctx := context.WithValue(r.Context(), middleware.RequestIDKey, id)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 func slogMiddleware(next http.Handler) http.Handler {
