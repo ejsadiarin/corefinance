@@ -3,9 +3,7 @@ package recurring
 import (
 	"context"
 	"log/slog"
-
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
@@ -13,13 +11,11 @@ import (
 )
 
 type Service struct {
-	queries *db.Queries
+	queries db.Querier
 }
 
-func NewService(pool *pgxpool.Pool) *Service {
-	return &Service{
-		queries: db.New(pool),
-	}
+func NewService(queries db.Querier) *Service {
+	return &Service{queries: queries}
 }
 
 // --- Income Rules ---

@@ -1,3 +1,4 @@
+---
 version: "2"
 sql:
   - engine: "postgresql"
@@ -12,6 +13,7 @@ sql:
         emit_db_tags: true
         emit_empty_slices: true
         emit_exact_table_names: false
+        emit_interface: true
         overrides:
           - db_type: "uuid"
             go_type:

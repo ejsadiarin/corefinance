@@ -52,14 +52,15 @@ func NewServer() *http.Server {
 		log.Printf("unable to create pgxpool: %v", err)
 	}
 
-	// Wire up handlers
-	NewServer.ExpenseHandler = expense.NewHandler(expense.NewService(pool))
-	NewServer.IncomeHandler = income.NewHandler(income.NewService(pool))
-	NewServer.CategoryHandler = category.NewHandler(category.NewService(pool))
-	NewServer.TagHandler = tag.NewHandler(tag.NewService(pool))
-	NewServer.StatsHandler = stats.NewHandler(stats.NewService(pool))
-	NewServer.RecurringHandler = recurring.NewHandler(recurring.NewService(pool))
-	NewServer.Queries = db.New(pool)
+	// Wire up handlers (db.Queries implements all service Querier interfaces)
+	queries := db.New(pool)
+	NewServer.ExpenseHandler = expense.NewHandler(expense.NewService(queries))
+	NewServer.IncomeHandler = income.NewHandler(income.NewService(queries))
+	NewServer.CategoryHandler = category.NewHandler(category.NewService(queries))
+	NewServer.TagHandler = tag.NewHandler(tag.NewService(queries))
+	NewServer.StatsHandler = stats.NewHandler(stats.NewService(queries))
+	NewServer.RecurringHandler = recurring.NewHandler(recurring.NewService(queries))
+	NewServer.Queries = queries
 	NewServer.Pool = pool
 
 	// Declare Server config

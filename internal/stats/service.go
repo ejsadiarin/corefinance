@@ -5,20 +5,16 @@ import (
 	"log/slog"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/helper"
 )
 
 type Service struct {
-	queries *db.Queries
+	queries db.Querier
 }
 
-func NewService(pool *pgxpool.Pool) *Service {
-	return &Service{
-		queries: db.New(pool),
-	}
+func NewService(queries db.Querier) *Service {
+	return &Service{queries: queries}
 }
 
 func (s *Service) Summary(ctx context.Context, userID uuid.UUID, startDate, endDate *string) (Summary, error) {

@@ -2,395 +2,464 @@ package stats
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ejsadiarin/corefinance/internal/category"
-	"github.com/ejsadiarin/corefinance/internal/expense"
-	"github.com/ejsadiarin/corefinance/internal/income"
-	"github.com/ejsadiarin/corefinance/internal/testutil"
+	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
+	"github.com/ejsadiarin/corefinance/internal/mock"
 )
 
 func TestStatsService_Summary(t *testing.T) {
-	pool := testutil.SetupTestDB(t)
-	svc := NewService(pool)
-	ctx := context.Background()
-	userID := testutil.TestUserIDUUID()
+	userID := uuid.New()
 
-	expenseSvc := expense.NewService(pool)
-	incomeSvc := income.NewService(pool)
-	catSvc := category.NewService(pool)
-
-	// Create categories
-	expCat, err := catSvc.CreateExpense(ctx, userID, category.CreateRequest{Name: "Food"})
-	require.NoError(t, err)
-	incCat, err := catSvc.CreateIncome(ctx, userID, category.CreateRequest{Name: "Salary"})
-	require.NoError(t, err)
-
-	// Create expenses
-	for i := 0; i < 3; i++ {
-		_, err := expenseSvc.Create(ctx, userID, expense.CreateRequest{
-			Amount:      100,
-			Currency:    "PHP",
-			Description: "Expense",
-			CategoryID:  ptrString(expCat.ID.String()),
-			ExpenseDate: "2026-01-15",
-			Priority:    "want",
-			Status:      "posted",
-		})
+	t.Run("success with date range", func(t *testing.T) {
+		start := "2026-01-01"
+		end := "2026-01-31"
+		mock := &mock.MockQuerier{
+			GetSummaryFn: func(ctx context.Context, arg db.GetSummaryParams) (db.GetSummaryRow, error) {
+				assert.Equal(t, userID, arg.UserID)
+				assert.True(t, arg.StartDate.Valid)
+				assert.True(t, arg.EndDate.Valid)
+				return db.GetSummaryRow{
+					TotalExpenses: decimal.NewFromFloat(5000),
+					TotalIncomes:  decimal.NewFromFloat(8000),
+					ExpenseCount:  15,
+					IncomeCount:   3,
+				}, nil
+			},
+		}
+		svc := NewService(mock)
+		result, err := svc.Summary(context.Background(), userID, &start, &end)
 		require.NoError(t, err)
-	}
+		assert.Equal(t, "5000", result.TotalExpenses.String())
+		assert.Equal(t, "8000", result.TotalIncomes.String())
+		assert.Equal(t, int64(15), result.ExpenseCount)
+		assert.Equal(t, int64(3), result.IncomeCount)
+	})
 
-	// Create incomes
-	for i := 0; i < 2; i++ {
-		_, err := incomeSvc.Create(ctx, userID, income.CreateRequest{
-			Amount:      5000,
-			Currency:    "PHP",
-			Description: "Income",
-			CategoryID:  ptrString(incCat.ID.String()),
-			Date:        "2026-01-15",
-			Priority:    "need",
-			Status:      "posted",
-		})
+	t.Run("nil dates", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetSummaryFn: func(ctx context.Context, arg db.GetSummaryParams) (db.GetSummaryRow, error) {
+				assert.False(t, arg.StartDate.Valid)
+				assert.False(t, arg.EndDate.Valid)
+				return db.GetSummaryRow{
+					TotalExpenses: decimal.Zero,
+					TotalIncomes:  decimal.NewFromFloat(1000),
+				}, nil
+			},
+		}
+		svc := NewService(mock)
+		result, err := svc.Summary(context.Background(), userID, nil, nil)
 		require.NoError(t, err)
-	}
+		assert.Equal(t, "0", result.TotalExpenses.String())
+	})
 
-	summary, err := svc.Summary(ctx, userID, nil, nil)
-	require.NoError(t, err)
-	assert.Equal(t, int64(3), summary.ExpenseCount)
-	assert.Equal(t, int64(2), summary.IncomeCount)
+	t.Run("error", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetSummaryFn: func(ctx context.Context, arg db.GetSummaryParams) (db.GetSummaryRow, error) {
+				return db.GetSummaryRow{}, errors.New("db error")
+			},
+		}
+		svc := NewService(mock)
+		_, err := svc.Summary(context.Background(), userID, nil, nil)
+		require.Error(t, err)
+	})
 }
 
 func TestStatsService_Trends(t *testing.T) {
-	pool := testutil.SetupTestDB(t)
-	svc := NewService(pool)
-	ctx := context.Background()
-	userID := testutil.TestUserIDUUID()
+	userID := uuid.New()
 
-	expenseSvc := expense.NewService(pool)
-	catSvc := category.NewService(pool)
-
-	expCat, err := catSvc.CreateExpense(ctx, userID, category.CreateRequest{Name: "Food"})
-	require.NoError(t, err)
-
-	// Create expenses in different months
-	_, err = expenseSvc.Create(ctx, userID, expense.CreateRequest{
-		Amount:      100,
-		Currency:    "PHP",
-		Description: "Jan Expense",
-		CategoryID:  ptrString(expCat.ID.String()),
-		ExpenseDate: "2026-01-15",
-		Priority:    "want",
-		Status:      "posted",
+	t.Run("success", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetTrendsFn: func(ctx context.Context, arg db.GetTrendsParams) ([]db.GetTrendsRow, error) {
+				assert.Equal(t, userID, arg.UserID)
+				return []db.GetTrendsRow{
+					{Month: "2026-01", TotalExpenses: decimal.NewFromFloat(3000), TotalIncomes: decimal.NewFromFloat(5000)},
+					{Month: "2025-12", TotalExpenses: decimal.NewFromFloat(2500), TotalIncomes: decimal.NewFromFloat(4800)},
+				}, nil
+			},
+		}
+		svc := NewService(mock)
+		result, err := svc.Trends(context.Background(), userID, nil, nil)
+		require.NoError(t, err)
+		assert.Len(t, result, 2)
+		assert.Equal(t, "2026-01", result[0].Month)
+		assert.Equal(t, "3000", result[0].TotalExpenses.String())
 	})
-	require.NoError(t, err)
 
-	_, err = expenseSvc.Create(ctx, userID, expense.CreateRequest{
-		Amount:      200,
-		Currency:    "PHP",
-		Description: "Feb Expense",
-		CategoryID:  ptrString(expCat.ID.String()),
-		ExpenseDate: "2026-02-15",
-		Priority:    "want",
-		Status:      "posted",
+	t.Run("empty", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetTrendsFn: func(ctx context.Context, arg db.GetTrendsParams) ([]db.GetTrendsRow, error) {
+				return []db.GetTrendsRow{}, nil
+			},
+		}
+		svc := NewService(mock)
+		result, err := svc.Trends(context.Background(), userID, nil, nil)
+		require.NoError(t, err)
+		assert.Empty(t, result)
 	})
-	require.NoError(t, err)
 
-	trends, err := svc.Trends(ctx, userID, nil, nil)
-	require.NoError(t, err)
-	assert.GreaterOrEqual(t, len(trends), 2)
+	t.Run("error", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetTrendsFn: func(ctx context.Context, arg db.GetTrendsParams) ([]db.GetTrendsRow, error) {
+				return nil, errors.New("db error")
+			},
+		}
+		svc := NewService(mock)
+		_, err := svc.Trends(context.Background(), userID, nil, nil)
+		require.Error(t, err)
+	})
 }
 
 func TestStatsService_CategoryBreakdown(t *testing.T) {
-	pool := testutil.SetupTestDB(t)
-	svc := NewService(pool)
-	ctx := context.Background()
-	userID := testutil.TestUserIDUUID()
+	userID := uuid.New()
+	catID := uuid.New()
 
-	expenseSvc := expense.NewService(pool)
-	catSvc := category.NewService(pool)
-
-	cat1, err := catSvc.CreateExpense(ctx, userID, category.CreateRequest{
-		Name:  "Food",
-		Color: testutil.StrPtr("#FF0000"),
+	t.Run("success with color", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetCategoryBreakdownFn: func(ctx context.Context, arg db.GetCategoryBreakdownParams) ([]db.GetCategoryBreakdownRow, error) {
+				assert.Equal(t, userID, arg.UserID)
+				return []db.GetCategoryBreakdownRow{
+					{
+						CategoryID:    catID,
+						CategoryName:  "Food",
+						CategoryColor: pgtype.Text{String: "#FF0000", Valid: true},
+						ExpenseCount:  10,
+						TotalAmount:   decimal.NewFromFloat(2500),
+					},
+				}, nil
+			},
+		}
+		svc := NewService(mock)
+		result, err := svc.CategoryBreakdown(context.Background(), userID, nil, nil)
+		require.NoError(t, err)
+		assert.Len(t, result, 1)
+		assert.Equal(t, catID.String(), result[0].CategoryID)
+		assert.Equal(t, "Food", result[0].CategoryName)
+		require.NotNil(t, result[0].CategoryColor)
+		assert.Equal(t, "#FF0000", *result[0].CategoryColor)
+		assert.Equal(t, int64(10), result[0].ExpenseCount)
 	})
-	require.NoError(t, err)
 
-	cat2, err := catSvc.CreateExpense(ctx, userID, category.CreateRequest{
-		Name:  "Transport",
-		Color: testutil.StrPtr("#00FF00"),
+	t.Run("nil color", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetCategoryBreakdownFn: func(ctx context.Context, arg db.GetCategoryBreakdownParams) ([]db.GetCategoryBreakdownRow, error) {
+				return []db.GetCategoryBreakdownRow{
+					{
+						CategoryID:    catID,
+						CategoryName:  "Uncategorized",
+						CategoryColor: pgtype.Text{Valid: false},
+						ExpenseCount:  0,
+						TotalAmount:   decimal.Zero,
+					},
+				}, nil
+			},
+		}
+		svc := NewService(mock)
+		result, err := svc.CategoryBreakdown(context.Background(), userID, nil, nil)
+		require.NoError(t, err)
+		assert.Len(t, result, 1)
+		require.NotNil(t, result[0].CategoryColor)
+		assert.Equal(t, "", *result[0].CategoryColor)
 	})
-	require.NoError(t, err)
 
-	// Create expenses
-	_, err = expenseSvc.Create(ctx, userID, expense.CreateRequest{
-		Amount:      100,
-		Currency:    "PHP",
-		Description: "Food Expense",
-		CategoryID:  ptrString(cat1.ID.String()),
-		ExpenseDate: "2026-01-15",
-		Priority:    "want",
-		Status:      "posted",
+	t.Run("error", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetCategoryBreakdownFn: func(ctx context.Context, arg db.GetCategoryBreakdownParams) ([]db.GetCategoryBreakdownRow, error) {
+				return nil, errors.New("db error")
+			},
+		}
+		svc := NewService(mock)
+		_, err := svc.CategoryBreakdown(context.Background(), userID, nil, nil)
+		require.Error(t, err)
 	})
-	require.NoError(t, err)
-
-	_, err = expenseSvc.Create(ctx, userID, expense.CreateRequest{
-		Amount:      50,
-		Currency:    "PHP",
-		Description: "Transport Expense",
-		CategoryID:  ptrString(cat2.ID.String()),
-		ExpenseDate: "2026-01-15",
-		Priority:    "want",
-		Status:      "posted",
-	})
-	require.NoError(t, err)
-
-	breakdown, err := svc.CategoryBreakdown(ctx, userID, nil, nil)
-	require.NoError(t, err)
-	assert.Len(t, breakdown, 2)
 }
 
 func TestStatsService_SavingsRate(t *testing.T) {
-	pool := testutil.SetupTestDB(t)
-	svc := NewService(pool)
-	ctx := context.Background()
-	userID := testutil.TestUserIDUUID()
+	userID := uuid.New()
 
-	expenseSvc := expense.NewService(pool)
-	incomeSvc := income.NewService(pool)
-	catSvc := category.NewService(pool)
-
-	expCat, err := catSvc.CreateExpense(ctx, userID, category.CreateRequest{Name: "Food"})
-	require.NoError(t, err)
-	incCat, err := catSvc.CreateIncome(ctx, userID, category.CreateRequest{Name: "Salary"})
-	require.NoError(t, err)
-
-	// Create income: 10000
-	_, err = incomeSvc.Create(ctx, userID, income.CreateRequest{
-		Amount:      10000,
-		Currency:    "PHP",
-		Description: "Salary",
-		CategoryID:  ptrString(incCat.ID.String()),
-		Date:        "2026-01-15",
-		Priority:    "need",
-		Status:      "posted",
+	t.Run("success", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetSavingsRateFn: func(ctx context.Context, arg db.GetSavingsRateParams) (db.GetSavingsRateRow, error) {
+				assert.Equal(t, userID, arg.UserID)
+				return db.GetSavingsRateRow{
+					TotalIncomes:  decimal.NewFromFloat(10000),
+					TotalExpenses: decimal.NewFromFloat(7000),
+					SavingsRate:   decimal.NewFromFloat(30),
+				}, nil
+			},
+		}
+		svc := NewService(mock)
+		result, err := svc.SavingsRate(context.Background(), userID, nil, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "10000", result.TotalIncomes.String())
+		assert.Equal(t, "7000", result.TotalExpenses.String())
+		assert.Equal(t, "30", result.SavingsRate.String())
 	})
-	require.NoError(t, err)
 
-	// Create expense: 3000
-	_, err = expenseSvc.Create(ctx, userID, expense.CreateRequest{
-		Amount:      3000,
-		Currency:    "PHP",
-		Description: "Food",
-		CategoryID:  ptrString(expCat.ID.String()),
-		ExpenseDate: "2026-01-15",
-		Priority:    "want",
-		Status:      "posted",
+	t.Run("error", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetSavingsRateFn: func(ctx context.Context, arg db.GetSavingsRateParams) (db.GetSavingsRateRow, error) {
+				return db.GetSavingsRateRow{}, errors.New("db error")
+			},
+		}
+		svc := NewService(mock)
+		_, err := svc.SavingsRate(context.Background(), userID, nil, nil)
+		require.Error(t, err)
 	})
-	require.NoError(t, err)
-
-	sr, err := svc.SavingsRate(ctx, userID, nil, nil)
-	require.NoError(t, err)
-	// Savings rate = (10000 - 3000) / 10000 * 100 = 70%
-	assert.True(t, sr.SavingsRate.GreaterThan(decimal.NewFromFloat(69)))
-	assert.True(t, sr.SavingsRate.LessThan(decimal.NewFromFloat(71)))
 }
 
 func TestStatsService_FiftyThirtyTwenty(t *testing.T) {
-	pool := testutil.SetupTestDB(t)
-	svc := NewService(pool)
-	ctx := context.Background()
-	userID := testutil.TestUserIDUUID()
+	userID := uuid.New()
 
-	expenseSvc := expense.NewService(pool)
-	catSvc := category.NewService(pool)
-
-	needCat, err := catSvc.CreateExpense(ctx, userID, category.CreateRequest{Name: "Needs"})
-	require.NoError(t, err)
-	wantCat, err := catSvc.CreateExpense(ctx, userID, category.CreateRequest{Name: "Wants"})
-	require.NoError(t, err)
-	savingsCat, err := catSvc.CreateExpense(ctx, userID, category.CreateRequest{Name: "Savings"})
-	require.NoError(t, err)
-
-	// Need expense: 500
-	_, err = expenseSvc.Create(ctx, userID, expense.CreateRequest{
-		Amount:      500,
-		Currency:    "PHP",
-		Description: "Need",
-		CategoryID:  ptrString(needCat.ID.String()),
-		ExpenseDate: "2026-01-15",
-		Priority:    "need",
-		Status:      "posted",
+	t.Run("success", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetFiftyThirtyTwentyFn: func(ctx context.Context, arg db.GetFiftyThirtyTwentyParams) (db.GetFiftyThirtyTwentyRow, error) {
+				assert.Equal(t, userID, arg.UserID)
+				return db.GetFiftyThirtyTwentyRow{
+					TotalIncomes:  decimal.NewFromFloat(10000),
+					TotalExpenses: decimal.NewFromFloat(8000),
+					Needs:         decimal.NewFromFloat(4000),
+					Wants:         decimal.NewFromFloat(2400),
+					Savings:       decimal.NewFromFloat(1600),
+					NeedsPct:      decimal.NewFromFloat(50),
+					WantsPct:      decimal.NewFromFloat(30),
+					SavingsPct:    decimal.NewFromFloat(20),
+				}, nil
+			},
+		}
+		svc := NewService(mock)
+		result, err := svc.FiftyThirtyTwenty(context.Background(), userID, nil, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "10000", result.TotalIncomes.String())
+		assert.Equal(t, "8000", result.TotalExpenses.String())
+		assert.Equal(t, "4000", result.Needs.String())
+		assert.Equal(t, "2400", result.Wants.String())
+		assert.Equal(t, "1600", result.Savings.String())
+		assert.Equal(t, "50", result.NeedsPct.String())
+		assert.Equal(t, "30", result.WantsPct.String())
+		assert.Equal(t, "20", result.SavingsPct.String())
 	})
-	require.NoError(t, err)
 
-	// Want expense: 300
-	_, err = expenseSvc.Create(ctx, userID, expense.CreateRequest{
-		Amount:      300,
-		Currency:    "PHP",
-		Description: "Want",
-		CategoryID:  ptrString(wantCat.ID.String()),
-		ExpenseDate: "2026-01-15",
-		Priority:    "want",
-		Status:      "posted",
+	t.Run("zero expenses", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetFiftyThirtyTwentyFn: func(ctx context.Context, arg db.GetFiftyThirtyTwentyParams) (db.GetFiftyThirtyTwentyRow, error) {
+				return db.GetFiftyThirtyTwentyRow{
+					TotalIncomes:  decimal.NewFromFloat(10000),
+					TotalExpenses: decimal.Zero,
+					Needs:         decimal.Zero,
+					Wants:         decimal.Zero,
+					Savings:       decimal.Zero,
+					NeedsPct:      decimal.Zero,
+					WantsPct:      decimal.Zero,
+					SavingsPct:    decimal.Zero,
+				}, nil
+			},
+		}
+		svc := NewService(mock)
+		result, err := svc.FiftyThirtyTwenty(context.Background(), userID, nil, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "0", result.TotalExpenses.String())
+		assert.Equal(t, "0", result.NeedsPct.String())
 	})
-	require.NoError(t, err)
 
-	// Savings expense: 200
-	_, err = expenseSvc.Create(ctx, userID, expense.CreateRequest{
-		Amount:      200,
-		Currency:    "PHP",
-		Description: "Savings",
-		CategoryID:  ptrString(savingsCat.ID.String()),
-		ExpenseDate: "2026-01-15",
-		Priority:    "savings",
-		Status:      "posted",
+	t.Run("error", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetFiftyThirtyTwentyFn: func(ctx context.Context, arg db.GetFiftyThirtyTwentyParams) (db.GetFiftyThirtyTwentyRow, error) {
+				return db.GetFiftyThirtyTwentyRow{}, errors.New("db error")
+			},
+		}
+		svc := NewService(mock)
+		_, err := svc.FiftyThirtyTwenty(context.Background(), userID, nil, nil)
+		require.Error(t, err)
 	})
-	require.NoError(t, err)
+}
 
-	ftt, err := svc.FiftyThirtyTwenty(ctx, userID, nil, nil)
-	require.NoError(t, err)
-	// Total expenses = 1000
-	// Needs = 500 (50%), Wants = 300 (30%), Savings = 200 (20%)
-	assert.True(t, ftt.NeedsPct.GreaterThan(decimal.NewFromFloat(49)))
-	assert.True(t, ftt.NeedsPct.LessThan(decimal.NewFromFloat(51)))
-	assert.True(t, ftt.WantsPct.GreaterThan(decimal.NewFromFloat(29)))
-	assert.True(t, ftt.WantsPct.LessThan(decimal.NewFromFloat(31)))
-	assert.True(t, ftt.SavingsPct.GreaterThan(decimal.NewFromFloat(19)))
-	assert.True(t, ftt.SavingsPct.LessThan(decimal.NewFromFloat(21)))
+func TestStatsService_UpcomingBills(t *testing.T) {
+	userID := uuid.New()
+
+	t.Run("success", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetUpcomingRecurringExpensesFn: func(ctx context.Context, uid uuid.UUID) ([]db.GetUpcomingRecurringExpensesRow, error) {
+				assert.Equal(t, userID, uid)
+				return []db.GetUpcomingRecurringExpensesRow{
+					{
+						ID:          uuid.New(),
+						Description: "Rent",
+						Amount:      decimal.NewFromFloat(1500),
+						CategoryName: pgtype.Text{String: "Housing", Valid: true},
+					},
+					{
+						ID:          uuid.New(),
+						Description: "Internet",
+						Amount:      decimal.NewFromFloat(100),
+					},
+				}, nil
+			},
+		}
+		svc := NewService(mock)
+		result, err := svc.UpcomingBills(context.Background(), userID)
+		require.NoError(t, err)
+		assert.Len(t, result, 2)
+		assert.Equal(t, "Rent", result[0].Description)
+		assert.Equal(t, "Internet", result[1].Description)
+	})
+
+	t.Run("empty", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetUpcomingRecurringExpensesFn: func(ctx context.Context, uid uuid.UUID) ([]db.GetUpcomingRecurringExpensesRow, error) {
+				return []db.GetUpcomingRecurringExpensesRow{}, nil
+			},
+		}
+		svc := NewService(mock)
+		result, err := svc.UpcomingBills(context.Background(), userID)
+		require.NoError(t, err)
+		assert.Empty(t, result)
+	})
+
+	t.Run("error", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetUpcomingRecurringExpensesFn: func(ctx context.Context, uid uuid.UUID) ([]db.GetUpcomingRecurringExpensesRow, error) {
+				return nil, errors.New("db error")
+			},
+		}
+		svc := NewService(mock)
+		_, err := svc.UpcomingBills(context.Background(), userID)
+		require.Error(t, err)
+	})
 }
 
 func TestStatsService_SpendingVelocity(t *testing.T) {
-	pool := testutil.SetupTestDB(t)
-	svc := NewService(pool)
-	ctx := context.Background()
-	userID := testutil.TestUserIDUUID()
+	userID := uuid.New()
 
-	expenseSvc := expense.NewService(pool)
-	catSvc := category.NewService(pool)
-
-	expCat, err := catSvc.CreateExpense(ctx, userID, category.CreateRequest{Name: "Food"})
-	require.NoError(t, err)
-
-	// Create expenses across 2 months
-	_, err = expenseSvc.Create(ctx, userID, expense.CreateRequest{
-		Amount:      1000,
-		Currency:    "PHP",
-		Description: "Jan Expense",
-		CategoryID:  ptrString(expCat.ID.String()),
-		ExpenseDate: "2026-01-15",
-		Priority:    "want",
-		Status:      "posted",
+	t.Run("success", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetSpendingVelocityFn: func(ctx context.Context, arg db.GetSpendingVelocityParams) (db.GetSpendingVelocityRow, error) {
+				assert.Equal(t, userID, arg.UserID)
+				assert.True(t, arg.StartDate.Valid)
+				assert.True(t, arg.EndDate.Valid)
+				return db.GetSpendingVelocityRow{
+					AvgMonthlySpending: decimal.NewFromFloat(3500.75),
+					MonthsWithData:     6,
+				}, nil
+			},
+		}
+		svc := NewService(mock)
+		result, err := svc.SpendingVelocity(context.Background(), userID, "2026-01-01", "2026-06-30")
+		require.NoError(t, err)
+		assert.Equal(t, "3500.75", result.AvgMonthlySpending.String())
+		assert.Equal(t, 6, result.MonthsWithData)
 	})
-	require.NoError(t, err)
 
-	_, err = expenseSvc.Create(ctx, userID, expense.CreateRequest{
-		Amount:      2000,
-		Currency:    "PHP",
-		Description: "Feb Expense",
-		CategoryID:  ptrString(expCat.ID.String()),
-		ExpenseDate: "2026-02-15",
-		Priority:    "want",
-		Status:      "posted",
+	t.Run("error", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetSpendingVelocityFn: func(ctx context.Context, arg db.GetSpendingVelocityParams) (db.GetSpendingVelocityRow, error) {
+				return db.GetSpendingVelocityRow{}, errors.New("db error")
+			},
+		}
+		svc := NewService(mock)
+		_, err := svc.SpendingVelocity(context.Background(), userID, "2026-01-01", "2026-06-30")
+		require.Error(t, err)
 	})
-	require.NoError(t, err)
-
-	sv, err := svc.SpendingVelocity(ctx, userID, "2026-01-01", "2026-02-28")
-	require.NoError(t, err)
-	assert.Greater(t, sv.MonthsWithData, 0)
 }
 
 func TestStatsService_CurrentTotalMoney(t *testing.T) {
-	pool := testutil.SetupTestDB(t)
-	svc := NewService(pool)
-	ctx := context.Background()
-	userID := testutil.TestUserIDUUID()
+	userID := uuid.New()
 
-	expenseSvc := expense.NewService(pool)
-	incomeSvc := income.NewService(pool)
-	catSvc := category.NewService(pool)
-
-	expCat, err := catSvc.CreateExpense(ctx, userID, category.CreateRequest{Name: "Food"})
-	require.NoError(t, err)
-	incCat, err := catSvc.CreateIncome(ctx, userID, category.CreateRequest{Name: "Salary"})
-	require.NoError(t, err)
-
-	// Income: 10000
-	_, err = incomeSvc.Create(ctx, userID, income.CreateRequest{
-		Amount:      10000,
-		Currency:    "PHP",
-		Description: "Salary",
-		CategoryID:  ptrString(incCat.ID.String()),
-		Date:        "2026-01-15",
-		Priority:    "need",
-		Status:      "posted",
+	t.Run("success", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetCurrentTotalMoneyFn: func(ctx context.Context, arg db.GetCurrentTotalMoneyParams) (decimal.Decimal, error) {
+				assert.Equal(t, userID, arg.UserID)
+				return decimal.NewFromFloat(15000), nil
+			},
+		}
+		svc := NewService(mock)
+		result, err := svc.CurrentTotalMoney(context.Background(), userID, nil, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "15000", result.TotalMoney.String())
 	})
-	require.NoError(t, err)
 
-	// Expense: 3000
-	_, err = expenseSvc.Create(ctx, userID, expense.CreateRequest{
-		Amount:      3000,
-		Currency:    "PHP",
-		Description: "Food",
-		CategoryID:  ptrString(expCat.ID.String()),
-		ExpenseDate: "2026-01-15",
-		Priority:    "want",
-		Status:      "posted",
+	t.Run("with dates", func(t *testing.T) {
+		start := "2026-01-01"
+		end := "2026-06-30"
+		mock := &mock.MockQuerier{
+			GetCurrentTotalMoneyFn: func(ctx context.Context, arg db.GetCurrentTotalMoneyParams) (decimal.Decimal, error) {
+				assert.True(t, arg.StartDate.Valid)
+				assert.True(t, arg.EndDate.Valid)
+				return decimal.NewFromFloat(5000), nil
+			},
+		}
+		svc := NewService(mock)
+		result, err := svc.CurrentTotalMoney(context.Background(), userID, &start, &end)
+		require.NoError(t, err)
+		assert.Equal(t, "5000", result.TotalMoney.String())
 	})
-	require.NoError(t, err)
 
-	tm, err := svc.CurrentTotalMoney(ctx, userID, nil, nil)
-	require.NoError(t, err)
-	// Total = 10000 - 3000 = 7000
-	assert.True(t, tm.TotalMoney.GreaterThan(decimal.NewFromFloat(6999)))
-	assert.True(t, tm.TotalMoney.LessThan(decimal.NewFromFloat(7001)))
+	t.Run("error", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetCurrentTotalMoneyFn: func(ctx context.Context, arg db.GetCurrentTotalMoneyParams) (decimal.Decimal, error) {
+				return decimal.Zero, errors.New("db error")
+			},
+		}
+		svc := NewService(mock)
+		_, err := svc.CurrentTotalMoney(context.Background(), userID, nil, nil)
+		require.Error(t, err)
+	})
 }
 
 func TestStatsService_MonthOverMonthTrends(t *testing.T) {
-	pool := testutil.SetupTestDB(t)
-	svc := NewService(pool)
-	ctx := context.Background()
-	userID := testutil.TestUserIDUUID()
+	userID := uuid.New()
 
-	expenseSvc := expense.NewService(pool)
-	catSvc := category.NewService(pool)
-
-	expCat, err := catSvc.CreateExpense(ctx, userID, category.CreateRequest{Name: "Food"})
-	require.NoError(t, err)
-
-	// Create expenses in different months
-	_, err = expenseSvc.Create(ctx, userID, expense.CreateRequest{
-		Amount:      100,
-		Currency:    "PHP",
-		Description: "Jan Expense",
-		CategoryID:  ptrString(expCat.ID.String()),
-		ExpenseDate: "2026-01-15",
-		Priority:    "want",
-		Status:      "posted",
+	t.Run("success", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetMonthOverMonthTrendsFn: func(ctx context.Context, arg db.GetMonthOverMonthTrendsParams) ([]db.GetMonthOverMonthTrendsRow, error) {
+				assert.Equal(t, userID, arg.UserID)
+				assert.False(t, arg.StartDate.Valid)
+				assert.False(t, arg.EndDate.Valid)
+				return []db.GetMonthOverMonthTrendsRow{
+					{Month: "2026-01", TotalAmount: decimal.NewFromFloat(5000)},
+					{Month: "2025-12", TotalAmount: decimal.NewFromFloat(4200)},
+				}, nil
+			},
+		}
+		svc := NewService(mock)
+		result, err := svc.MonthOverMonthTrends(context.Background(), userID, nil, nil)
+		require.NoError(t, err)
+		assert.Len(t, result, 2)
+		assert.Equal(t, "2026-01", result[0].Month)
+		assert.Equal(t, "5000", result[0].TotalAmount.String())
 	})
-	require.NoError(t, err)
 
-	_, err = expenseSvc.Create(ctx, userID, expense.CreateRequest{
-		Amount:      200,
-		Currency:    "PHP",
-		Description: "Feb Expense",
-		CategoryID:  ptrString(expCat.ID.String()),
-		ExpenseDate: "2026-02-15",
-		Priority:    "want",
-		Status:      "posted",
+	t.Run("with dates", func(t *testing.T) {
+		start := "2026-01-01"
+		end := "2026-06-30"
+		mock := &mock.MockQuerier{
+			GetMonthOverMonthTrendsFn: func(ctx context.Context, arg db.GetMonthOverMonthTrendsParams) ([]db.GetMonthOverMonthTrendsRow, error) {
+				assert.True(t, arg.StartDate.Valid)
+				assert.True(t, arg.EndDate.Valid)
+				return []db.GetMonthOverMonthTrendsRow{}, nil
+			},
+		}
+		svc := NewService(mock)
+		result, err := svc.MonthOverMonthTrends(context.Background(), userID, &start, &end)
+		require.NoError(t, err)
+		assert.Empty(t, result)
 	})
-	require.NoError(t, err)
 
-	start := "2026-01-01"
-	end := "2026-12-31"
-	mom, err := svc.MonthOverMonthTrends(ctx, userID, &start, &end)
-	require.NoError(t, err)
-	assert.GreaterOrEqual(t, len(mom), 2)
-}
-
-func ptrString(s string) *string {
-	return &s
+	t.Run("error", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetMonthOverMonthTrendsFn: func(ctx context.Context, arg db.GetMonthOverMonthTrendsParams) ([]db.GetMonthOverMonthTrendsRow, error) {
+				return nil, errors.New("db error")
+			},
+		}
+		svc := NewService(mock)
+		_, err := svc.MonthOverMonthTrends(context.Background(), userID, nil, nil)
+		require.Error(t, err)
+	})
 }

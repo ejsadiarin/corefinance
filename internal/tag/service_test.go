@@ -2,200 +2,413 @@ package tag
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ejsadiarin/corefinance/internal/category"
-	"github.com/ejsadiarin/corefinance/internal/expense"
-	"github.com/ejsadiarin/corefinance/internal/income"
-	"github.com/ejsadiarin/corefinance/internal/testutil"
+	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
+	"github.com/ejsadiarin/corefinance/internal/mock"
 )
 
-func TestTagService_CRUD(t *testing.T) {
-	pool := testutil.SetupTestDB(t)
-	svc := NewService(pool)
-	ctx := context.Background()
-	userID := testutil.TestUserIDUUID()
+func TestTagService_Create(t *testing.T) {
+	userID := uuid.New()
+	tagID := uuid.New()
+	color := "#FF5733"
 
-	t.Run("Create", func(t *testing.T) {
-		tag, err := svc.Create(ctx, userID, CreateRequest{
-			Name:  "Food",
-			Color: testutil.StrPtr("#FF5733"),
-		})
-		require.NoError(t, err)
-		require.NotEmpty(t, tag.ID)
-		assert.Equal(t, "Food", tag.Name)
-		assert.Equal(t, "#FF5733", tag.Color.String)
-	})
-
-	t.Run("Get", func(t *testing.T) {
-		created, err := svc.Create(ctx, userID, CreateRequest{
-			Name: "Transport",
-		})
-		require.NoError(t, err)
-
-		got, err := svc.Get(ctx, created.ID, userID)
-		require.NoError(t, err)
-		assert.Equal(t, created.ID, got.ID)
-		assert.Equal(t, "Transport", got.Name)
-	})
-
-	t.Run("Get_NotFound", func(t *testing.T) {
-		_, err := svc.Get(ctx, uuid.New(), userID)
-		require.Error(t, err)
-	})
-
-	t.Run("List", func(t *testing.T) {
-		userID2 := uuid.New()
-		for _, name := range []string{"Tag1", "Tag2", "Tag3"} {
-			_, err := svc.Create(ctx, userID2, CreateRequest{Name: name})
-			require.NoError(t, err)
+	t.Run("success", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			CreateTagFn: func(ctx context.Context, arg db.CreateTagParams) (db.Tag, error) {
+				assert.Equal(t, userID, arg.UserID)
+				assert.Equal(t, "Urgent", arg.Name)
+				assert.Equal(t, pgtype.Text{String: color, Valid: true}, arg.Color)
+				return db.Tag{
+					ID:     tagID,
+					UserID: userID,
+					Name:   "Urgent",
+					Color:  pgtype.Text{String: color, Valid: true},
+				}, nil
+			},
 		}
-
-		tags, err := svc.List(ctx, userID2)
-		require.NoError(t, err)
-		assert.Len(t, tags, 3)
-	})
-
-	t.Run("Update", func(t *testing.T) {
-		created, err := svc.Create(ctx, userID, CreateRequest{
-			Name: "Original",
+		svc := NewService(m)
+		result, err := svc.Create(context.Background(), userID, CreateRequest{
+			Name:  "Urgent",
+			Color: &color,
 		})
 		require.NoError(t, err)
+		assert.Equal(t, tagID, result.ID)
+		assert.Equal(t, "Urgent", result.Name)
+	})
 
-		updated, err := svc.Update(ctx, created.ID, userID, UpdateRequest{
+	t.Run("nil color", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			CreateTagFn: func(ctx context.Context, arg db.CreateTagParams) (db.Tag, error) {
+				assert.Equal(t, pgtype.Text{Valid: false}, arg.Color)
+				return db.Tag{ID: tagID, Name: "NoColor"}, nil
+			},
+		}
+		svc := NewService(m)
+		result, err := svc.Create(context.Background(), userID, CreateRequest{Name: "NoColor"})
+		require.NoError(t, err)
+		assert.Equal(t, "NoColor", result.Name)
+	})
+
+	t.Run("error", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			CreateTagFn: func(ctx context.Context, arg db.CreateTagParams) (db.Tag, error) {
+				return db.Tag{}, errors.New("db error")
+			},
+		}
+		svc := NewService(m)
+		_, err := svc.Create(context.Background(), userID, CreateRequest{Name: "X"})
+		require.Error(t, err)
+	})
+}
+
+func TestTagService_List(t *testing.T) {
+	userID := uuid.New()
+
+	t.Run("success", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {
+				assert.Equal(t, userID, uid)
+				return []db.Tag{
+					{ID: uuid.New(), Name: "Tag1"},
+					{ID: uuid.New(), Name: "Tag2"},
+				}, nil
+			},
+		}
+		svc := NewService(m)
+		result, err := svc.List(context.Background(), userID)
+		require.NoError(t, err)
+		assert.Len(t, result, 2)
+	})
+
+	t.Run("empty", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {
+				return []db.Tag{}, nil
+			},
+		}
+		svc := NewService(m)
+		result, err := svc.List(context.Background(), userID)
+		require.NoError(t, err)
+		assert.Empty(t, result)
+	})
+
+	t.Run("error", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {
+				return nil, errors.New("db error")
+			},
+		}
+		svc := NewService(m)
+		_, err := svc.List(context.Background(), userID)
+		require.Error(t, err)
+	})
+}
+
+func TestTagService_Get(t *testing.T) {
+	userID := uuid.New()
+	tagID := uuid.New()
+
+	t.Run("success", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			GetTagFn: func(ctx context.Context, arg db.GetTagParams) (db.Tag, error) {
+				assert.Equal(t, tagID, arg.ID)
+				assert.Equal(t, userID, arg.UserID)
+				return db.Tag{ID: tagID, Name: "Urgent"}, nil
+			},
+		}
+		svc := NewService(m)
+		result, err := svc.Get(context.Background(), tagID, userID)
+		require.NoError(t, err)
+		assert.Equal(t, "Urgent", result.Name)
+	})
+
+	t.Run("error", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			GetTagFn: func(ctx context.Context, arg db.GetTagParams) (db.Tag, error) {
+				return db.Tag{}, errors.New("not found")
+			},
+		}
+		svc := NewService(m)
+		_, err := svc.Get(context.Background(), tagID, userID)
+		require.Error(t, err)
+	})
+}
+
+func TestTagService_Update(t *testing.T) {
+	userID := uuid.New()
+	tagID := uuid.New()
+	color := "#33FF57"
+
+	t.Run("success", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			UpdateTagFn: func(ctx context.Context, arg db.UpdateTagParams) (db.Tag, error) {
+				assert.Equal(t, tagID, arg.ID)
+				assert.Equal(t, userID, arg.UserID)
+				assert.Equal(t, "Updated Tag", arg.Name)
+				assert.Equal(t, pgtype.Text{String: color, Valid: true}, arg.Color)
+				return db.Tag{
+					ID:   tagID,
+					Name: "Updated Tag",
+					Color: pgtype.Text{String: color, Valid: true},
+				}, nil
+			},
+		}
+		svc := NewService(m)
+		result, err := svc.Update(context.Background(), tagID, userID, UpdateRequest{
 			Name:  "Updated Tag",
-			Color: testutil.StrPtr("#00FF00"),
+			Color: &color,
 		})
 		require.NoError(t, err)
-		assert.Equal(t, "Updated Tag", updated.Name)
-		assert.Equal(t, "#00FF00", updated.Color.String)
+		assert.Equal(t, "Updated Tag", result.Name)
 	})
 
-	t.Run("Delete", func(t *testing.T) {
-		created, err := svc.Create(ctx, userID, CreateRequest{
-			Name: "To Delete",
-		})
-		require.NoError(t, err)
-
-		err = svc.Delete(ctx, created.ID, userID)
-		require.NoError(t, err)
-
-		_, err = svc.Get(ctx, created.ID, userID)
-		require.Error(t, err)
-	})
-
-	t.Run("Delete_NotFound", func(t *testing.T) {
-		err := svc.Delete(ctx, uuid.New(), userID)
+	t.Run("error", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			UpdateTagFn: func(ctx context.Context, arg db.UpdateTagParams) (db.Tag, error) {
+				return db.Tag{}, errors.New("db error")
+			},
+		}
+		svc := NewService(m)
+		_, err := svc.Update(context.Background(), tagID, userID, UpdateRequest{Name: "X"})
 		require.Error(t, err)
 	})
 }
 
-func TestTagService_ExpenseAssociation(t *testing.T) {
-	pool := testutil.SetupTestDB(t)
-	svc := NewService(pool)
-	ctx := context.Background()
-	userID := testutil.TestUserIDUUID()
+func TestTagService_Delete(t *testing.T) {
+	userID := uuid.New()
+	tagID := uuid.New()
 
-	expenseSvc := expense.NewService(pool)
-	catSvc := category.NewService(pool)
-
-	// Create a tag
-	tag, err := svc.Create(ctx, userID, CreateRequest{Name: "Food"})
-	require.NoError(t, err)
-
-	// Create a category
-	cat, err := catSvc.CreateExpense(ctx, userID, category.CreateRequest{Name: "Meals"})
-	require.NoError(t, err)
-
-	// Create an expense
-	exp, err := expenseSvc.Create(ctx, userID, expense.CreateRequest{
-		Amount:      100,
-		Currency:    "PHP",
-		Description: "Lunch",
-		CategoryID:  ptrString(cat.ID.String()),
-		ExpenseDate: "2026-01-15",
-		Priority:    "want",
-		Status:      "posted",
-	})
-	require.NoError(t, err)
-
-	t.Run("AddTagToExpense", func(t *testing.T) {
-		err := svc.AddTagToExpense(ctx, exp.ID, tag.ID)
+	t.Run("success", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			DeleteTagFn: func(ctx context.Context, arg db.DeleteTagParams) error {
+				assert.Equal(t, tagID, arg.ID)
+				assert.Equal(t, userID, arg.UserID)
+				return nil
+			},
+		}
+		svc := NewService(m)
+		err := svc.Delete(context.Background(), tagID, userID)
 		require.NoError(t, err)
 	})
 
-	t.Run("GetTagsByExpenseID", func(t *testing.T) {
-		tags, err := svc.GetTagsByExpenseID(ctx, exp.ID)
-		require.NoError(t, err)
-		assert.Len(t, tags, 1)
-		assert.Equal(t, "Food", tags[0].Name)
-	})
-
-	t.Run("RemoveTagFromExpense", func(t *testing.T) {
-		err := svc.RemoveTagFromExpense(ctx, exp.ID, tag.ID)
-		require.NoError(t, err)
-
-		tags, err := svc.GetTagsByExpenseID(ctx, exp.ID)
-		require.NoError(t, err)
-		assert.Len(t, tags, 0)
+	t.Run("error", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			DeleteTagFn: func(ctx context.Context, arg db.DeleteTagParams) error {
+				return errors.New("not found")
+			},
+		}
+		svc := NewService(m)
+		err := svc.Delete(context.Background(), tagID, userID)
+		require.Error(t, err)
 	})
 }
 
-func TestTagService_IncomeAssociation(t *testing.T) {
-	pool := testutil.SetupTestDB(t)
-	svc := NewService(pool)
-	ctx := context.Background()
-	userID := testutil.TestUserIDUUID()
+func TestTagService_AddTagToExpense(t *testing.T) {
+	expenseID := uuid.New()
+	tagID := uuid.New()
 
-	incomeSvc := income.NewService(pool)
-	catSvc := category.NewService(pool)
-
-	// Create a tag
-	tag, err := svc.Create(ctx, userID, CreateRequest{Name: "Salary"})
-	require.NoError(t, err)
-
-	// Create a category
-	cat, err := catSvc.CreateIncome(ctx, userID, category.CreateRequest{Name: "Primary"})
-	require.NoError(t, err)
-
-	// Create an income
-	inc, err := incomeSvc.Create(ctx, userID, income.CreateRequest{
-		Amount:      5000,
-		Currency:    "PHP",
-		Description: "Monthly Salary",
-		CategoryID:  ptrString(cat.ID.String()),
-		Date:        "2026-01-15",
-		Priority:    "need",
-		Status:      "posted",
-	})
-	require.NoError(t, err)
-
-	t.Run("AddTagToIncome", func(t *testing.T) {
-		err := svc.AddTagToIncome(ctx, inc.ID, tag.ID)
+	t.Run("success", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			AddTagToExpenseFn: func(ctx context.Context, arg db.AddTagToExpenseParams) error {
+				assert.Equal(t, expenseID, arg.ExpenseID)
+				assert.Equal(t, tagID, arg.TagID)
+				return nil
+			},
+		}
+		svc := NewService(m)
+		err := svc.AddTagToExpense(context.Background(), expenseID, tagID)
 		require.NoError(t, err)
 	})
 
-	t.Run("GetTagsByIncomeID", func(t *testing.T) {
-		tags, err := svc.GetTagsByIncomeID(ctx, inc.ID)
-		require.NoError(t, err)
-		assert.Len(t, tags, 1)
-		assert.Equal(t, "Salary", tags[0].Name)
-	})
-
-	t.Run("RemoveTagFromIncome", func(t *testing.T) {
-		err := svc.RemoveTagFromIncome(ctx, inc.ID, tag.ID)
-		require.NoError(t, err)
-
-		tags, err := svc.GetTagsByIncomeID(ctx, inc.ID)
-		require.NoError(t, err)
-		assert.Len(t, tags, 0)
+	t.Run("error", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			AddTagToExpenseFn: func(ctx context.Context, arg db.AddTagToExpenseParams) error {
+				return errors.New("duplicate")
+			},
+		}
+		svc := NewService(m)
+		err := svc.AddTagToExpense(context.Background(), expenseID, tagID)
+		require.Error(t, err)
 	})
 }
 
-func ptrString(s string) *string {
-	return &s
+func TestTagService_RemoveTagFromExpense(t *testing.T) {
+	expenseID := uuid.New()
+	tagID := uuid.New()
+
+	t.Run("success", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			RemoveTagFromExpenseFn: func(ctx context.Context, arg db.RemoveTagFromExpenseParams) error {
+				assert.Equal(t, expenseID, arg.ExpenseID)
+				assert.Equal(t, tagID, arg.TagID)
+				return nil
+			},
+		}
+		svc := NewService(m)
+		err := svc.RemoveTagFromExpense(context.Background(), expenseID, tagID)
+		require.NoError(t, err)
+	})
+
+	t.Run("error", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			RemoveTagFromExpenseFn: func(ctx context.Context, arg db.RemoveTagFromExpenseParams) error {
+				return errors.New("not found")
+			},
+		}
+		svc := NewService(m)
+		err := svc.RemoveTagFromExpense(context.Background(), expenseID, tagID)
+		require.Error(t, err)
+	})
+}
+
+func TestTagService_GetTagsByExpenseID(t *testing.T) {
+	expenseID := uuid.New()
+
+	t.Run("success", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			GetTagsByExpenseIDFn: func(ctx context.Context, eid uuid.UUID) ([]db.Tag, error) {
+				assert.Equal(t, expenseID, eid)
+				return []db.Tag{
+					{ID: uuid.New(), Name: "Tag1"},
+					{ID: uuid.New(), Name: "Tag2"},
+				}, nil
+			},
+		}
+		svc := NewService(m)
+		result, err := svc.GetTagsByExpenseID(context.Background(), expenseID)
+		require.NoError(t, err)
+		assert.Len(t, result, 2)
+	})
+
+	t.Run("empty", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			GetTagsByExpenseIDFn: func(ctx context.Context, eid uuid.UUID) ([]db.Tag, error) {
+				return []db.Tag{}, nil
+			},
+		}
+		svc := NewService(m)
+		result, err := svc.GetTagsByExpenseID(context.Background(), expenseID)
+		require.NoError(t, err)
+		assert.Empty(t, result)
+	})
+
+	t.Run("error", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			GetTagsByExpenseIDFn: func(ctx context.Context, eid uuid.UUID) ([]db.Tag, error) {
+				return nil, errors.New("db error")
+			},
+		}
+		svc := NewService(m)
+		_, err := svc.GetTagsByExpenseID(context.Background(), expenseID)
+		require.Error(t, err)
+	})
+}
+
+func TestTagService_AddTagToIncome(t *testing.T) {
+	incomeID := uuid.New()
+	tagID := uuid.New()
+
+	t.Run("success", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			AddTagToIncomeFn: func(ctx context.Context, arg db.AddTagToIncomeParams) error {
+				assert.Equal(t, incomeID, arg.IncomeID)
+				assert.Equal(t, tagID, arg.TagID)
+				return nil
+			},
+		}
+		svc := NewService(m)
+		err := svc.AddTagToIncome(context.Background(), incomeID, tagID)
+		require.NoError(t, err)
+	})
+
+	t.Run("error", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			AddTagToIncomeFn: func(ctx context.Context, arg db.AddTagToIncomeParams) error {
+				return errors.New("duplicate")
+			},
+		}
+		svc := NewService(m)
+		err := svc.AddTagToIncome(context.Background(), incomeID, tagID)
+		require.Error(t, err)
+	})
+}
+
+func TestTagService_RemoveTagFromIncome(t *testing.T) {
+	incomeID := uuid.New()
+	tagID := uuid.New()
+
+	t.Run("success", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			RemoveTagFromIncomeFn: func(ctx context.Context, arg db.RemoveTagFromIncomeParams) error {
+				assert.Equal(t, incomeID, arg.IncomeID)
+				assert.Equal(t, tagID, arg.TagID)
+				return nil
+			},
+		}
+		svc := NewService(m)
+		err := svc.RemoveTagFromIncome(context.Background(), incomeID, tagID)
+		require.NoError(t, err)
+	})
+
+	t.Run("error", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			RemoveTagFromIncomeFn: func(ctx context.Context, arg db.RemoveTagFromIncomeParams) error {
+				return errors.New("not found")
+			},
+		}
+		svc := NewService(m)
+		err := svc.RemoveTagFromIncome(context.Background(), incomeID, tagID)
+		require.Error(t, err)
+	})
+}
+
+func TestTagService_GetTagsByIncomeID(t *testing.T) {
+	incomeID := uuid.New()
+
+	t.Run("success", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			GetTagsByIncomeIDFn: func(ctx context.Context, iid uuid.UUID) ([]db.Tag, error) {
+				assert.Equal(t, incomeID, iid)
+				return []db.Tag{
+					{ID: uuid.New(), Name: "IncomeTag1"},
+					{ID: uuid.New(), Name: "IncomeTag2"},
+					{ID: uuid.New(), Name: "IncomeTag3"},
+				}, nil
+			},
+		}
+		svc := NewService(m)
+		result, err := svc.GetTagsByIncomeID(context.Background(), incomeID)
+		require.NoError(t, err)
+		assert.Len(t, result, 3)
+	})
+
+	t.Run("empty", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			GetTagsByIncomeIDFn: func(ctx context.Context, iid uuid.UUID) ([]db.Tag, error) {
+				return []db.Tag{}, nil
+			},
+		}
+		svc := NewService(m)
+		result, err := svc.GetTagsByIncomeID(context.Background(), incomeID)
+		require.NoError(t, err)
+		assert.Empty(t, result)
+	})
+
+	t.Run("error", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			GetTagsByIncomeIDFn: func(ctx context.Context, iid uuid.UUID) ([]db.Tag, error) {
+				return nil, errors.New("db error")
+			},
+		}
+		svc := NewService(m)
+		_, err := svc.GetTagsByIncomeID(context.Background(), incomeID)
+		require.Error(t, err)
+	})
 }
