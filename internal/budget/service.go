@@ -13,11 +13,11 @@ import (
 )
 
 type Service struct {
-	queries Querier
+	queries db.Querier
 	pool    *pgxpool.Pool
 }
 
-func NewService(queries Querier, pool *pgxpool.Pool) *Service {
+func NewService(queries db.Querier, pool *pgxpool.Pool) *Service {
 	return &Service{
 		queries: queries,
 		pool:    pool,
