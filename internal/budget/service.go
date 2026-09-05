@@ -328,10 +328,13 @@ func (s *Service) Import(ctx context.Context, userID uuid.UUID, export *BudgetEx
 		newExpID, expOk := expenseMap[et.ExpenseID]
 		newTagID, tagOk := tagMap[et.TagID]
 		if expOk && tagOk {
-			q.AddTagToExpense(ctx, db.AddTagToExpenseParams{
+			if err := q.AddTagToExpense(ctx, db.AddTagToExpenseParams{
 				ExpenseID: newExpID,
 				TagID:     newTagID,
-			})
+			}); err != nil {
+				slog.Error("budget.Service.Import: failed to import expense tags", "error", err, "user_id", userID)
+				return err
+			}
 		}
 	}
 
@@ -340,10 +343,13 @@ func (s *Service) Import(ctx context.Context, userID uuid.UUID, export *BudgetEx
 		newIncID, incOk := incomeMap[it.IncomeID]
 		newTagID, tagOk := tagMap[it.TagID]
 		if incOk && tagOk {
-			q.AddTagToIncome(ctx, db.AddTagToIncomeParams{
+			if err := q.AddTagToIncome(ctx, db.AddTagToIncomeParams{
 				IncomeID: newIncID,
 				TagID:    newTagID,
-			})
+			}); err != nil {
+				slog.Error("budget.Service.Import: failed to import income tags", "error", err, "user_id", userID)
+				return err
+			}
 		}
 	}
 
