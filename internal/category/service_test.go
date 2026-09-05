@@ -2,200 +2,404 @@ package category
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ejsadiarin/corefinance/internal/testutil"
+	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
+	"github.com/ejsadiarin/corefinance/internal/mock"
 )
 
-func TestCategoryService_ExpenseCRUD(t *testing.T) {
-	pool := testutil.SetupTestDB(t)
-	svc := NewService(pool)
-	ctx := context.Background()
-	userID := testutil.TestUserIDUUID()
+func TestCategoryService_CreateExpense(t *testing.T) {
+	userID := uuid.New()
+	catID := uuid.New()
+	color := "#FF0000"
+	icon := "food-icon"
 
-	t.Run("CreateExpense", func(t *testing.T) {
-		cat, err := svc.CreateExpense(ctx, userID, CreateRequest{
+	t.Run("success", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			CreateExpenseCategoryFn: func(ctx context.Context, arg db.CreateExpenseCategoryParams) (db.ExpenseCategory, error) {
+				assert.Equal(t, userID, arg.UserID)
+				assert.Equal(t, "Food", arg.Name)
+				assert.Equal(t, pgtype.Text{String: color, Valid: true}, arg.Color)
+				assert.Equal(t, pgtype.Text{String: icon, Valid: true}, arg.Icon)
+				return db.ExpenseCategory{
+					ID:     catID,
+					UserID: userID,
+					Name:   "Food",
+					Color:  pgtype.Text{String: color, Valid: true},
+					Icon:   pgtype.Text{String: icon, Valid: true},
+				}, nil
+			},
+		}
+		svc := NewService(m)
+		result, err := svc.CreateExpense(context.Background(), userID, CreateRequest{
 			Name:  "Food",
-			Color: testutil.StrPtr("#FF0000"),
-			Icon:  testutil.StrPtr("food-icon"),
+			Color: &color,
+			Icon:  &icon,
 		})
 		require.NoError(t, err)
-		require.NotEmpty(t, cat.ID)
-		assert.Equal(t, "Food", cat.Name)
-		assert.Equal(t, "#FF0000", cat.Color.String)
-		assert.Equal(t, "food-icon", cat.Icon.String)
-		assert.True(t, cat.IsActive)
+		assert.Equal(t, catID, result.ID)
+		assert.Equal(t, "Food", result.Name)
 	})
 
-	t.Run("GetExpense", func(t *testing.T) {
-		created, err := svc.CreateExpense(ctx, userID, CreateRequest{
-			Name: "Transport",
-		})
+	t.Run("nil optional fields", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			CreateExpenseCategoryFn: func(ctx context.Context, arg db.CreateExpenseCategoryParams) (db.ExpenseCategory, error) {
+				assert.Equal(t, pgtype.Text{Valid: false}, arg.Color)
+				assert.Equal(t, pgtype.Text{Valid: false}, arg.Icon)
+				return db.ExpenseCategory{
+					ID:     catID,
+					UserID: userID,
+					Name:   "Bare",
+				}, nil
+			},
+		}
+		svc := NewService(m)
+		result, err := svc.CreateExpense(context.Background(), userID, CreateRequest{Name: "Bare"})
 		require.NoError(t, err)
-
-		got, err := svc.GetExpense(ctx, created.ID, userID)
-		require.NoError(t, err)
-		assert.Equal(t, created.ID, got.ID)
-		assert.Equal(t, "Transport", got.Name)
+		assert.Equal(t, catID, result.ID)
 	})
 
-	t.Run("GetExpense_NotFound", func(t *testing.T) {
-		_, err := svc.GetExpense(ctx, uuid.New(), userID)
+	t.Run("error", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			CreateExpenseCategoryFn: func(ctx context.Context, arg db.CreateExpenseCategoryParams) (db.ExpenseCategory, error) {
+				return db.ExpenseCategory{}, errors.New("db error")
+			},
+		}
+		svc := NewService(m)
+		_, err := svc.CreateExpense(context.Background(), userID, CreateRequest{Name: "X"})
+		require.Error(t, err)
+		assert.Equal(t, "db error", err.Error())
+	})
+}
+
+func TestCategoryService_ListExpense(t *testing.T) {
+	userID := uuid.New()
+
+	t.Run("success", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			ListExpenseCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ExpenseCategory, error) {
+				assert.Equal(t, userID, uid)
+				return []db.ExpenseCategory{
+					{ID: uuid.New(), Name: "Food"},
+					{ID: uuid.New(), Name: "Transport"},
+				}, nil
+			},
+		}
+		svc := NewService(m)
+		result, err := svc.ListExpense(context.Background(), userID)
+		require.NoError(t, err)
+		assert.Len(t, result, 2)
+	})
+
+	t.Run("empty", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			ListExpenseCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ExpenseCategory, error) {
+				return []db.ExpenseCategory{}, nil
+			},
+		}
+		svc := NewService(m)
+		result, err := svc.ListExpense(context.Background(), userID)
+		require.NoError(t, err)
+		assert.Empty(t, result)
+	})
+
+	t.Run("error", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			ListExpenseCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ExpenseCategory, error) {
+				return nil, errors.New("db error")
+			},
+		}
+		svc := NewService(m)
+		_, err := svc.ListExpense(context.Background(), userID)
 		require.Error(t, err)
 	})
+}
 
-	t.Run("ListExpense", func(t *testing.T) {
-		userID2 := uuid.New()
-		for _, name := range []string{"Cat1", "Cat2", "Cat3"} {
-			_, err := svc.CreateExpense(ctx, userID2, CreateRequest{Name: name})
-			require.NoError(t, err)
+func TestCategoryService_GetExpense(t *testing.T) {
+	userID := uuid.New()
+	catID := uuid.New()
+
+	t.Run("success", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			GetExpenseCategoryFn: func(ctx context.Context, arg db.GetExpenseCategoryParams) (db.ExpenseCategory, error) {
+				assert.Equal(t, catID, arg.ID)
+				assert.Equal(t, userID, arg.UserID)
+				return db.ExpenseCategory{ID: catID, Name: "Food"}, nil
+			},
 		}
-
-		cats, err := svc.ListExpense(ctx, userID2)
+		svc := NewService(m)
+		result, err := svc.GetExpense(context.Background(), catID, userID)
 		require.NoError(t, err)
-		assert.Len(t, cats, 3)
+		assert.Equal(t, "Food", result.Name)
 	})
 
-	t.Run("UpdateExpense", func(t *testing.T) {
-		created, err := svc.CreateExpense(ctx, userID, CreateRequest{
-			Name: "Original",
-		})
-		require.NoError(t, err)
+	t.Run("error", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			GetExpenseCategoryFn: func(ctx context.Context, arg db.GetExpenseCategoryParams) (db.ExpenseCategory, error) {
+				return db.ExpenseCategory{}, errors.New("not found")
+			},
+		}
+		svc := NewService(m)
+		_, err := svc.GetExpense(context.Background(), catID, userID)
+		require.Error(t, err)
+	})
+}
 
-		updated, err := svc.UpdateExpense(ctx, created.ID, userID, UpdateRequest{
+func TestCategoryService_UpdateExpense(t *testing.T) {
+	userID := uuid.New()
+	catID := uuid.New()
+	color := "#00FF00"
+
+	t.Run("success", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			UpdateExpenseCategoryFn: func(ctx context.Context, arg db.UpdateExpenseCategoryParams) (db.ExpenseCategory, error) {
+				assert.Equal(t, catID, arg.ID)
+				assert.Equal(t, userID, arg.UserID)
+				assert.Equal(t, "Updated", arg.Name)
+				assert.Equal(t, pgtype.Text{String: color, Valid: true}, arg.Color)
+				return db.ExpenseCategory{
+					ID:   catID,
+					Name: "Updated",
+					Color: pgtype.Text{String: color, Valid: true},
+				}, nil
+			},
+		}
+		svc := NewService(m)
+		result, err := svc.UpdateExpense(context.Background(), catID, userID, UpdateRequest{
 			Name:  "Updated",
-			Color: testutil.StrPtr("#00FF00"),
+			Color: &color,
 		})
 		require.NoError(t, err)
-		assert.Equal(t, "Updated", updated.Name)
-		assert.Equal(t, "#00FF00", updated.Color.String)
+		assert.Equal(t, "Updated", result.Name)
 	})
 
-	t.Run("DeleteExpense", func(t *testing.T) {
-		created, err := svc.CreateExpense(ctx, userID, CreateRequest{
-			Name: "To Delete",
-		})
-		require.NoError(t, err)
-
-		err = svc.DeleteExpense(ctx, created.ID, userID)
-		require.NoError(t, err)
-
-		_, err = svc.GetExpense(ctx, created.ID, userID)
-		require.Error(t, err)
-	})
-
-	t.Run("DeleteExpense_NotFound", func(t *testing.T) {
-		err := svc.DeleteExpense(ctx, uuid.New(), userID)
-		require.Error(t, err)
-	})
-}
-
-func TestCategoryService_IncomeCRUD(t *testing.T) {
-	pool := testutil.SetupTestDB(t)
-	svc := NewService(pool)
-	ctx := context.Background()
-	userID := testutil.TestUserIDUUID()
-
-	t.Run("CreateIncome", func(t *testing.T) {
-		cat, err := svc.CreateIncome(ctx, userID, CreateRequest{
-			Name:  "Salary",
-			Color: testutil.StrPtr("#0000FF"),
-			Icon:  testutil.StrPtr("salary-icon"),
-		})
-		require.NoError(t, err)
-		require.NotEmpty(t, cat.ID)
-		assert.Equal(t, "Salary", cat.Name)
-		assert.Equal(t, "#0000FF", cat.Color.String)
-		assert.True(t, cat.IsActive)
-	})
-
-	t.Run("GetIncome", func(t *testing.T) {
-		created, err := svc.CreateIncome(ctx, userID, CreateRequest{
-			Name: "Freelance",
-		})
-		require.NoError(t, err)
-
-		got, err := svc.GetIncome(ctx, created.ID, userID)
-		require.NoError(t, err)
-		assert.Equal(t, created.ID, got.ID)
-		assert.Equal(t, "Freelance", got.Name)
-	})
-
-	t.Run("GetIncome_NotFound", func(t *testing.T) {
-		_, err := svc.GetIncome(ctx, uuid.New(), userID)
-		require.Error(t, err)
-	})
-
-	t.Run("ListIncome", func(t *testing.T) {
-		userID2 := uuid.New()
-		for _, name := range []string{"Inc1", "Inc2"} {
-			_, err := svc.CreateIncome(ctx, userID2, CreateRequest{Name: name})
-			require.NoError(t, err)
+	t.Run("error", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			UpdateExpenseCategoryFn: func(ctx context.Context, arg db.UpdateExpenseCategoryParams) (db.ExpenseCategory, error) {
+				return db.ExpenseCategory{}, errors.New("db error")
+			},
 		}
-
-		cats, err := svc.ListIncome(ctx, userID2)
-		require.NoError(t, err)
-		assert.Len(t, cats, 2)
-	})
-
-	t.Run("UpdateIncome", func(t *testing.T) {
-		created, err := svc.CreateIncome(ctx, userID, CreateRequest{
-			Name: "Original",
-		})
-		require.NoError(t, err)
-
-		updated, err := svc.UpdateIncome(ctx, created.ID, userID, UpdateRequest{
-			Name:  "Updated Income",
-			Color: testutil.StrPtr("#FFFF00"),
-		})
-		require.NoError(t, err)
-		assert.Equal(t, "Updated Income", updated.Name)
-		assert.Equal(t, "#FFFF00", updated.Color.String)
-	})
-
-	t.Run("DeleteIncome", func(t *testing.T) {
-		created, err := svc.CreateIncome(ctx, userID, CreateRequest{
-			Name: "To Delete",
-		})
-		require.NoError(t, err)
-
-		err = svc.DeleteIncome(ctx, created.ID, userID)
-		require.NoError(t, err)
-
-		_, err = svc.GetIncome(ctx, created.ID, userID)
-		require.Error(t, err)
-	})
-
-	t.Run("DeleteIncome_NotFound", func(t *testing.T) {
-		err := svc.DeleteIncome(ctx, uuid.New(), userID)
+		svc := NewService(m)
+		_, err := svc.UpdateExpense(context.Background(), catID, userID, UpdateRequest{Name: "X"})
 		require.Error(t, err)
 	})
 }
 
-func TestCategoryService_UserIsolation(t *testing.T) {
-	pool := testutil.SetupTestDB(t)
-	svc := NewService(pool)
-	ctx := context.Background()
-	user1 := uuid.New()
-	user2 := uuid.New()
+func TestCategoryService_DeleteExpense(t *testing.T) {
+	userID := uuid.New()
+	catID := uuid.New()
 
-	_, err := svc.CreateExpense(ctx, user1, CreateRequest{Name: "User1 Cat"})
-	require.NoError(t, err)
+	t.Run("success", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			DeleteExpenseCategoryFn: func(ctx context.Context, arg db.DeleteExpenseCategoryParams) error {
+				assert.Equal(t, catID, arg.ID)
+				assert.Equal(t, userID, arg.UserID)
+				return nil
+			},
+		}
+		svc := NewService(m)
+		err := svc.DeleteExpense(context.Background(), catID, userID)
+		require.NoError(t, err)
+	})
 
-	_, err = svc.CreateExpense(ctx, user2, CreateRequest{Name: "User2 Cat"})
-	require.NoError(t, err)
+	t.Run("error", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			DeleteExpenseCategoryFn: func(ctx context.Context, arg db.DeleteExpenseCategoryParams) error {
+				return errors.New("not found")
+			},
+		}
+		svc := NewService(m)
+		err := svc.DeleteExpense(context.Background(), catID, userID)
+		require.Error(t, err)
+	})
+}
 
-	cats1, err := svc.ListExpense(ctx, user1)
-	require.NoError(t, err)
-	assert.Len(t, cats1, 1)
-	assert.Equal(t, "User1 Cat", cats1[0].Name)
+func TestCategoryService_CreateIncome(t *testing.T) {
+	userID := uuid.New()
+	catID := uuid.New()
+	color := "#0000FF"
 
-	cats2, err := svc.ListExpense(ctx, user2)
-	require.NoError(t, err)
-	assert.Len(t, cats2, 1)
-	assert.Equal(t, "User2 Cat", cats2[0].Name)
+	t.Run("success", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			CreateIncomeCategoryFn: func(ctx context.Context, arg db.CreateIncomeCategoryParams) (db.IncomeCategory, error) {
+				assert.Equal(t, userID, arg.UserID)
+				assert.Equal(t, "Salary", arg.Name)
+				assert.Equal(t, pgtype.Text{String: color, Valid: true}, arg.Color)
+				return db.IncomeCategory{
+					ID:     catID,
+					UserID: userID,
+					Name:   "Salary",
+					Color:  pgtype.Text{String: color, Valid: true},
+				}, nil
+			},
+		}
+		svc := NewService(m)
+		result, err := svc.CreateIncome(context.Background(), userID, CreateRequest{
+			Name:  "Salary",
+			Color: &color,
+		})
+		require.NoError(t, err)
+		assert.Equal(t, catID, result.ID)
+		assert.Equal(t, "Salary", result.Name)
+	})
+
+	t.Run("error", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			CreateIncomeCategoryFn: func(ctx context.Context, arg db.CreateIncomeCategoryParams) (db.IncomeCategory, error) {
+				return db.IncomeCategory{}, errors.New("db error")
+			},
+		}
+		svc := NewService(m)
+		_, err := svc.CreateIncome(context.Background(), userID, CreateRequest{Name: "X"})
+		require.Error(t, err)
+	})
+}
+
+func TestCategoryService_ListIncome(t *testing.T) {
+	userID := uuid.New()
+
+	t.Run("success", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			ListIncomeCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.IncomeCategory, error) {
+				assert.Equal(t, userID, uid)
+				return []db.IncomeCategory{
+					{ID: uuid.New(), Name: "Salary"},
+					{ID: uuid.New(), Name: "Freelance"},
+					{ID: uuid.New(), Name: "Investments"},
+				}, nil
+			},
+		}
+		svc := NewService(m)
+		result, err := svc.ListIncome(context.Background(), userID)
+		require.NoError(t, err)
+		assert.Len(t, result, 3)
+	})
+
+	t.Run("empty", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			ListIncomeCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.IncomeCategory, error) {
+				return []db.IncomeCategory{}, nil
+			},
+		}
+		svc := NewService(m)
+		result, err := svc.ListIncome(context.Background(), userID)
+		require.NoError(t, err)
+		assert.Empty(t, result)
+	})
+
+	t.Run("error", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			ListIncomeCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.IncomeCategory, error) {
+				return nil, errors.New("db error")
+			},
+		}
+		svc := NewService(m)
+		_, err := svc.ListIncome(context.Background(), userID)
+		require.Error(t, err)
+	})
+}
+
+func TestCategoryService_GetIncome(t *testing.T) {
+	userID := uuid.New()
+	catID := uuid.New()
+
+	t.Run("success", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			GetIncomeCategoryFn: func(ctx context.Context, arg db.GetIncomeCategoryParams) (db.IncomeCategory, error) {
+				assert.Equal(t, catID, arg.ID)
+				assert.Equal(t, userID, arg.UserID)
+				return db.IncomeCategory{ID: catID, Name: "Salary"}, nil
+			},
+		}
+		svc := NewService(m)
+		result, err := svc.GetIncome(context.Background(), catID, userID)
+		require.NoError(t, err)
+		assert.Equal(t, "Salary", result.Name)
+	})
+
+	t.Run("error", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			GetIncomeCategoryFn: func(ctx context.Context, arg db.GetIncomeCategoryParams) (db.IncomeCategory, error) {
+				return db.IncomeCategory{}, errors.New("not found")
+			},
+		}
+		svc := NewService(m)
+		_, err := svc.GetIncome(context.Background(), catID, userID)
+		require.Error(t, err)
+	})
+}
+
+func TestCategoryService_UpdateIncome(t *testing.T) {
+	userID := uuid.New()
+	catID := uuid.New()
+	color := "#FFFF00"
+
+	t.Run("success", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			UpdateIncomeCategoryFn: func(ctx context.Context, arg db.UpdateIncomeCategoryParams) (db.IncomeCategory, error) {
+				assert.Equal(t, catID, arg.ID)
+				assert.Equal(t, userID, arg.UserID)
+				assert.Equal(t, "Updated Income", arg.Name)
+				assert.Equal(t, pgtype.Text{String: color, Valid: true}, arg.Color)
+				return db.IncomeCategory{
+					ID:   catID,
+					Name: "Updated Income",
+					Color: pgtype.Text{String: color, Valid: true},
+				}, nil
+			},
+		}
+		svc := NewService(m)
+		result, err := svc.UpdateIncome(context.Background(), catID, userID, UpdateRequest{
+			Name:  "Updated Income",
+			Color: &color,
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "Updated Income", result.Name)
+	})
+
+	t.Run("error", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			UpdateIncomeCategoryFn: func(ctx context.Context, arg db.UpdateIncomeCategoryParams) (db.IncomeCategory, error) {
+				return db.IncomeCategory{}, errors.New("db error")
+			},
+		}
+		svc := NewService(m)
+		_, err := svc.UpdateIncome(context.Background(), catID, userID, UpdateRequest{Name: "X"})
+		require.Error(t, err)
+	})
+}
+
+func TestCategoryService_DeleteIncome(t *testing.T) {
+	userID := uuid.New()
+	catID := uuid.New()
+
+	t.Run("success", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			DeleteIncomeCategoryFn: func(ctx context.Context, arg db.DeleteIncomeCategoryParams) error {
+				assert.Equal(t, catID, arg.ID)
+				assert.Equal(t, userID, arg.UserID)
+				return nil
+			},
+		}
+		svc := NewService(m)
+		err := svc.DeleteIncome(context.Background(), catID, userID)
+		require.NoError(t, err)
+	})
+
+	t.Run("error", func(t *testing.T) {
+		m := &mock.MockQuerier{
+			DeleteIncomeCategoryFn: func(ctx context.Context, arg db.DeleteIncomeCategoryParams) error {
+				return errors.New("not found")
+			},
+		}
+		svc := NewService(m)
+		err := svc.DeleteIncome(context.Background(), catID, userID)
+		require.Error(t, err)
+	})
 }
