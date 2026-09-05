@@ -6,21 +6,25 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/helper"
 )
 
-type Service struct {
-	queries db.Querier
-	pool    *pgxpool.Pool
+type Transactioner interface {
+	Begin(ctx context.Context) (pgx.Tx, error)
 }
 
-func NewService(queries db.Querier, pool *pgxpool.Pool) *Service {
+type Service struct {
+	queries db.Querier
+	db      Transactioner
+}
+
+func NewService(queries db.Querier, db Transactioner) *Service {
 	return &Service{
 		queries: queries,
-		pool:    pool,
+		db:      db,
 	}
 }
 
@@ -146,7 +150,7 @@ func (s *Service) Export(ctx context.Context, userID uuid.UUID) (*BudgetExport, 
 func (s *Service) Import(ctx context.Context, userID uuid.UUID, export *BudgetExport) error {
 	slog.Debug("budget.Service.Import: called", "user_id", userID)
 
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		slog.Error("budget.Service.Import: failed to start transaction", "error", err, "user_id", userID)
 		return err
