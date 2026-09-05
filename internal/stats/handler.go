@@ -23,10 +23,10 @@ func (h *Handler) Summary(w http.ResponseWriter, r *http.Request) {
 	endDate := helper.ParseQueryString(r, "end_date")
 	summary, err := h.service.Summary(r.Context(), userID, startDate, endDate)
 	if err != nil {
-		helper.RespondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	helper.Respond(w, http.StatusOK, summary)
+	helper.RespondJSON(w, http.StatusOK, summary)
 }
 
 func (h *Handler) Trends(w http.ResponseWriter, r *http.Request) {
@@ -38,10 +38,10 @@ func (h *Handler) Trends(w http.ResponseWriter, r *http.Request) {
 	endDate := helper.ParseQueryString(r, "end_date")
 	trends, err := h.service.Trends(r.Context(), userID, startDate, endDate)
 	if err != nil {
-		helper.RespondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	helper.Respond(w, http.StatusOK, trends)
+	helper.RespondJSON(w, http.StatusOK, trends)
 }
 
 func (h *Handler) CategoryBreakdown(w http.ResponseWriter, r *http.Request) {
@@ -53,10 +53,10 @@ func (h *Handler) CategoryBreakdown(w http.ResponseWriter, r *http.Request) {
 	endDate := helper.ParseQueryString(r, "end_date")
 	breakdown, err := h.service.CategoryBreakdown(r.Context(), userID, startDate, endDate)
 	if err != nil {
-		helper.RespondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	helper.Respond(w, http.StatusOK, breakdown)
+	helper.RespondJSON(w, http.StatusOK, breakdown)
 }
 
 func (h *Handler) SavingsRate(w http.ResponseWriter, r *http.Request) {
@@ -68,10 +68,10 @@ func (h *Handler) SavingsRate(w http.ResponseWriter, r *http.Request) {
 	endDate := helper.ParseQueryString(r, "end_date")
 	rate, err := h.service.SavingsRate(r.Context(), userID, startDate, endDate)
 	if err != nil {
-		helper.RespondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	helper.Respond(w, http.StatusOK, rate)
+	helper.RespondJSON(w, http.StatusOK, rate)
 }
 
 func (h *Handler) FiftyThirtyTwenty(w http.ResponseWriter, r *http.Request) {
@@ -83,10 +83,10 @@ func (h *Handler) FiftyThirtyTwenty(w http.ResponseWriter, r *http.Request) {
 	endDate := helper.ParseQueryString(r, "end_date")
 	result, err := h.service.FiftyThirtyTwenty(r.Context(), userID, startDate, endDate)
 	if err != nil {
-		helper.RespondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	helper.Respond(w, http.StatusOK, result)
+	helper.RespondJSON(w, http.StatusOK, result)
 }
 
 func (h *Handler) UpcomingBills(w http.ResponseWriter, r *http.Request) {
@@ -96,10 +96,10 @@ func (h *Handler) UpcomingBills(w http.ResponseWriter, r *http.Request) {
 	}
 	bills, err := h.service.UpcomingBills(r.Context(), userID)
 	if err != nil {
-		helper.RespondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	helper.Respond(w, http.StatusOK, bills)
+	helper.RespondJSON(w, http.StatusOK, bills)
 }
 
 func (h *Handler) SpendingVelocity(w http.ResponseWriter, r *http.Request) {
@@ -110,15 +110,15 @@ func (h *Handler) SpendingVelocity(w http.ResponseWriter, r *http.Request) {
 	startDate := r.URL.Query().Get("start_date")
 	endDate := r.URL.Query().Get("end_date")
 	if startDate == "" || endDate == "" {
-		helper.RespondError(w, http.StatusBadRequest, "start_date and end_date are required")
+		helper.RespondErrorJSON(w, http.StatusBadRequest, "start_date and end_date are required")
 		return
 	}
 	velocity, err := h.service.SpendingVelocity(r.Context(), userID, startDate, endDate)
 	if err != nil {
-		helper.RespondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	helper.Respond(w, http.StatusOK, velocity)
+	helper.RespondJSON(w, http.StatusOK, velocity)
 }
 
 func (h *Handler) CurrentTotalMoney(w http.ResponseWriter, r *http.Request) {
@@ -130,10 +130,10 @@ func (h *Handler) CurrentTotalMoney(w http.ResponseWriter, r *http.Request) {
 	endDate := helper.ParseQueryString(r, "end_date")
 	total, err := h.service.CurrentTotalMoney(r.Context(), userID, startDate, endDate)
 	if err != nil {
-		helper.RespondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	helper.Respond(w, http.StatusOK, total)
+	helper.RespondJSON(w, http.StatusOK, total)
 }
 
 func (h *Handler) MonthOverMonthTrends(w http.ResponseWriter, r *http.Request) {
@@ -145,8 +145,8 @@ func (h *Handler) MonthOverMonthTrends(w http.ResponseWriter, r *http.Request) {
 	endDate := helper.ParseQueryString(r, "end_date")
 	trends, err := h.service.MonthOverMonthTrends(r.Context(), userID, startDate, endDate)
 	if err != nil {
-		helper.RespondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	helper.Respond(w, http.StatusOK, trends)
+	helper.RespondJSON(w, http.StatusOK, trends)
 }

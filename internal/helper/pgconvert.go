@@ -69,7 +69,7 @@ func ToPgUUIDFromUUID(id uuid.UUID) pgtype.UUID {
 	return pgtype.UUID{Bytes: id, Valid: true}
 }
 
-func ToDecimal(v interface{}) decimal.Decimal {
+func ToDecimal(v any) decimal.Decimal {
 	if v == nil {
 		return decimal.Zero
 	}

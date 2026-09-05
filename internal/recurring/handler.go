@@ -20,7 +20,7 @@ func NewHandler(service *Service) *Handler {
 func (h *Handler) CreateIncomeRule(w http.ResponseWriter, r *http.Request) {
 	var req CreateIncomeRuleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		helper.RespondError(w, http.StatusBadRequest, "invalid request body")
+		helper.RespondErrorJSON(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	userID, ok := helper.GetUserID(w, r)
@@ -29,10 +29,10 @@ func (h *Handler) CreateIncomeRule(w http.ResponseWriter, r *http.Request) {
 	}
 	rule, err := h.service.CreateIncomeRule(r.Context(), userID, req)
 	if err != nil {
-		helper.RespondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	helper.Respond(w, http.StatusCreated, rule)
+	helper.RespondJSON(w, http.StatusCreated, rule)
 }
 
 func (h *Handler) ListIncomeRules(w http.ResponseWriter, r *http.Request) {
@@ -42,10 +42,10 @@ func (h *Handler) ListIncomeRules(w http.ResponseWriter, r *http.Request) {
 	}
 	rules, err := h.service.ListIncomeRules(r.Context(), userID)
 	if err != nil {
-		helper.RespondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	helper.Respond(w, http.StatusOK, rules)
+	helper.RespondJSON(w, http.StatusOK, rules)
 }
 
 func (h *Handler) GetIncomeRule(w http.ResponseWriter, r *http.Request) {
@@ -59,10 +59,10 @@ func (h *Handler) GetIncomeRule(w http.ResponseWriter, r *http.Request) {
 	}
 	rule, err := h.service.GetIncomeRule(r.Context(), id, userID)
 	if err != nil {
-		helper.RespondError(w, http.StatusNotFound, "rule not found")
+		helper.RespondErrorJSON(w, http.StatusNotFound, "rule not found")
 		return
 	}
-	helper.Respond(w, http.StatusOK, rule)
+	helper.RespondJSON(w, http.StatusOK, rule)
 }
 
 func (h *Handler) UpdateIncomeRule(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +72,7 @@ func (h *Handler) UpdateIncomeRule(w http.ResponseWriter, r *http.Request) {
 	}
 	var req UpdateIncomeRuleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		helper.RespondError(w, http.StatusBadRequest, "invalid request body")
+		helper.RespondErrorJSON(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	userID, ok := helper.GetUserID(w, r)
@@ -81,10 +81,10 @@ func (h *Handler) UpdateIncomeRule(w http.ResponseWriter, r *http.Request) {
 	}
 	rule, err := h.service.UpdateIncomeRule(r.Context(), id, userID, req)
 	if err != nil {
-		helper.RespondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	helper.Respond(w, http.StatusOK, rule)
+	helper.RespondJSON(w, http.StatusOK, rule)
 }
 
 func (h *Handler) DeleteIncomeRule(w http.ResponseWriter, r *http.Request) {
@@ -97,10 +97,10 @@ func (h *Handler) DeleteIncomeRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.service.DeleteIncomeRule(r.Context(), id, userID); err != nil {
-		helper.RespondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	helper.Respond(w, http.StatusNoContent, nil)
+	helper.RespondJSON(w, http.StatusNoContent, nil)
 }
 
 // --- Expense Rules ---
@@ -108,7 +108,7 @@ func (h *Handler) DeleteIncomeRule(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) CreateExpenseRule(w http.ResponseWriter, r *http.Request) {
 	var req CreateExpenseRuleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		helper.RespondError(w, http.StatusBadRequest, "invalid request body")
+		helper.RespondErrorJSON(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	userID, ok := helper.GetUserID(w, r)
@@ -117,10 +117,10 @@ func (h *Handler) CreateExpenseRule(w http.ResponseWriter, r *http.Request) {
 	}
 	rule, err := h.service.CreateExpenseRule(r.Context(), userID, req)
 	if err != nil {
-		helper.RespondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	helper.Respond(w, http.StatusCreated, rule)
+	helper.RespondJSON(w, http.StatusCreated, rule)
 }
 
 func (h *Handler) ListExpenseRules(w http.ResponseWriter, r *http.Request) {
@@ -130,10 +130,10 @@ func (h *Handler) ListExpenseRules(w http.ResponseWriter, r *http.Request) {
 	}
 	rules, err := h.service.ListExpenseRules(r.Context(), userID)
 	if err != nil {
-		helper.RespondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	helper.Respond(w, http.StatusOK, rules)
+	helper.RespondJSON(w, http.StatusOK, rules)
 }
 
 func (h *Handler) GetExpenseRule(w http.ResponseWriter, r *http.Request) {
@@ -147,10 +147,10 @@ func (h *Handler) GetExpenseRule(w http.ResponseWriter, r *http.Request) {
 	}
 	rule, err := h.service.GetExpenseRule(r.Context(), id, userID)
 	if err != nil {
-		helper.RespondError(w, http.StatusNotFound, "rule not found")
+		helper.RespondErrorJSON(w, http.StatusNotFound, "rule not found")
 		return
 	}
-	helper.Respond(w, http.StatusOK, rule)
+	helper.RespondJSON(w, http.StatusOK, rule)
 }
 
 func (h *Handler) UpdateExpenseRule(w http.ResponseWriter, r *http.Request) {
@@ -160,7 +160,7 @@ func (h *Handler) UpdateExpenseRule(w http.ResponseWriter, r *http.Request) {
 	}
 	var req UpdateExpenseRuleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		helper.RespondError(w, http.StatusBadRequest, "invalid request body")
+		helper.RespondErrorJSON(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	userID, ok := helper.GetUserID(w, r)
@@ -169,10 +169,10 @@ func (h *Handler) UpdateExpenseRule(w http.ResponseWriter, r *http.Request) {
 	}
 	rule, err := h.service.UpdateExpenseRule(r.Context(), id, userID, req)
 	if err != nil {
-		helper.RespondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	helper.Respond(w, http.StatusOK, rule)
+	helper.RespondJSON(w, http.StatusOK, rule)
 }
 
 func (h *Handler) DeleteExpenseRule(w http.ResponseWriter, r *http.Request) {
@@ -185,8 +185,8 @@ func (h *Handler) DeleteExpenseRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.service.DeleteExpenseRule(r.Context(), id, userID); err != nil {
-		helper.RespondError(w, http.StatusInternalServerError, err.Error())
+		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	helper.Respond(w, http.StatusNoContent, nil)
+	helper.RespondJSON(w, http.StatusNoContent, nil)
 }

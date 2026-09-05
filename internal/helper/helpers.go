@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func Respond(w http.ResponseWriter, status int, data any) {
+func RespondJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if data != nil {
@@ -25,14 +25,14 @@ func Respond(w http.ResponseWriter, status int, data any) {
 	}
 }
 
-func RespondError(w http.ResponseWriter, status int, message string) {
-	Respond(w, status, map[string]string{"error": message})
+func RespondErrorJSON(w http.ResponseWriter, status int, message string) {
+	RespondJSON(w, status, map[string]string{"error": message})
 }
 
 func ParseUUID(w http.ResponseWriter, r *http.Request, param string) (uuid.UUID, bool) {
 	id, err := uuid.Parse(chi.URLParam(r, param))
 	if err != nil {
-		RespondError(w, http.StatusBadRequest, "invalid "+param)
+		RespondErrorJSON(w, http.StatusBadRequest, "invalid "+param)
 		return uuid.Nil, false
 	}
 	return id, true
@@ -61,7 +61,7 @@ func ParseQueryString(r *http.Request, key string) *string {
 func GetUserID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 	userID, ok := auth.GetUserID(r)
 	if !ok {
-		RespondError(w, http.StatusUnauthorized, "X-User-ID header is required")
+		RespondErrorJSON(w, http.StatusUnauthorized, "X-User-ID header is required")
 		return uuid.Nil, false
 	}
 	return userID, true
