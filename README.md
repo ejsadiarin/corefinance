@@ -25,13 +25,13 @@ internal/db/schema.sql        — database schema
 | Variable | Description |
 |---|---|
 | `PORT` | Server port (default: `8080`) |
-| `APP_ENV` | `development` for debug logs, anything else for production |
-| `BLUEPRINT_DB_HOST` | PostgreSQL host |
-| `BLUEPRINT_DB_PORT` | PostgreSQL port |
-| `BLUEPRINT_DB_DATABASE` | Database name |
-| `BLUEPRINT_DB_USERNAME` | Database user |
-| `BLUEPRINT_DB_PASSWORD` | Database password |
-| `BLUEPRINT_DB_SCHEMA` | Schema name (default: `corefinance`) |
+| `ENV` | `development` for debug logs, anything else for production |
+| `DB_HOST` | PostgreSQL host |
+| `DB_PORT` | PostgreSQL port |
+| `DB_DATABASE` | Database name |
+| `DB_USERNAME` | Database user |
+| `DB_PASSWORD` | Database password |
+| `DB_SCHEMA` | Schema name (default: `corefinance`) |
 
 ## API Routes
 
@@ -39,23 +39,27 @@ All routes are prefixed with `/budget`.
 
 | Method | Path | Description |
 |---|---|---|
-| | `/category/*` | Expense/income category CRUD |
-| | `/tag/*` | Tag CRUD + associations |
-| | `/expense/*` | Expense CRUD, search, skip, check-skipped |
-| | `/income/*` | Income CRUD, skip, check-skipped, occurrences |
-| | `/recurring/*` | Recurring expense/income rule CRUD |
+| | `/expense-categories/*` | Expense category CRUD (soft delete) |
+| | `/income-categories/*` | Income category CRUD (soft delete) |
+| | `/tags/*` | Tag CRUD + tag associations for expenses/incomes |
+| | `/expenses/*` | Expense CRUD, search, skip, check-skipped, tag management |
+| | `/incomes/*` | Income CRUD, skip, check-skipped, occurrences, tag management |
+| | `/recurring-expenses/*` | Recurring expense rule CRUD |
+| | `/recurring-incomes/*` | Recurring income rule CRUD |
 | | `/stats/summary` | Financial summary |
 | | `/stats/trends` | Trend data |
 | | `/stats/category-breakdown` | Breakdown by category |
 | | `/stats/savings-rate` | Savings rate |
-| | `/analysis/50-30-20` | 50/30/20 analysis |
-| | `/analytics/velocity` | Spending velocity |
-| | `/analytics/forecast` | Financial forecast |
-| | `/analytics/current-total-money` | Current total |
-| | `/analytics/month-over-month` | Month-over-month comparison |
-| | `/budget/remaining` | Remaining budget |
-| | `/budget/export` | Export data |
-| | `/budget/import` | Import data |
+| | `/analysis/503020` | 50/30/20 analysis by priority |
+| | `/velocity` | Average monthly spending |
+| | `/forecast/upcoming` | Upcoming recurring expenses |
+| | `/current-total-money` | Total income minus total expenses |
+| | `/trends/month-over-month` | Month-over-month comparison |
+| | `/priority-groups` | Reference data (need/want/savings) |
+| | `/remaining` | Current month budget remaining |
+| | `/export` | Export all budget data as JSON |
+| | `/import` | Import budget data (with ID remapping) |
+| `/` | `/health` | Health check (pgxpool ping + stats) |
 
 ## Auth
 
