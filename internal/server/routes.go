@@ -21,7 +21,6 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	// Middleware stack
 	r.Use(requestIDMiddleware)
-	r.Use(middleware.RealIP)
 	r.Use(slogMiddleware)
 	r.Use(middleware.Recoverer)
 
