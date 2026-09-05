@@ -2,6 +2,7 @@ package recurring
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/ejsadiarin/corefinance/internal/helper"
@@ -27,11 +28,14 @@ func (h *Handler) CreateIncomeRule(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	slog.Debug("recurring.CreateIncomeRule: request received", "user_id", userID)
 	rule, err := h.service.CreateIncomeRule(r.Context(), userID, req)
 	if err != nil {
+		slog.Error("recurring.CreateIncomeRule: failed", "error", err, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	slog.Info("recurring.CreateIncomeRule: rule created", "id", rule.ID, "user_id", userID)
 	helper.RespondJSON(w, http.StatusCreated, rule)
 }
 
@@ -40,11 +44,14 @@ func (h *Handler) ListIncomeRules(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	slog.Debug("recurring.ListIncomeRules: request received", "user_id", userID)
 	rules, err := h.service.ListIncomeRules(r.Context(), userID)
 	if err != nil {
+		slog.Error("recurring.ListIncomeRules: failed", "error", err, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	slog.Debug("recurring.ListIncomeRules: success", "user_id", userID, "count", len(rules))
 	helper.RespondJSON(w, http.StatusOK, rules)
 }
 
@@ -57,11 +64,14 @@ func (h *Handler) GetIncomeRule(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	slog.Debug("recurring.GetIncomeRule: request received", "id", id, "user_id", userID)
 	rule, err := h.service.GetIncomeRule(r.Context(), id, userID)
 	if err != nil {
+		slog.Error("recurring.GetIncomeRule: failed", "error", err, "id", id, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusNotFound, "rule not found")
 		return
 	}
+	slog.Debug("recurring.GetIncomeRule: success", "id", id, "user_id", userID)
 	helper.RespondJSON(w, http.StatusOK, rule)
 }
 
@@ -79,11 +89,14 @@ func (h *Handler) UpdateIncomeRule(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	slog.Debug("recurring.UpdateIncomeRule: request received", "id", id, "user_id", userID)
 	rule, err := h.service.UpdateIncomeRule(r.Context(), id, userID, req)
 	if err != nil {
+		slog.Error("recurring.UpdateIncomeRule: failed", "error", err, "id", id, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	slog.Info("recurring.UpdateIncomeRule: rule updated", "id", id, "user_id", userID)
 	helper.RespondJSON(w, http.StatusOK, rule)
 }
 
@@ -96,10 +109,13 @@ func (h *Handler) DeleteIncomeRule(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	slog.Debug("recurring.DeleteIncomeRule: request received", "id", id, "user_id", userID)
 	if err := h.service.DeleteIncomeRule(r.Context(), id, userID); err != nil {
+		slog.Error("recurring.DeleteIncomeRule: failed", "error", err, "id", id, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	slog.Info("recurring.DeleteIncomeRule: rule deleted", "id", id, "user_id", userID)
 	helper.RespondJSON(w, http.StatusNoContent, nil)
 }
 
@@ -115,11 +131,14 @@ func (h *Handler) CreateExpenseRule(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	slog.Debug("recurring.CreateExpenseRule: request received", "user_id", userID)
 	rule, err := h.service.CreateExpenseRule(r.Context(), userID, req)
 	if err != nil {
+		slog.Error("recurring.CreateExpenseRule: failed", "error", err, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	slog.Info("recurring.CreateExpenseRule: rule created", "id", rule.ID, "user_id", userID)
 	helper.RespondJSON(w, http.StatusCreated, rule)
 }
 
@@ -128,11 +147,14 @@ func (h *Handler) ListExpenseRules(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	slog.Debug("recurring.ListExpenseRules: request received", "user_id", userID)
 	rules, err := h.service.ListExpenseRules(r.Context(), userID)
 	if err != nil {
+		slog.Error("recurring.ListExpenseRules: failed", "error", err, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	slog.Debug("recurring.ListExpenseRules: success", "user_id", userID, "count", len(rules))
 	helper.RespondJSON(w, http.StatusOK, rules)
 }
 
@@ -145,11 +167,14 @@ func (h *Handler) GetExpenseRule(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	slog.Debug("recurring.GetExpenseRule: request received", "id", id, "user_id", userID)
 	rule, err := h.service.GetExpenseRule(r.Context(), id, userID)
 	if err != nil {
+		slog.Error("recurring.GetExpenseRule: failed", "error", err, "id", id, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusNotFound, "rule not found")
 		return
 	}
+	slog.Debug("recurring.GetExpenseRule: success", "id", id, "user_id", userID)
 	helper.RespondJSON(w, http.StatusOK, rule)
 }
 
@@ -167,11 +192,14 @@ func (h *Handler) UpdateExpenseRule(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	slog.Debug("recurring.UpdateExpenseRule: request received", "id", id, "user_id", userID)
 	rule, err := h.service.UpdateExpenseRule(r.Context(), id, userID, req)
 	if err != nil {
+		slog.Error("recurring.UpdateExpenseRule: failed", "error", err, "id", id, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	slog.Info("recurring.UpdateExpenseRule: rule updated", "id", id, "user_id", userID)
 	helper.RespondJSON(w, http.StatusOK, rule)
 }
 
@@ -184,9 +212,12 @@ func (h *Handler) DeleteExpenseRule(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	slog.Debug("recurring.DeleteExpenseRule: request received", "id", id, "user_id", userID)
 	if err := h.service.DeleteExpenseRule(r.Context(), id, userID); err != nil {
+		slog.Error("recurring.DeleteExpenseRule: failed", "error", err, "id", id, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	slog.Info("recurring.DeleteExpenseRule: rule deleted", "id", id, "user_id", userID)
 	helper.RespondJSON(w, http.StatusNoContent, nil)
 }

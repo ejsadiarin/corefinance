@@ -2,6 +2,7 @@ package expense
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/ejsadiarin/corefinance/internal/helper"
@@ -42,11 +43,14 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	slog.Debug("expense.Create: request received", "user_id", userID)
 	expense, err := h.service.Create(r.Context(), userID, req)
 	if err != nil {
+		slog.Error("expense.Create: failed", "error", err, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	slog.Info("expense.Create: expense created", "id", expense.ID, "user_id", userID)
 	helper.RespondJSON(w, http.StatusCreated, expense)
 }
 
@@ -59,11 +63,14 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	slog.Debug("expense.Get: request received", "id", id, "user_id", userID)
 	expense, err := h.service.Get(r.Context(), id, userID)
 	if err != nil {
+		slog.Error("expense.Get: failed", "error", err, "id", id, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusNotFound, "expense not found")
 		return
 	}
+	slog.Debug("expense.Get: success", "id", id, "user_id", userID)
 	helper.RespondJSON(w, http.StatusOK, expense)
 }
 
@@ -72,6 +79,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	slog.Debug("expense.List: request received", "user_id", userID)
 	params := ListParams{
 		StartDate:     helper.ParseQueryString(r, "start_date"),
 		EndDate:       helper.ParseQueryString(r, "end_date"),
@@ -84,9 +92,11 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	expenses, err := h.service.List(r.Context(), userID, params)
 	if err != nil {
+		slog.Error("expense.List: failed", "error", err, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	slog.Debug("expense.List: success", "user_id", userID, "count", len(expenses))
 	helper.RespondJSON(w, http.StatusOK, expenses)
 }
 
@@ -100,6 +110,7 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 		helper.RespondErrorJSON(w, http.StatusBadRequest, "query parameter 'q' is required")
 		return
 	}
+	slog.Debug("expense.Search: request received", "user_id", userID, "query", query)
 	params := SearchParams{
 		Query:    query,
 		Page:     helper.ParseQueryInt(r, "page", 1),
@@ -107,9 +118,11 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 	}
 	expenses, err := h.service.Search(r.Context(), userID, params)
 	if err != nil {
+		slog.Error("expense.Search: failed", "error", err, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	slog.Debug("expense.Search: success", "user_id", userID, "count", len(expenses))
 	helper.RespondJSON(w, http.StatusOK, expenses)
 }
 
@@ -143,11 +156,14 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	slog.Debug("expense.Update: request received", "id", id, "user_id", userID)
 	expense, err := h.service.Update(r.Context(), id, userID, req)
 	if err != nil {
+		slog.Error("expense.Update: failed", "error", err, "id", id, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	slog.Info("expense.Update: expense updated", "id", id, "user_id", userID)
 	helper.RespondJSON(w, http.StatusOK, expense)
 }
 
@@ -160,10 +176,13 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	slog.Debug("expense.Delete: request received", "id", id, "user_id", userID)
 	if err := h.service.Delete(r.Context(), id, userID); err != nil {
+		slog.Error("expense.Delete: failed", "error", err, "id", id, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	slog.Info("expense.Delete: expense deleted", "id", id, "user_id", userID)
 	helper.RespondJSON(w, http.StatusNoContent, nil)
 }
 
@@ -184,10 +203,13 @@ func (h *Handler) Skip(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	slog.Debug("expense.Skip: request received", "id", id, "user_id", userID)
 	if err := h.service.Skip(r.Context(), id, userID); err != nil {
+		slog.Error("expense.Skip: failed", "error", err, "id", id, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	slog.Info("expense.Skip: expense skipped", "id", id, "user_id", userID)
 	helper.RespondJSON(w, http.StatusOK, map[string]string{"status": "skipped"})
 }
 
@@ -202,10 +224,13 @@ func (h *Handler) CheckSkipped(w http.ResponseWriter, r *http.Request) {
 		helper.RespondErrorJSON(w, http.StatusBadRequest, "start_date and end_date are required")
 		return
 	}
+	slog.Debug("expense.CheckSkipped: request received", "user_id", userID)
 	skipped, err := h.service.CheckSkipped(r.Context(), userID, startDate, endDate)
 	if err != nil {
+		slog.Error("expense.CheckSkipped: failed", "error", err, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	slog.Debug("expense.CheckSkipped: success", "user_id", userID, "is_skipped", skipped)
 	helper.RespondJSON(w, http.StatusOK, map[string]bool{"is_skipped": skipped})
 }

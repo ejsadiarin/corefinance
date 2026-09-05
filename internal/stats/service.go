@@ -2,6 +2,7 @@ package stats
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -21,6 +22,7 @@ func NewService(pool *pgxpool.Pool) *Service {
 }
 
 func (s *Service) Summary(ctx context.Context, userID uuid.UUID, startDate, endDate *string) (Summary, error) {
+	slog.Debug("stats.Service.Summary", "user_id", userID)
 	row, err := s.queries.GetSummary(ctx, db.GetSummaryParams{
 		UserID:    userID,
 		StartDate: helper.ToPgDatePtr(startDate),
@@ -38,6 +40,7 @@ func (s *Service) Summary(ctx context.Context, userID uuid.UUID, startDate, endD
 }
 
 func (s *Service) Trends(ctx context.Context, userID uuid.UUID, startDate, endDate *string) ([]Trend, error) {
+	slog.Debug("stats.Service.Trends", "user_id", userID)
 	rows, err := s.queries.GetTrends(ctx, db.GetTrendsParams{
 		UserID:    userID,
 		StartDate: helper.ToPgDatePtr(startDate),
@@ -58,6 +61,7 @@ func (s *Service) Trends(ctx context.Context, userID uuid.UUID, startDate, endDa
 }
 
 func (s *Service) CategoryBreakdown(ctx context.Context, userID uuid.UUID, startDate, endDate *string) ([]CategoryBreakdownItem, error) {
+	slog.Debug("stats.Service.CategoryBreakdown", "user_id", userID)
 	rows, err := s.queries.GetCategoryBreakdown(ctx, db.GetCategoryBreakdownParams{
 		UserID:    userID,
 		StartDate: helper.ToPgDatePtr(startDate),
@@ -84,6 +88,7 @@ func (s *Service) CategoryBreakdown(ctx context.Context, userID uuid.UUID, start
 }
 
 func (s *Service) SavingsRate(ctx context.Context, userID uuid.UUID, startDate, endDate *string) (SavingsRate, error) {
+	slog.Debug("stats.Service.SavingsRate", "user_id", userID)
 	row, err := s.queries.GetSavingsRate(ctx, db.GetSavingsRateParams{
 		UserID:    userID,
 		StartDate: helper.ToPgDatePtr(startDate),
@@ -100,6 +105,7 @@ func (s *Service) SavingsRate(ctx context.Context, userID uuid.UUID, startDate, 
 }
 
 func (s *Service) FiftyThirtyTwenty(ctx context.Context, userID uuid.UUID, startDate, endDate *string) (FiftyThirtyTwenty, error) {
+	slog.Debug("stats.Service.FiftyThirtyTwenty", "user_id", userID)
 	row, err := s.queries.GetFiftyThirtyTwenty(ctx, db.GetFiftyThirtyTwentyParams{
 		UserID:    userID,
 		StartDate: helper.ToPgDatePtr(startDate),
@@ -121,10 +127,12 @@ func (s *Service) FiftyThirtyTwenty(ctx context.Context, userID uuid.UUID, start
 }
 
 func (s *Service) UpcomingBills(ctx context.Context, userID uuid.UUID) ([]db.GetUpcomingRecurringExpensesRow, error) {
+	slog.Debug("stats.Service.UpcomingBills", "user_id", userID)
 	return s.queries.GetUpcomingRecurringExpenses(ctx, userID)
 }
 
 func (s *Service) SpendingVelocity(ctx context.Context, userID uuid.UUID, startDate, endDate string) (SpendingVelocity, error) {
+	slog.Debug("stats.Service.SpendingVelocity", "user_id", userID)
 	row, err := s.queries.GetSpendingVelocity(ctx, db.GetSpendingVelocityParams{
 		UserID:    userID,
 		StartDate: helper.ToPgDate(startDate),
@@ -140,6 +148,7 @@ func (s *Service) SpendingVelocity(ctx context.Context, userID uuid.UUID, startD
 }
 
 func (s *Service) CurrentTotalMoney(ctx context.Context, userID uuid.UUID, startDate, endDate *string) (CurrentTotalMoney, error) {
+	slog.Debug("stats.Service.CurrentTotalMoney", "user_id", userID)
 	totalMoney, err := s.queries.GetCurrentTotalMoney(ctx, db.GetCurrentTotalMoneyParams{
 		UserID:    userID,
 		StartDate: helper.ToPgDatePtr(startDate),
@@ -154,6 +163,7 @@ func (s *Service) CurrentTotalMoney(ctx context.Context, userID uuid.UUID, start
 }
 
 func (s *Service) MonthOverMonthTrends(ctx context.Context, userID uuid.UUID, startDate, endDate *string) ([]MonthOverMonthTrend, error) {
+	slog.Debug("stats.Service.MonthOverMonthTrends", "user_id", userID)
 	start := ""
 	end := ""
 	if startDate != nil {

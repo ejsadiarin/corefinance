@@ -2,6 +2,7 @@ package expense
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,6 +23,7 @@ func NewService(pool *pgxpool.Pool) *Service {
 }
 
 func (s *Service) Create(ctx context.Context, userID uuid.UUID, req CreateRequest) (db.Expense, error) {
+	slog.Debug("expense.Service.Create", "user_id", userID)
 	return s.queries.CreateExpense(ctx, db.CreateExpenseParams{
 		UserID:        userID,
 		CategoryID:    helper.ToPgUUID(req.CategoryID),
@@ -41,6 +43,7 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, req CreateReques
 }
 
 func (s *Service) Get(ctx context.Context, id uuid.UUID, userID uuid.UUID) (db.GetExpenseRow, error) {
+	slog.Debug("expense.Service.Get", "id", id, "user_id", userID)
 	return s.queries.GetExpense(ctx, db.GetExpenseParams{
 		ID:     id,
 		UserID: userID,
@@ -48,6 +51,7 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID, userID uuid.UUID) (db.G
 }
 
 func (s *Service) List(ctx context.Context, userID uuid.UUID, params ListParams) ([]db.ListExpensesRow, error) {
+	slog.Debug("expense.Service.List", "user_id", userID)
 	page, pageSize := int32(params.Page), int32(params.PageSize)
 	if page <= 0 {
 		page = 1
@@ -69,6 +73,7 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID, params ListParams)
 }
 
 func (s *Service) Search(ctx context.Context, userID uuid.UUID, params SearchParams) ([]db.SearchExpensesRow, error) {
+	slog.Debug("expense.Service.Search", "user_id", userID, "query", params.Query)
 	page, pageSize := int32(params.Page), int32(params.PageSize)
 	if page <= 0 {
 		page = 1
@@ -85,6 +90,7 @@ func (s *Service) Search(ctx context.Context, userID uuid.UUID, params SearchPar
 }
 
 func (s *Service) Update(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateRequest) (db.Expense, error) {
+	slog.Debug("expense.Service.Update", "id", id, "user_id", userID)
 	return s.queries.UpdateExpense(ctx, db.UpdateExpenseParams{
 		ID:            id,
 		UserID:        userID,
@@ -105,6 +111,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, userID uuid.UUID, re
 }
 
 func (s *Service) Delete(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
+	slog.Debug("expense.Service.Delete", "id", id, "user_id", userID)
 	return s.queries.DeleteExpense(ctx, db.DeleteExpenseParams{
 		ID:     id,
 		UserID: userID,
@@ -112,6 +119,7 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID, userID uuid.UUID) er
 }
 
 func (s *Service) Skip(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
+	slog.Debug("expense.Service.Skip", "id", id, "user_id", userID)
 	return s.queries.SkipExpense(ctx, db.SkipExpenseParams{
 		ID:     id,
 		UserID: userID,
@@ -119,6 +127,7 @@ func (s *Service) Skip(ctx context.Context, id uuid.UUID, userID uuid.UUID) erro
 }
 
 func (s *Service) CheckSkipped(ctx context.Context, userID uuid.UUID, startDate, endDate string) (bool, error) {
+	slog.Debug("expense.Service.CheckSkipped", "user_id", userID)
 	return s.queries.CheckSkippedExpense(ctx, db.CheckSkippedExpenseParams{
 		UserID:        userID,
 		ExpenseDate:   helper.ToPgDate(startDate),
@@ -127,6 +136,7 @@ func (s *Service) CheckSkipped(ctx context.Context, userID uuid.UUID, startDate,
 }
 
 func (s *Service) StatsByCategory(ctx context.Context, userID uuid.UUID, startDate, endDate *string) ([]db.GetExpenseStatsByCategoryRow, error) {
+	slog.Debug("expense.Service.StatsByCategory", "user_id", userID)
 	return s.queries.GetExpenseStatsByCategory(ctx, db.GetExpenseStatsByCategoryParams{
 		UserID:    userID,
 		StartDate: helper.ToPgDatePtr(startDate),
@@ -135,6 +145,7 @@ func (s *Service) StatsByCategory(ctx context.Context, userID uuid.UUID, startDa
 }
 
 func (s *Service) TotalByDateRange(ctx context.Context, userID uuid.UUID, startDate, endDate string) (decimal.Decimal, error) {
+	slog.Debug("expense.Service.TotalByDateRange", "user_id", userID)
 	return s.queries.GetTotalExpensesByDateRange(ctx, db.GetTotalExpensesByDateRangeParams{
 		UserID:        userID,
 		ExpenseDate:   helper.ToPgDate(startDate),

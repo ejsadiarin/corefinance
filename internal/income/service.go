@@ -2,6 +2,7 @@ package income
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,6 +23,7 @@ func NewService(pool *pgxpool.Pool) *Service {
 }
 
 func (s *Service) Create(ctx context.Context, userID uuid.UUID, req CreateRequest) (db.Income, error) {
+	slog.Debug("income.Service.Create", "user_id", userID)
 	return s.queries.CreateIncome(ctx, db.CreateIncomeParams{
 		UserID:        userID,
 		CategoryID:    helper.ToPgUUID(req.CategoryID),
@@ -40,6 +42,7 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, req CreateReques
 }
 
 func (s *Service) Get(ctx context.Context, id uuid.UUID, userID uuid.UUID) (db.GetIncomeRow, error) {
+	slog.Debug("income.Service.Get", "id", id, "user_id", userID)
 	return s.queries.GetIncome(ctx, db.GetIncomeParams{
 		ID:     id,
 		UserID: userID,
@@ -47,6 +50,7 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID, userID uuid.UUID) (db.G
 }
 
 func (s *Service) List(ctx context.Context, userID uuid.UUID, params ListParams) ([]db.ListIncomesRow, error) {
+	slog.Debug("income.Service.List", "user_id", userID)
 	page, pageSize := int32(params.Page), int32(params.PageSize)
 	if page <= 0 {
 		page = 1
@@ -67,6 +71,7 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID, params ListParams)
 }
 
 func (s *Service) Update(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateRequest) (db.Income, error) {
+	slog.Debug("income.Service.Update", "id", id, "user_id", userID)
 	return s.queries.UpdateIncome(ctx, db.UpdateIncomeParams{
 		ID:            id,
 		UserID:        userID,
@@ -86,6 +91,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, userID uuid.UUID, re
 }
 
 func (s *Service) Delete(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
+	slog.Debug("income.Service.Delete", "id", id, "user_id", userID)
 	return s.queries.DeleteIncome(ctx, db.DeleteIncomeParams{
 		ID:     id,
 		UserID: userID,
@@ -93,6 +99,7 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID, userID uuid.UUID) er
 }
 
 func (s *Service) Skip(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
+	slog.Debug("income.Service.Skip", "id", id, "user_id", userID)
 	return s.queries.SkipIncome(ctx, db.SkipIncomeParams{
 		ID:     id,
 		UserID: userID,
@@ -100,6 +107,7 @@ func (s *Service) Skip(ctx context.Context, id uuid.UUID, userID uuid.UUID) erro
 }
 
 func (s *Service) CheckSkipped(ctx context.Context, userID uuid.UUID, startDate, endDate string) (bool, error) {
+	slog.Debug("income.Service.CheckSkipped", "user_id", userID)
 	return s.queries.CheckSkippedIncome(ctx, db.CheckSkippedIncomeParams{
 		UserID: userID,
 		Date:   helper.ToPgDate(startDate),
@@ -108,6 +116,7 @@ func (s *Service) CheckSkipped(ctx context.Context, userID uuid.UUID, startDate,
 }
 
 func (s *Service) Occurrences(ctx context.Context, userID uuid.UUID, startDate, endDate *string) ([]db.Income, error) {
+	slog.Debug("income.Service.Occurrences", "user_id", userID)
 	return s.queries.GetIncomeOccurrences(ctx, db.GetIncomeOccurrencesParams{
 		UserID:    userID,
 		StartDate: helper.ToPgDatePtr(startDate),
@@ -116,10 +125,10 @@ func (s *Service) Occurrences(ctx context.Context, userID uuid.UUID, startDate, 
 }
 
 func (s *Service) TotalByDateRange(ctx context.Context, userID uuid.UUID, startDate, endDate string) (decimal.Decimal, error) {
+	slog.Debug("income.Service.TotalByDateRange", "user_id", userID)
 	return s.queries.GetTotalIncomesByDateRange(ctx, db.GetTotalIncomesByDateRangeParams{
 		UserID: userID,
 		Date:   helper.ToPgDate(startDate),
 		Date_2: helper.ToPgDate(endDate),
 	})
 }
-

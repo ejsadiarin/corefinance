@@ -3,7 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -162,6 +162,8 @@ func (s *Server) GetBudgetRemaining(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	slog.Debug("server.GetBudgetRemaining: request received", "user_id", userID)
+
 	now := time.Now()
 	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
 	endOfMonth := startOfMonth.AddDate(0, 1, -1)
@@ -174,6 +176,7 @@ func (s *Server) GetBudgetRemaining(w http.ResponseWriter, r *http.Request) {
 		Date_2: helper.ToPgDate(endStr),
 	})
 	if err != nil {
+		slog.Error("server.GetBudgetRemaining: failed to get income", "error", err, "user_id", userID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -186,6 +189,7 @@ func (s *Server) GetBudgetRemaining(w http.ResponseWriter, r *http.Request) {
 		ExpenseDate_2: helper.ToPgDate(endStr),
 	})
 	if err != nil {
+		slog.Error("server.GetBudgetRemaining: failed to get expenses", "error", err, "user_id", userID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -195,6 +199,8 @@ func (s *Server) GetBudgetRemaining(w http.ResponseWriter, r *http.Request) {
 	incomeDec := helper.ToDecimal(totalIncome)
 	expenseDec := helper.ToDecimal(totalExpenses)
 	remaining := incomeDec.Sub(expenseDec)
+
+	slog.Debug("server.GetBudgetRemaining: success", "user_id", userID, "remaining", remaining)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -226,10 +232,13 @@ func (s *Server) ExportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	slog.Debug("server.ExportBudgetJSON: request received", "user_id", userID)
+
 	ctx := r.Context()
 
 	expenseCategories, err := s.Queries.ListExpenseCategories(ctx, userID)
 	if err != nil {
+		slog.Error("server.ExportBudgetJSON: failed to list expense categories", "error", err, "user_id", userID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -238,6 +247,7 @@ func (s *Server) ExportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 
 	incomeCategories, err := s.Queries.ListIncomeCategories(ctx, userID)
 	if err != nil {
+		slog.Error("server.ExportBudgetJSON: failed to list income categories", "error", err, "user_id", userID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -246,6 +256,7 @@ func (s *Server) ExportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 
 	tags, err := s.Queries.ListTags(ctx, userID)
 	if err != nil {
+		slog.Error("server.ExportBudgetJSON: failed to list tags", "error", err, "user_id", userID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -254,6 +265,7 @@ func (s *Server) ExportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 
 	expenses, err := s.Queries.ListAllExpensesByUser(ctx, userID)
 	if err != nil {
+		slog.Error("server.ExportBudgetJSON: failed to list expenses", "error", err, "user_id", userID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -262,6 +274,7 @@ func (s *Server) ExportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 
 	incomes, err := s.Queries.ListAllIncomesByUser(ctx, userID)
 	if err != nil {
+		slog.Error("server.ExportBudgetJSON: failed to list incomes", "error", err, "user_id", userID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -270,6 +283,7 @@ func (s *Server) ExportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 
 	recurringExpenses, err := s.Queries.ListRecurringExpenseRules(ctx, userID)
 	if err != nil {
+		slog.Error("server.ExportBudgetJSON: failed to list recurring expenses", "error", err, "user_id", userID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -278,6 +292,7 @@ func (s *Server) ExportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 
 	recurringIncomes, err := s.Queries.ListRecurringIncomeRules(ctx, userID)
 	if err != nil {
+		slog.Error("server.ExportBudgetJSON: failed to list recurring incomes", "error", err, "user_id", userID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -286,6 +301,7 @@ func (s *Server) ExportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 
 	expenseTags, err := s.Queries.ListAllExpenseTagsByUser(ctx, userID)
 	if err != nil {
+		slog.Error("server.ExportBudgetJSON: failed to list expense tags", "error", err, "user_id", userID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -294,6 +310,7 @@ func (s *Server) ExportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 
 	incomeTags, err := s.Queries.ListAllIncomeTagsByUser(ctx, userID)
 	if err != nil {
+		slog.Error("server.ExportBudgetJSON: failed to list income tags", "error", err, "user_id", userID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -312,6 +329,8 @@ func (s *Server) ExportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 		IncomeTags:        incomeTags,
 	}
 
+	slog.Info("server.ExportBudgetJSON: export completed", "user_id", userID)
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Disposition", "attachment; filename=budget_export.json")
 	json.NewEncoder(w).Encode(export)
@@ -323,17 +342,18 @@ func (s *Server) ImportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	slog.Debug("server.ImportBudgetJSON: request received", "user_id", userID)
+
 	var export BudgetExport
 	if err := json.NewDecoder(r.Body).Decode(&export); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
+		helper.RespondErrorJSON(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	ctx := r.Context()
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
+		slog.Error("server.ImportBudgetJSON: failed to start transaction", "error", err, "user_id", userID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "failed to start transaction"})
@@ -356,6 +376,7 @@ func (s *Server) ImportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 			Icon:   cat.Icon,
 		})
 		if err != nil {
+			slog.Error("server.ImportBudgetJSON: failed to import expense categories", "error", err, "user_id", userID)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "failed to import expense categories: " + err.Error()})
@@ -373,6 +394,7 @@ func (s *Server) ImportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 			Icon:   cat.Icon,
 		})
 		if err != nil {
+			slog.Error("server.ImportBudgetJSON: failed to import income categories", "error", err, "user_id", userID)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "failed to import income categories: " + err.Error()})
@@ -389,6 +411,7 @@ func (s *Server) ImportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 			Color:  tag.Color,
 		})
 		if err != nil {
+			slog.Error("server.ImportBudgetJSON: failed to import tags", "error", err, "user_id", userID)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "failed to import tags: " + err.Error()})
@@ -430,6 +453,7 @@ func (s *Server) ImportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 			SourceRuleID:  helper.ToPgUUIDFromUUID(newRuleID),
 		})
 		if err != nil {
+			slog.Error("server.ImportBudgetJSON: failed to import expenses", "error", err, "user_id", userID)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "failed to import expenses: " + err.Error()})
@@ -466,6 +490,7 @@ func (s *Server) ImportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 			SourceRuleID:  helper.ToPgUUIDFromUUID(newRuleID),
 		})
 		if err != nil {
+			slog.Error("server.ImportBudgetJSON: failed to import incomes", "error", err, "user_id", userID)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "failed to import incomes: " + err.Error()})
@@ -495,6 +520,7 @@ func (s *Server) ImportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 			Priority:      rule.Priority,
 		})
 		if err != nil {
+			slog.Error("server.ImportBudgetJSON: failed to import recurring expense rules", "error", err, "user_id", userID)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "failed to import recurring expense rules: " + err.Error()})
@@ -514,6 +540,7 @@ func (s *Server) ImportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 			EndDate:       rule.EndDate,
 		})
 		if err != nil {
+			slog.Error("server.ImportBudgetJSON: failed to import recurring income rules", "error", err, "user_id", userID)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "failed to import recurring income rules: " + err.Error()})
@@ -546,11 +573,14 @@ func (s *Server) ImportBudgetJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := tx.Commit(ctx); err != nil {
+		slog.Error("server.ImportBudgetJSON: failed to commit transaction", "error", err, "user_id", userID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "failed to commit transaction"})
 		return
 	}
+
+	slog.Info("server.ImportBudgetJSON: import completed", "user_id", userID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "imported"})
@@ -562,7 +592,7 @@ func (s *Server) HelloWorldHandler(w http.ResponseWriter, r *http.Request) {
 
 	jsonResp, err := json.Marshal(resp)
 	if err != nil {
-		log.Fatalf("error handling JSON marshal. Err: %v", err)
+		slog.Error("error handling JSON marshal", "error", err)
 	}
 
 	_, _ = w.Write(jsonResp)
@@ -576,7 +606,7 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) websocketHandler(w http.ResponseWriter, r *http.Request) {
 	socket, err := websocket.Accept(w, r, nil)
 	if err != nil {
-		log.Printf("could not open websocket: %v", err)
+		slog.Error("could not open websocket", "error", err)
 		_, _ = w.Write([]byte("could not open websocket"))
 		w.WriteHeader(http.StatusInternalServerError)
 		return

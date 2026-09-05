@@ -11,9 +11,9 @@
 # Endpoints implemented:
 # - Expense Categories: full CRUD (soft delete via is_active)
 # - Income Categories: full CRUD (soft delete via is_active)
-# - Tags: full CRUD (hard delete)
-# - Expenses: full CRUD + search + skip + check-skipped
-# - Incomes: full CRUD + skip + check-skipped + occurrences
+# - Tags: full CRUD (hard delete) + tag associations for expenses/incomes
+# - Expenses: full CRUD + search + skip + check-skipped + tag management
+# - Incomes: full CRUD + skip + check-skipped + occurrences + tag management
 # - Priority Groups: hardcoded reference data
 # - Budget Remaining: current month income - expenses
 # - Stats: summary, trends, category-breakdown, savings-rate
@@ -22,7 +22,7 @@
 # - Forecast: upcoming recurring expenses
 # - Current Total Money: total income - total expenses
 # - Month-over-Month: combined monthly trends
-# - Recurring Expenses: read-only list of active rules
+# - Recurring Expenses: full CRUD
 # - Recurring Incomes: full CRUD
 # - Export/Import: JSON backup with ID remapping
 
@@ -296,6 +296,29 @@ GET {{baseUrl}}/budget/expenses/check-skipped?start_date=2026-02-01&end_date=202
 X-User-ID: {{userId}}
 
 
+### Add Tag to Expense
+
+POST {{baseUrl}}/budget/expenses/{expense_id}/tags HTTP/1.1
+Content-Type: application/json
+X-User-ID: {{userId}}
+
+{
+  "tag_id": "{tag_id}"
+}
+
+
+### Get Tags for Expense
+
+GET {{baseUrl}}/budget/expenses/{expense_id}/tags HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Remove Tag from Expense
+
+DELETE {{baseUrl}}/budget/expenses/{expense_id}/tags/{tag_id} HTTP/1.1
+X-User-ID: {{userId}}
+
+
 ### ============================================
 
 
@@ -383,6 +406,29 @@ X-User-ID: {{userId}}
 ### Get Income Occurrences
 
 GET {{baseUrl}}/budget/incomes/occurrences?start_date=2026-01-01&end_date=2026-12-31 HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Add Tag to Income
+
+POST {{baseUrl}}/budget/incomes/{income_id}/tags HTTP/1.1
+Content-Type: application/json
+X-User-ID: {{userId}}
+
+{
+  "tag_id": "{tag_id}"
+}
+
+
+### Get Tags for Income
+
+GET {{baseUrl}}/budget/incomes/{income_id}/tags HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Remove Tag from Income
+
+DELETE {{baseUrl}}/budget/incomes/{income_id}/tags/{tag_id} HTTP/1.1
 X-User-ID: {{userId}}
 
 
@@ -527,15 +573,65 @@ X-User-ID: {{userId}}
 ### ============================================
 
 
-### Recurring Expenses (Read-Only)
+### Recurring Expenses (Full CRUD)
 
 
 ### ============================================
 
 
+### Create Recurring Expense Rule
+
+POST {{baseUrl}}/budget/recurring-expenses HTTP/1.1
+Content-Type: application/json
+X-User-ID: {{userId}}
+
+{
+  "amount": 1500.00,
+  "currency": "PHP",
+  "description": "Monthly Internet Bill",
+  "category_id": null,
+  "notes": "Converge fiber",
+  "recurring_type": "monthly",
+  "start_date": "2026-01-01",
+  "end_date": "2026-12-31",
+  "priority": "need"
+}
+
+
 ### List Recurring Expense Rules
 
 GET {{baseUrl}}/budget/recurring-expenses HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Get Recurring Expense Rule
+
+GET {{baseUrl}}/budget/recurring-expenses/{expense_rule_id} HTTP/1.1
+X-User-ID: {{userId}}
+
+
+### Update Recurring Expense Rule
+
+PUT {{baseUrl}}/budget/recurring-expenses/{expense_rule_id} HTTP/1.1
+Content-Type: application/json
+X-User-ID: {{userId}}
+
+{
+  "amount": 1800.00,
+  "currency": "PHP",
+  "description": "Monthly Internet Bill (Updated)",
+  "category_id": null,
+  "notes": "Converge fiber - plan upgrade",
+  "recurring_type": "monthly",
+  "start_date": "2026-01-01",
+  "end_date": "2026-12-31",
+  "priority": "need"
+}
+
+
+### Delete Recurring Expense Rule
+
+DELETE {{baseUrl}}/budget/recurring-expenses/{expense_rule_id} HTTP/1.1
 X-User-ID: {{userId}}
 
 
