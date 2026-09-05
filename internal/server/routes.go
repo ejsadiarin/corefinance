@@ -19,7 +19,12 @@ import (
 
 func (s *Server) RegisterRoutes() http.Handler {
 	r := chi.NewRouter()
-	r.Use(middleware.Logger)
+
+	// Middleware stack
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(slogMiddleware)
+	r.Use(middleware.Recoverer)
 
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"https://*", "http://*"},
@@ -215,15 +220,15 @@ func (s *Server) GetBudgetRemaining(w http.ResponseWriter, r *http.Request) {
 // --- Export / Import ---
 
 type BudgetExport struct {
-	ExpenseCategories []db.ExpenseCategory             `json:"expense_categories"`
-	IncomeCategories  []db.IncomeCategory              `json:"income_categories"`
-	Tags              []db.Tag                         `json:"tags"`
-	Expenses          []db.Expense                     `json:"expenses"`
-	Incomes           []db.Income                      `json:"incomes"`
+	ExpenseCategories []db.ExpenseCategory              `json:"expense_categories"`
+	IncomeCategories  []db.IncomeCategory               `json:"income_categories"`
+	Tags              []db.Tag                          `json:"tags"`
+	Expenses          []db.Expense                      `json:"expenses"`
+	Incomes           []db.Income                       `json:"incomes"`
 	RecurringExpenses []db.ListRecurringExpenseRulesRow `json:"recurring_expenses"`
-	RecurringIncomes  []db.RecurringIncomeRule         `json:"recurring_incomes"`
-	ExpenseTags       []db.ExpenseTag                  `json:"expense_tags"`
-	IncomeTags        []db.IncomeTag                   `json:"income_tags"`
+	RecurringIncomes  []db.RecurringIncomeRule          `json:"recurring_incomes"`
+	ExpenseTags       []db.ExpenseTag                   `json:"expense_tags"`
+	IncomeTags        []db.IncomeTag                    `json:"income_tags"`
 }
 
 func (s *Server) ExportBudgetJSON(w http.ResponseWriter, r *http.Request) {
@@ -641,4 +646,22 @@ func (s *Server) websocketHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		time.Sleep(time.Second * 2)
 	}
+}
+
+func slogMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+
+		next.ServeHTTP(ww, r)
+
+		slog.Info("request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", ww.Status(),
+			"bytes", ww.BytesWritten(),
+			"duration", time.Since(start).String(),
+			"request_id", middleware.GetReqID(r.Context()),
+		)
+	})
 }

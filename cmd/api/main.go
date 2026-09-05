@@ -5,55 +5,106 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/ejsadiarin/corefinance/internal/logger"
 	"github.com/ejsadiarin/corefinance/internal/server"
+
+	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
+
+	_ "github.com/joho/godotenv/autoload"
 )
 
-func gracefulShutdown(apiServer *http.Server, done chan bool) {
-	// Create context that listens for the interrupt signal from the OS.
+func gracefulShutdown(apiServer *http.Server, pool *pgxpool.Pool, done chan bool) {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Listen for the interrupt signal.
 	<-ctx.Done()
 
 	slog.Info("shutting down gracefully, press Ctrl+C again to force")
-	stop() // Allow Ctrl+C to force shutdown
+	stop()
 
-	// The context is used to inform the server it has 5 seconds to finish
-	// the request it is currently handling
+	// Give in-flight requests 5s to complete
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := apiServer.Shutdown(ctx); err != nil {
-		slog.Error("Server forced to shutdown", "error", err)
+		slog.Error("server forced to shutdown", "error", err)
 	}
 
-	slog.Info("Server exiting")
+	pool.Close()
+	slog.Info("database pool closed")
+	slog.Info("server exiting")
 
-	// Notify the main goroutine that the shutdown is complete
 	done <- true
 }
 
-func main() {
-	logger.Setup()
-	server := server.NewServer()
+func buildPool() *pgxpool.Pool {
+	connStr := fmt.Sprintf(
+		"postgres://%s:%s@%s:%s/%s?sslmode=disable&search_path=%s",
+		os.Getenv("DB_USERNAME"),
+		os.Getenv("DB_PASSWORD"),
+		os.Getenv("DB_HOST"),
+		os.Getenv("DB_PORT"),
+		os.Getenv("DB_DATABASE"),
+		os.Getenv("DB_SCHEMA"),
+	)
 
-	// Create a done channel to signal when the shutdown is complete
-	done := make(chan bool, 1)
-
-	// Run graceful shutdown in a separate goroutine
-	go gracefulShutdown(server, done)
-
-	err := server.ListenAndServe()
-	if err != nil && err != http.ErrServerClosed {
-		panic(fmt.Sprintf("http server error: %s", err))
+	config, err := pgxpool.ParseConfig(connStr)
+	if err != nil {
+		slog.Error("failed to parse pool config", "error", err)
+		panic(err)
 	}
 
-	// Wait for the graceful shutdown to complete
+	config.MaxConns = 20
+	config.MinConns = 2
+	config.MaxConnLifetime = time.Hour
+	config.MaxConnIdleTime = 30 * time.Minute
+	config.HealthCheckPeriod = time.Minute
+
+	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	if err != nil {
+		slog.Error("unable to create pgxpool", "error", err)
+		panic(err)
+	}
+
+	if err := pool.Ping(context.Background()); err != nil {
+		slog.Error("unable to ping database", "error", err)
+		panic(err)
+	}
+
+	slog.Info("database pool connected")
+	return pool
+}
+
+func main() {
+	logger.New()
+
+	pool := buildPool()
+	defer pool.Close()
+
+	queries := db.New(pool)
+
+	port, _ := strconv.Atoi(os.Getenv("PORT"))
+	if port == 0 {
+		port = 8080
+	}
+
+	srv := server.New(port, pool, queries)
+
+	done := make(chan bool, 1)
+	go gracefulShutdown(srv, pool, done)
+
+	slog.Info("server starting", "port", port)
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		slog.Error("server error", "error", err)
+	}
+
 	<-done
-	slog.Info("Graceful shutdown complete.")
+	slog.Info("graceful shutdown complete")
 }

@@ -6,7 +6,7 @@ import (
 )
 
 func Setup() {
-	env := os.Getenv("APP_ENV")
+	env := os.Getenv("ENV")
 	if env == "" {
 		env = "development"
 	}

@@ -1,12 +1,8 @@
 package server
 
 import (
-	"context"
 	"fmt"
-	"log"
 	"net/http"
-	"os"
-	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -18,8 +14,6 @@ import (
 	"github.com/ejsadiarin/corefinance/internal/recurring"
 	"github.com/ejsadiarin/corefinance/internal/stats"
 	"github.com/ejsadiarin/corefinance/internal/tag"
-
-	_ "github.com/joho/godotenv/autoload"
 )
 
 type Server struct {
@@ -35,48 +29,25 @@ type Server struct {
 	Pool             *pgxpool.Pool
 }
 
-func NewServer() *http.Server {
-	port, _ := strconv.Atoi(os.Getenv("PORT"))
-	NewServer := &Server{
-		port: port,
+func New(port int, pool *pgxpool.Pool, queries *db.Queries) *http.Server {
+	s := &Server{
+		port:    port,
+		Pool:    pool,
+		Queries: queries,
 	}
 
-	// Create pgxpool connection for sqlc queries
-	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, buildConnString())
-	if err != nil {
-		log.Printf("unable to create pgxpool: %v", err)
-	}
+	s.ExpenseHandler = expense.NewHandler(expense.NewService(queries))
+	s.IncomeHandler = income.NewHandler(income.NewService(queries))
+	s.CategoryHandler = category.NewHandler(category.NewService(queries))
+	s.TagHandler = tag.NewHandler(tag.NewService(queries))
+	s.StatsHandler = stats.NewHandler(stats.NewService(queries))
+	s.RecurringHandler = recurring.NewHandler(recurring.NewService(queries))
 
-	// Wire up handlers (db.Queries implements all service Querier interfaces)
-	queries := db.New(pool)
-	NewServer.ExpenseHandler = expense.NewHandler(expense.NewService(queries))
-	NewServer.IncomeHandler = income.NewHandler(income.NewService(queries))
-	NewServer.CategoryHandler = category.NewHandler(category.NewService(queries))
-	NewServer.TagHandler = tag.NewHandler(tag.NewService(queries))
-	NewServer.StatsHandler = stats.NewHandler(stats.NewService(queries))
-	NewServer.RecurringHandler = recurring.NewHandler(recurring.NewService(queries))
-	NewServer.Queries = queries
-	NewServer.Pool = pool
-
-	// Declare Server config
-	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", NewServer.port),
-		Handler:      NewServer.RegisterRoutes(),
+	return &http.Server{
+		Addr:         fmt.Sprintf(":%d", port),
+		Handler:      s.RegisterRoutes(),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
-
-	return server
-}
-
-func buildConnString() string {
-	database := os.Getenv("BLUEPRINT_DB_DATABASE")
-	password := os.Getenv("BLUEPRINT_DB_PASSWORD")
-	username := os.Getenv("BLUEPRINT_DB_USERNAME")
-	port := os.Getenv("BLUEPRINT_DB_PORT")
-	host := os.Getenv("BLUEPRINT_DB_HOST")
-	schema := os.Getenv("BLUEPRINT_DB_SCHEMA")
-	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable&search_path=%s", username, password, host, port, database, schema)
 }
