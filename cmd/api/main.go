@@ -45,15 +45,18 @@ func gracefulShutdown(apiServer *http.Server, pool *pgxpool.Pool, done chan bool
 }
 
 func buildPool() *pgxpool.Pool {
-	connStr := fmt.Sprintf(
-		"postgres://%s:%s@%s:%s/%s?sslmode=disable&search_path=%s",
-		os.Getenv("DB_USERNAME"),
-		os.Getenv("DB_PASSWORD"),
-		os.Getenv("DB_HOST"),
-		os.Getenv("DB_PORT"),
-		os.Getenv("DB_DATABASE"),
-		os.Getenv("DB_SCHEMA"),
-	)
+	connStr := os.Getenv("DATABASE_URL")
+	if connStr == "" {
+		connStr = fmt.Sprintf(
+			"postgres://%s:%s@%s:%s/%s?sslmode=disable&search_path=%s",
+			os.Getenv("DB_USERNAME"),
+			os.Getenv("DB_PASSWORD"),
+			os.Getenv("DB_HOST"),
+			os.Getenv("DB_PORT"),
+			os.Getenv("DB_DATABASE"),
+			os.Getenv("DB_SCHEMA"),
+		)
+	}
 
 	config, err := pgxpool.ParseConfig(connStr)
 	if err != nil {
@@ -92,7 +95,7 @@ func main() {
 
 	port, _ := strconv.Atoi(os.Getenv("PORT"))
 	if port == 0 {
-		port = 8080
+		port = 6969
 	}
 
 	srv := server.New(port, pool, queries)
