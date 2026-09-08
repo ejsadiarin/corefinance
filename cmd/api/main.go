@@ -48,13 +48,12 @@ func buildPool() *pgxpool.Pool {
 	connStr := os.Getenv("DATABASE_URL")
 	if connStr == "" {
 		connStr = fmt.Sprintf(
-			"postgres://%s:%s@%s:%s/%s?sslmode=disable&search_path=%s",
+			"postgres://%s:%s@%s:%s/%s?sslmode=disable&search_path=corefinance",
 			os.Getenv("DB_USERNAME"),
 			os.Getenv("DB_PASSWORD"),
 			os.Getenv("DB_HOST"),
 			os.Getenv("DB_PORT"),
 			os.Getenv("DB_DATABASE"),
-			os.Getenv("DB_SCHEMA"),
 		)
 	}
 

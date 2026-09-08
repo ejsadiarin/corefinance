@@ -39,7 +39,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.Get("/websocket", s.websocketHandler)
 
 	// budget tracking routes
-	r.Route("/budget", func(r chi.Router) {
+	r.Route("/api/budget", func(r chi.Router) {
 		// priority groups (reference data)
 		r.Get("/priority-groups", s.BudgetHandler.PriorityGroups)
 
