@@ -3,6 +3,7 @@ package expense
 import (
 	"context"
 	"log/slog"
+
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
@@ -78,10 +79,10 @@ func (s *Service) Search(ctx context.Context, userID uuid.UUID, params SearchPar
 		pageSize = 50
 	}
 	return s.queries.SearchExpenses(ctx, db.SearchExpensesParams{
-		UserID:      userID,
-		Query:       helper.ToPgText(&params.Query),
-		PageLimit:   pageSize,
-		PageOffset:  (page - 1) * pageSize,
+		UserID:     userID,
+		Query:      helper.ToPgText(&params.Query),
+		PageLimit:  pageSize,
+		PageOffset: (page - 1) * pageSize,
 	})
 }
 

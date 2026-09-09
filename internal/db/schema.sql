@@ -157,3 +157,7 @@ CREATE INDEX idx_incomes_recurring ON incomes USING btree (recurring_type);
 CREATE INDEX idx_incomes_user ON incomes USING btree (user_id);
 CREATE INDEX idx_recurring_expense_rules_user ON recurring_expense_rules USING btree (user_id);
 CREATE INDEX idx_recurring_income_rules_user ON recurring_income_rules USING btree (user_id);
+
+-- Composite indexes for stats queries (user_id + status + date)
+CREATE INDEX idx_expenses_user_status_date ON expenses USING btree (user_id, status, expense_date);
+CREATE INDEX idx_incomes_user_status_date ON incomes USING btree (user_id, status, date);

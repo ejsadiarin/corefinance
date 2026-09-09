@@ -308,10 +308,10 @@ LEFT JOIN expense_categories ec ON e.category_id = ec.id
 WHERE e.user_id = $1
   AND ($2::date IS NULL OR e.expense_date >= $2)
   AND ($3::date IS NULL OR e.expense_date <= $3)
-  AND ($4::uuid IS NULL OR e.category_id = $4)
-  AND ($5::varchar IS NULL OR e.priority = $5)
-  AND ($6::varchar IS NULL OR e.status = $6)
-  AND ($7::varchar IS NULL OR e.recurring_type = $7)
+  AND ('00000000-0000-0000-0000-000000000000' = $4::uuid OR e.category_id = $4)
+  AND ('' = $5 OR e.priority = $5)
+  AND ('' = $6 OR e.status = $6)
+  AND ('' = $7 OR e.recurring_type = $7)
 ORDER BY e.expense_date DESC, e.created_at DESC
 LIMIT $9 OFFSET $8
 `
@@ -321,9 +321,9 @@ type ListExpensesParams struct {
 	StartDate     pgtype.Date `db:"start_date" json:"start_date"`
 	EndDate       pgtype.Date `db:"end_date" json:"end_date"`
 	CategoryID    uuid.UUID   `db:"category_id" json:"category_id"`
-	Priority      string      `db:"priority" json:"priority"`
-	Status        string      `db:"status" json:"status"`
-	RecurringType string      `db:"recurring_type" json:"recurring_type"`
+	Priority      interface{} `db:"priority" json:"priority"`
+	Status        interface{} `db:"status" json:"status"`
+	RecurringType interface{} `db:"recurring_type" json:"recurring_type"`
 	PageOffset    int32       `db:"page_offset" json:"page_offset"`
 	PageLimit     int32       `db:"page_limit" json:"page_limit"`
 }

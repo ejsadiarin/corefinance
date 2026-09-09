@@ -11,12 +11,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/logger"
 	"github.com/ejsadiarin/corefinance/internal/server"
-
-	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 
 	_ "github.com/joho/godotenv/autoload"
 )
@@ -68,6 +68,11 @@ func buildPool() *pgxpool.Pool {
 	config.MaxConnLifetime = time.Hour
 	config.MaxConnIdleTime = 30 * time.Minute
 	config.HealthCheckPeriod = time.Minute
+
+	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		_, err := conn.Exec(ctx, "SET search_path TO corefinance")
+		return err
+	}
 
 	pool, err := pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {

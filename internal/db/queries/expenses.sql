@@ -16,10 +16,10 @@ LEFT JOIN expense_categories ec ON e.category_id = ec.id
 WHERE e.user_id = @user_id
   AND (@start_date::date IS NULL OR e.expense_date >= @start_date)
   AND (@end_date::date IS NULL OR e.expense_date <= @end_date)
-  AND (@category_id::uuid IS NULL OR e.category_id = @category_id)
-  AND (@priority::varchar IS NULL OR e.priority = @priority)
-  AND (@status::varchar IS NULL OR e.status = @status)
-  AND (@recurring_type::varchar IS NULL OR e.recurring_type = @recurring_type)
+  AND ('00000000-0000-0000-0000-000000000000' = @category_id::uuid OR e.category_id = @category_id)
+  AND ('' = @priority OR e.priority = @priority)
+  AND ('' = @status OR e.status = @status)
+  AND ('' = @recurring_type OR e.recurring_type = @recurring_type)
 ORDER BY e.expense_date DESC, e.created_at DESC
 LIMIT @page_limit OFFSET @page_offset;
 

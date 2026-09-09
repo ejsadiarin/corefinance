@@ -16,9 +16,9 @@ LEFT JOIN income_categories ic ON i.category_id = ic.id
 WHERE i.user_id = @user_id
   AND (@start_date::date IS NULL OR i.date >= @start_date)
   AND (@end_date::date IS NULL OR i.date <= @end_date)
-  AND (@category_id::uuid IS NULL OR i.category_id = @category_id)
-  AND (@status::varchar IS NULL OR i.status = @status)
-  AND (@recurring_type::varchar IS NULL OR i.recurring_type = @recurring_type)
+  AND ('00000000-0000-0000-0000-000000000000' = @category_id::uuid OR i.category_id = @category_id)
+  AND ('' = @status OR i.status = @status)
+  AND ('' = @recurring_type OR i.recurring_type = @recurring_type)
 ORDER BY i.date DESC, i.created_at DESC
 LIMIT @page_limit OFFSET @page_offset;
 

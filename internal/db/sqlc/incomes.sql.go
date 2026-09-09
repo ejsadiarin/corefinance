@@ -296,9 +296,9 @@ LEFT JOIN income_categories ic ON i.category_id = ic.id
 WHERE i.user_id = $1
   AND ($2::date IS NULL OR i.date >= $2)
   AND ($3::date IS NULL OR i.date <= $3)
-  AND ($4::uuid IS NULL OR i.category_id = $4)
-  AND ($5::varchar IS NULL OR i.status = $5)
-  AND ($6::varchar IS NULL OR i.recurring_type = $6)
+  AND ('00000000-0000-0000-0000-000000000000' = $4::uuid OR i.category_id = $4)
+  AND ('' = $5 OR i.status = $5)
+  AND ('' = $6 OR i.recurring_type = $6)
 ORDER BY i.date DESC, i.created_at DESC
 LIMIT $8 OFFSET $7
 `
@@ -308,8 +308,8 @@ type ListIncomesParams struct {
 	StartDate     pgtype.Date `db:"start_date" json:"start_date"`
 	EndDate       pgtype.Date `db:"end_date" json:"end_date"`
 	CategoryID    uuid.UUID   `db:"category_id" json:"category_id"`
-	Status        string      `db:"status" json:"status"`
-	RecurringType string      `db:"recurring_type" json:"recurring_type"`
+	Status        interface{} `db:"status" json:"status"`
+	RecurringType interface{} `db:"recurring_type" json:"recurring_type"`
 	PageOffset    int32       `db:"page_offset" json:"page_offset"`
 	PageLimit     int32       `db:"page_limit" json:"page_limit"`
 }
