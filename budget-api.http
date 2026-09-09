@@ -1,3 +1,6 @@
+@baseUrl=http://localhost:6969
+@userId=uuid
+
 ### Budget API Testing
 
 ### Notes
@@ -27,28 +30,10 @@
 # - Export/Import: JSON backup with ID remapping
 # - Health: pgxpool ping + connection stats
 
-### Base URL
-
-@baseUrl = http://localhost:8080
-@userId = 00000000-0000-0000-0000-000000000001
-
-
-### ============================================
-
-
-### Health Check
-
-
-### ============================================
-
 
 ### Health Check
 
 GET {{baseUrl}}/health HTTP/1.1
-
-
-### ============================================
-
 
 ### Expense Categories
 
@@ -71,7 +56,7 @@ X-User-ID: {{userId}}
 
 ### List Expense Categories
 
-GET {{baseUrl}}/budget/expense-categories HTTP/1.1
+GET {{baseUrl}}/api/budget/expense-categories HTTP/1.1
 X-User-ID: {{userId}}
 
 
@@ -118,7 +103,7 @@ X-User-ID: {{userId}}
 
 ### List Income Categories
 
-GET {{baseUrl}}/budget/income-categories HTTP/1.1
+GET {{baseUrl}}/api/budget/income-categories HTTP/1.1
 X-User-ID: {{userId}}
 
 
@@ -164,7 +149,7 @@ X-User-ID: {{userId}}
 
 ### List Tags
 
-GET {{baseUrl}}/budget/tags HTTP/1.1
+GET {{baseUrl}}/api/budget/tags HTTP/1.1
 X-User-ID: {{userId}}
 
 
@@ -216,19 +201,23 @@ X-User-ID: {{userId}}
 
 ### List Expenses
 
-GET {{baseUrl}}/budget/expenses?page=1&page_size=20 HTTP/1.1
+GET {{baseUrl}}/api/budget/expenses?page=1&page_size=20 HTTP/1.1
 X-User-ID: {{userId}}
 
+### test
+
+GET http://localhost:6968/api/budget/expenses?page=1&page_size=20 HTTP/1.1
+X-User-ID: {{userId}}
 
 ### List Expenses (Filtered)
 
-GET {{baseUrl}}/budget/expenses?start_date=2026-02-01&end_date=2026-02-28&priority=need&status=posted&page=1&page_size=50 HTTP/1.1
+GET {{baseUrl}}/api/budget/expenses?start_date=2026-02-01&end_date=2026-02-28&priority=need&status=posted&page=1&page_size=50 HTTP/1.1
 X-User-ID: {{userId}}
 
 
 ### Get Expense by ID
 
-GET {{baseUrl}}/budget/expenses/{expense_id} HTTP/1.1
+GET {{baseUrl}}/api/budget/expenses/{expense_id} HTTP/1.1
 X-User-ID: {{userId}}
 
 
@@ -259,7 +248,7 @@ X-User-ID: {{userId}}
 
 ### Search Expenses
 
-GET {{baseUrl}}/budget/expenses/search?q=groceries&page=1&page_size=20 HTTP/1.1
+GET {{baseUrl}}/api/budget/expenses/search?q=groceries&page=1&page_size=20 HTTP/1.1
 X-User-ID: {{userId}}
 
 
@@ -276,7 +265,7 @@ X-User-ID: {{userId}}
 
 ### Check Skipped Expenses
 
-GET {{baseUrl}}/budget/expenses/check-skipped?start_date=2026-02-01&end_date=2026-02-28 HTTP/1.1
+GET {{baseUrl}}/api/budget/expenses/check-skipped?start_date=2026-02-01&end_date=2026-02-28 HTTP/1.1
 X-User-ID: {{userId}}
 
 
@@ -293,7 +282,7 @@ X-User-ID: {{userId}}
 
 ### Get Tags for Expense
 
-GET {{baseUrl}}/budget/expenses/{expense_id}/tags HTTP/1.1
+GET {{baseUrl}}/api/budget/expenses/{expense_id}/tags HTTP/1.1
 X-User-ID: {{userId}}
 
 
@@ -331,19 +320,19 @@ X-User-ID: {{userId}}
 
 ### List Incomes
 
-GET {{baseUrl}}/budget/incomes?page=1&page_size=20 HTTP/1.1
+GET {{baseUrl}}/api/budget/incomes?page=1&page_size=20 HTTP/1.1
 X-User-ID: {{userId}}
 
 
 ### List Incomes (Filtered)
 
-GET {{baseUrl}}/budget/incomes?start_date=2026-02-01&end_date=2026-02-28&status=posted&page=1&page_size=50 HTTP/1.1
+GET {{baseUrl}}/api/budget/incomes?start_date=2026-02-01&end_date=2026-02-28&status=posted&page=1&page_size=50 HTTP/1.1
 X-User-ID: {{userId}}
 
 
 ### Get Income by ID
 
-GET {{baseUrl}}/budget/incomes/{income_id} HTTP/1.1
+GET {{baseUrl}}/api/budget/incomes/{income_id} HTTP/1.1
 X-User-ID: {{userId}}
 
 
@@ -383,13 +372,13 @@ X-User-ID: {{userId}}
 
 ### Check Skipped Incomes
 
-GET {{baseUrl}}/budget/incomes/check-skipped?start_date=2026-02-01&end_date=2026-02-28 HTTP/1.1
+GET {{baseUrl}}/api/budget/incomes/check-skipped?start_date=2026-02-01&end_date=2026-02-28 HTTP/1.1
 X-User-ID: {{userId}}
 
 
 ### Get Income Occurrences
 
-GET {{baseUrl}}/budget/incomes/occurrences?start_date=2026-01-01&end_date=2026-12-31 HTTP/1.1
+GET {{baseUrl}}/api/budget/incomes/occurrences?start_date=2026-01-01&end_date=2026-12-31 HTTP/1.1
 X-User-ID: {{userId}}
 
 
@@ -406,7 +395,7 @@ X-User-ID: {{userId}}
 
 ### Get Tags for Income
 
-GET {{baseUrl}}/budget/incomes/{income_id}/tags HTTP/1.1
+GET {{baseUrl}}/api/budget/incomes/{income_id}/tags HTTP/1.1
 X-User-ID: {{userId}}
 
 
@@ -427,7 +416,7 @@ X-User-ID: {{userId}}
 
 ### List Priority Groups
 
-GET {{baseUrl}}/budget/priority-groups HTTP/1.1
+GET {{baseUrl}}/api/budget/priority-groups HTTP/1.1
 X-User-ID: {{userId}}
 
 
@@ -442,7 +431,7 @@ X-User-ID: {{userId}}
 
 ### Get Budget Remaining (Current Month)
 
-GET {{baseUrl}}/budget/remaining HTTP/1.1
+GET {{baseUrl}}/api/budget/remaining HTTP/1.1
 X-User-ID: {{userId}}
 
 
@@ -457,49 +446,49 @@ X-User-ID: {{userId}}
 
 ### Get Summary
 
-GET {{baseUrl}}/budget/stats/summary HTTP/1.1
+GET {{baseUrl}}/api/budget/stats/summary HTTP/1.1
 X-User-ID: {{userId}}
 
 
 ### Get Summary (Custom Period)
 
-GET {{baseUrl}}/budget/stats/summary?start_date=2026-02-01&end_date=2026-02-28 HTTP/1.1
+GET {{baseUrl}}/api/budget/stats/summary?start_date=2026-02-01&end_date=2026-02-28 HTTP/1.1
 X-User-ID: {{userId}}
 
 
 ### Get Trends
 
-GET {{baseUrl}}/budget/stats/trends HTTP/1.1
+GET {{baseUrl}}/api/budget/stats/trends HTTP/1.1
 X-User-ID: {{userId}}
 
 
 ### Get Trends (Custom Period)
 
-GET {{baseUrl}}/budget/stats/trends?start_date=2026-01-01&end_date=2026-12-31 HTTP/1.1
+GET {{baseUrl}}/api/budget/stats/trends?start_date=2026-01-01&end_date=2026-12-31 HTTP/1.1
 X-User-ID: {{userId}}
 
 
 ### Get Category Breakdown
 
-GET {{baseUrl}}/budget/stats/category-breakdown HTTP/1.1
+GET {{baseUrl}}/api/budget/stats/category-breakdown HTTP/1.1
 X-User-ID: {{userId}}
 
 
 ### Get Category Breakdown (Custom Period)
 
-GET {{baseUrl}}/budget/stats/category-breakdown?start_date=2026-02-01&end_date=2026-02-28 HTTP/1.1
+GET {{baseUrl}}/api/budget/stats/category-breakdown?start_date=2026-02-01&end_date=2026-02-28 HTTP/1.1
 X-User-ID: {{userId}}
 
 
 ### Get Savings Rate
 
-GET {{baseUrl}}/budget/stats/savings-rate HTTP/1.1
+GET {{baseUrl}}/api/budget/stats/savings-rate HTTP/1.1
 X-User-ID: {{userId}}
 
 
 ### Get Savings Rate (Custom Period)
 
-GET {{baseUrl}}/budget/stats/savings-rate?start_date=2026-01-15&end_date=2026-02-17 HTTP/1.1
+GET {{baseUrl}}/api/budget/stats/savings-rate?start_date=2026-01-15&end_date=2026-02-17 HTTP/1.1
 X-User-ID: {{userId}}
 
 
@@ -514,43 +503,43 @@ X-User-ID: {{userId}}
 
 ### Get 50/30/20 Analysis
 
-GET {{baseUrl}}/budget/analysis/503020 HTTP/1.1
+GET {{baseUrl}}/api/budget/analysis/503020 HTTP/1.1
 X-User-ID: {{userId}}
 
 
 ### Get 50/30/20 Analysis (Custom Period)
 
-GET {{baseUrl}}/budget/analysis/503020?start_date=2026-02-01&end_date=2026-02-28 HTTP/1.1
+GET {{baseUrl}}/api/budget/analysis/503020?start_date=2026-02-01&end_date=2026-02-28 HTTP/1.1
 X-User-ID: {{userId}}
 
 
 ### Get Spending Velocity
 
-GET {{baseUrl}}/budget/velocity HTTP/1.1
+GET {{baseUrl}}/api/budget/velocity HTTP/1.1
 X-User-ID: {{userId}}
 
 
 ### Get Upcoming Bills
 
-GET {{baseUrl}}/budget/forecast/upcoming HTTP/1.1
+GET {{baseUrl}}/api/budget/forecast/upcoming HTTP/1.1
 X-User-ID: {{userId}}
 
 
 ### Get Current Total Money
 
-GET {{baseUrl}}/budget/current-total-money HTTP/1.1
+GET {{baseUrl}}/api/budget/current-total-money HTTP/1.1
 X-User-ID: {{userId}}
 
 
 ### Get Month-over-Month Trends
 
-GET {{baseUrl}}/budget/trends/month-over-month HTTP/1.1
+GET {{baseUrl}}/api/budget/trends/month-over-month HTTP/1.1
 X-User-ID: {{userId}}
 
 
 ### Get Month-over-Month Trends (Custom Period)
 
-GET {{baseUrl}}/budget/trends/month-over-month?start_date=2026-01-01&end_date=2026-12-31 HTTP/1.1
+GET {{baseUrl}}/api/budget/trends/month-over-month?start_date=2026-01-01&end_date=2026-12-31 HTTP/1.1
 X-User-ID: {{userId}}
 
 
@@ -584,13 +573,13 @@ X-User-ID: {{userId}}
 
 ### List Recurring Expense Rules
 
-GET {{baseUrl}}/budget/recurring-expenses HTTP/1.1
+GET {{baseUrl}}/api/budget/recurring-expenses HTTP/1.1
 X-User-ID: {{userId}}
 
 
 ### Get Recurring Expense Rule
 
-GET {{baseUrl}}/budget/recurring-expenses/{expense_rule_id} HTTP/1.1
+GET {{baseUrl}}/api/budget/recurring-expenses/{expense_rule_id} HTTP/1.1
 X-User-ID: {{userId}}
 
 
@@ -646,13 +635,13 @@ X-User-ID: {{userId}}
 
 ### List Recurring Income Rules
 
-GET {{baseUrl}}/budget/recurring-incomes HTTP/1.1
+GET {{baseUrl}}/api/budget/recurring-incomes HTTP/1.1
 X-User-ID: {{userId}}
 
 
 ### Get Recurring Income Rule
 
-GET {{baseUrl}}/budget/recurring-incomes/{rule_id} HTTP/1.1
+GET {{baseUrl}}/api/budget/recurring-incomes/{rule_id} HTTP/1.1
 X-User-ID: {{userId}}
 
 
@@ -689,7 +678,7 @@ X-User-ID: {{userId}}
 
 ### Export Budget Data
 
-GET {{baseUrl}}/budget/export HTTP/1.1
+GET {{baseUrl}}/api/budget/export HTTP/1.1
 X-User-ID: {{userId}}
 
 

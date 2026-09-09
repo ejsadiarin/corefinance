@@ -56,3 +56,6 @@ main
 !internal/db/queries/*.sql
 !internal/db/schema.sql
 
+# http client
+.http-client.env.json
+
