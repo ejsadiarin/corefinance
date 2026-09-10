@@ -374,41 +374,25 @@ func TestStatsService_CurrentTotalMoney(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		mock := &mock.MockQuerier{
-			GetCurrentTotalMoneyFn: func(ctx context.Context, arg db.GetCurrentTotalMoneyParams) (decimal.Decimal, error) {
-				assert.Equal(t, userID, arg.UserID)
+			GetCurrentTotalMoneyFn: func(ctx context.Context, uid uuid.UUID) (decimal.Decimal, error) {
+				assert.Equal(t, userID, uid)
 				return decimal.NewFromFloat(15000), nil
 			},
 		}
 		svc := NewService(mock)
-		result, err := svc.CurrentTotalMoney(context.Background(), userID, nil, nil)
+		result, err := svc.CurrentTotalMoney(context.Background(), userID)
 		require.NoError(t, err)
 		assert.Equal(t, "15000", result.TotalMoney.String())
 	})
 
-	t.Run("with dates", func(t *testing.T) {
-		start := "2026-01-01"
-		end := "2026-06-30"
-		mock := &mock.MockQuerier{
-			GetCurrentTotalMoneyFn: func(ctx context.Context, arg db.GetCurrentTotalMoneyParams) (decimal.Decimal, error) {
-				assert.True(t, arg.StartDate.Valid)
-				assert.True(t, arg.EndDate.Valid)
-				return decimal.NewFromFloat(5000), nil
-			},
-		}
-		svc := NewService(mock)
-		result, err := svc.CurrentTotalMoney(context.Background(), userID, &start, &end)
-		require.NoError(t, err)
-		assert.Equal(t, "5000", result.TotalMoney.String())
-	})
-
 	t.Run("error", func(t *testing.T) {
 		mock := &mock.MockQuerier{
-			GetCurrentTotalMoneyFn: func(ctx context.Context, arg db.GetCurrentTotalMoneyParams) (decimal.Decimal, error) {
+			GetCurrentTotalMoneyFn: func(ctx context.Context, uid uuid.UUID) (decimal.Decimal, error) {
 				return decimal.Zero, errors.New("db error")
 			},
 		}
 		svc := NewService(mock)
-		_, err := svc.CurrentTotalMoney(context.Background(), userID, nil, nil)
+		_, err := svc.CurrentTotalMoney(context.Background(), userID)
 		require.Error(t, err)
 	})
 }

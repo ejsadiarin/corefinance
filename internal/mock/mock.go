@@ -31,7 +31,7 @@ type MockQuerier struct {
 	DeleteRecurringIncomeRuleFn     func(ctx context.Context, arg db.DeleteRecurringIncomeRuleParams) error
 	DeleteTagFn                     func(ctx context.Context, arg db.DeleteTagParams) error
 	GetCategoryBreakdownFn          func(ctx context.Context, arg db.GetCategoryBreakdownParams) ([]db.GetCategoryBreakdownRow, error)
-	GetCurrentTotalMoneyFn          func(ctx context.Context, arg db.GetCurrentTotalMoneyParams) (decimal.Decimal, error)
+	GetCurrentTotalMoneyFn          func(ctx context.Context, userID uuid.UUID) (decimal.Decimal, error)
 	GetExpenseFn                    func(ctx context.Context, arg db.GetExpenseParams) (db.GetExpenseRow, error)
 	GetExpenseCategoryFn            func(ctx context.Context, arg db.GetExpenseCategoryParams) (db.ExpenseCategory, error)
 	GetExpenseStatsByCategoryFn     func(ctx context.Context, arg db.GetExpenseStatsByCategoryParams) ([]db.GetExpenseStatsByCategoryRow, error)
@@ -157,8 +157,8 @@ func (m *MockQuerier) GetCategoryBreakdown(ctx context.Context, arg db.GetCatego
 	return m.GetCategoryBreakdownFn(ctx, arg)
 }
 
-func (m *MockQuerier) GetCurrentTotalMoney(ctx context.Context, arg db.GetCurrentTotalMoneyParams) (decimal.Decimal, error) {
-	return m.GetCurrentTotalMoneyFn(ctx, arg)
+func (m *MockQuerier) GetCurrentTotalMoney(ctx context.Context, userID uuid.UUID) (decimal.Decimal, error) {
+	return m.GetCurrentTotalMoneyFn(ctx, userID)
 }
 
 func (m *MockQuerier) GetExpense(ctx context.Context, arg db.GetExpenseParams) (db.GetExpenseRow, error) {

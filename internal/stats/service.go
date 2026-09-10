@@ -143,13 +143,9 @@ func (s *Service) SpendingVelocity(ctx context.Context, userID uuid.UUID, startD
 	}, nil
 }
 
-func (s *Service) CurrentTotalMoney(ctx context.Context, userID uuid.UUID, startDate, endDate *string) (CurrentTotalMoney, error) {
+func (s *Service) CurrentTotalMoney(ctx context.Context, userID uuid.UUID) (CurrentTotalMoney, error) {
 	slog.Debug("stats.Service.CurrentTotalMoney", "user_id", userID)
-	totalMoney, err := s.queries.GetCurrentTotalMoney(ctx, db.GetCurrentTotalMoneyParams{
-		UserID:    userID,
-		StartDate: helper.ToPgDatePtr(startDate),
-		EndDate:   helper.ToPgDatePtr(endDate),
-	})
+	totalMoney, err := s.queries.GetCurrentTotalMoney(ctx, userID)
 	if err != nil {
 		return CurrentTotalMoney{}, err
 	}

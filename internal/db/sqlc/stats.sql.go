@@ -72,26 +72,16 @@ func (q *Queries) GetCategoryBreakdown(ctx context.Context, arg GetCategoryBreak
 }
 
 const getCurrentTotalMoney = `-- name: GetCurrentTotalMoney :one
-SELECT
-    (COALESCE(SUM(CASE WHEN i.status != 'skipped' THEN i.amount ELSE 0 END), 0)
-     - COALESCE(SUM(CASE WHEN e.status != 'skipped' THEN e.amount ELSE 0 END), 0))::numeric AS total_money
-FROM expenses e
-FULL OUTER JOIN incomes i ON e.user_id = i.user_id
-WHERE (e.user_id = $1 OR i.user_id = $1)
-  AND (e.expense_date >= $2 OR e.expense_date IS NULL OR $2 IS NULL)
-  AND (e.expense_date <= $3 OR e.expense_date IS NULL OR $3 IS NULL)
-  AND (i.date >= $2 OR i.date IS NULL OR $2 IS NULL)
-  AND (i.date <= $3 OR i.date IS NULL OR $3 IS NULL)
+SELECT (
+    (SELECT COALESCE(SUM(i.amount), 0) FROM incomes i
+     WHERE i.user_id = $1 AND i.status != 'skipped')
+    - (SELECT COALESCE(SUM(e.amount), 0) FROM expenses e
+     WHERE e.user_id = $1 AND e.status != 'skipped')
+)::numeric AS total_money
 `
 
-type GetCurrentTotalMoneyParams struct {
-	UserID    uuid.UUID   `db:"user_id" json:"user_id"`
-	StartDate pgtype.Date `db:"start_date" json:"start_date"`
-	EndDate   pgtype.Date `db:"end_date" json:"end_date"`
-}
-
-func (q *Queries) GetCurrentTotalMoney(ctx context.Context, arg GetCurrentTotalMoneyParams) (decimal.Decimal, error) {
-	row := q.db.QueryRow(ctx, getCurrentTotalMoney, arg.UserID, arg.StartDate, arg.EndDate)
+func (q *Queries) GetCurrentTotalMoney(ctx context.Context, userID uuid.UUID) (decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, getCurrentTotalMoney, userID)
 	var total_money decimal.Decimal
 	err := row.Scan(&total_money)
 	return total_money, err
@@ -100,15 +90,16 @@ func (q *Queries) GetCurrentTotalMoney(ctx context.Context, arg GetCurrentTotalM
 const getFiftyThirtyTwenty = `-- name: GetFiftyThirtyTwenty :one
 WITH totals AS (
     SELECT
-        COALESCE(SUM(CASE WHEN e.status != 'skipped' THEN e.amount ELSE 0 END), 0)::numeric AS total_expenses,
-        COALESCE(SUM(CASE WHEN i.status != 'skipped' THEN i.amount ELSE 0 END), 0)::numeric AS total_incomes
-    FROM expenses e
-    FULL OUTER JOIN incomes i ON e.user_id = i.user_id
-    WHERE (e.user_id = $1 OR i.user_id = $1)
-      AND (e.expense_date >= $2 OR e.expense_date IS NULL OR $2 IS NULL)
-      AND (e.expense_date <= $3 OR e.expense_date IS NULL OR $3 IS NULL)
-      AND (i.date >= $2 OR i.date IS NULL OR $2 IS NULL)
-      AND (i.date <= $3 OR i.date IS NULL OR $3 IS NULL)
+        (SELECT COALESCE(SUM(e.amount), 0)::numeric FROM expenses e
+         WHERE e.user_id = $1
+           AND e.status != 'skipped'
+           AND ($2::date IS NULL OR e.expense_date >= $2)
+           AND ($3::date IS NULL OR e.expense_date <= $3)) AS total_expenses,
+        (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
+         WHERE i.user_id = $1
+           AND i.status != 'skipped'
+           AND ($2::date IS NULL OR i.date >= $2)
+           AND ($3::date IS NULL OR i.date <= $3)) AS total_incomes
 ),
 category_totals AS (
     SELECT
@@ -228,15 +219,16 @@ func (q *Queries) GetMonthOverMonthTrends(ctx context.Context, arg GetMonthOverM
 const getSavingsRate = `-- name: GetSavingsRate :one
 WITH totals AS (
     SELECT
-        COALESCE(SUM(CASE WHEN e.status != 'skipped' THEN e.amount ELSE 0 END), 0)::numeric AS total_expenses,
-        COALESCE(SUM(CASE WHEN i.status != 'skipped' THEN i.amount ELSE 0 END), 0)::numeric AS total_incomes
-    FROM expenses e
-    FULL OUTER JOIN incomes i ON e.user_id = i.user_id
-    WHERE (e.user_id = $1 OR i.user_id = $1)
-      AND (e.expense_date >= $2 OR e.expense_date IS NULL OR $2 IS NULL)
-      AND (e.expense_date <= $3 OR e.expense_date IS NULL OR $3 IS NULL)
-      AND (i.date >= $2 OR i.date IS NULL OR $2 IS NULL)
-      AND (i.date <= $3 OR i.date IS NULL OR $3 IS NULL)
+        (SELECT COALESCE(SUM(e.amount), 0)::numeric FROM expenses e
+         WHERE e.user_id = $1
+           AND e.status != 'skipped'
+           AND ($2::date IS NULL OR e.expense_date >= $2)
+           AND ($3::date IS NULL OR e.expense_date <= $3)) AS total_expenses,
+        (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
+         WHERE i.user_id = $1
+           AND i.status != 'skipped'
+           AND ($2::date IS NULL OR i.date >= $2)
+           AND ($3::date IS NULL OR i.date <= $3)) AS total_incomes
 )
 SELECT
     total_incomes,
@@ -305,17 +297,26 @@ func (q *Queries) GetSpendingVelocity(ctx context.Context, arg GetSpendingVeloci
 
 const getSummary = `-- name: GetSummary :one
 SELECT
-    COALESCE(SUM(CASE WHEN e.status != 'skipped' THEN e.amount ELSE 0 END), 0)::numeric AS total_expenses,
-    COALESCE(SUM(CASE WHEN i.status != 'skipped' THEN i.amount ELSE 0 END), 0)::numeric AS total_incomes,
-    COUNT(DISTINCT e.id) FILTER (WHERE e.status != 'skipped') AS expense_count,
-    COUNT(DISTINCT i.id) FILTER (WHERE i.status != 'skipped') AS income_count
-FROM expenses e
-FULL OUTER JOIN incomes i ON e.user_id = i.user_id
-WHERE (e.user_id = $1 OR i.user_id = $1)
-  AND (e.expense_date >= $2 OR e.expense_date IS NULL OR $2 IS NULL)
-  AND (e.expense_date <= $3 OR e.expense_date IS NULL OR $3 IS NULL)
-  AND (i.date >= $2 OR i.date IS NULL OR $2 IS NULL)
-  AND (i.date <= $3 OR i.date IS NULL OR $3 IS NULL)
+    (SELECT COALESCE(SUM(e.amount), 0)::numeric FROM expenses e
+     WHERE e.user_id = $1
+       AND e.status != 'skipped'
+       AND ($2::date IS NULL OR e.expense_date >= $2)
+       AND ($3::date IS NULL OR e.expense_date <= $3)) AS total_expenses,
+    (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
+     WHERE i.user_id = $1
+       AND i.status != 'skipped'
+       AND ($2::date IS NULL OR i.date >= $2)
+       AND ($3::date IS NULL OR i.date <= $3)) AS total_incomes,
+    (SELECT COUNT(*)::bigint FROM expenses e
+     WHERE e.user_id = $1
+       AND e.status != 'skipped'
+       AND ($2::date IS NULL OR e.expense_date >= $2)
+       AND ($3::date IS NULL OR e.expense_date <= $3)) AS expense_count,
+    (SELECT COUNT(*)::bigint FROM incomes i
+     WHERE i.user_id = $1
+       AND i.status != 'skipped'
+       AND ($2::date IS NULL OR i.date >= $2)
+       AND ($3::date IS NULL OR i.date <= $3)) AS income_count
 `
 
 type GetSummaryParams struct {
@@ -345,17 +346,33 @@ func (q *Queries) GetSummary(ctx context.Context, arg GetSummaryParams) (GetSumm
 
 const getTrends = `-- name: GetTrends :many
 SELECT
-    TO_CHAR(COALESCE(e.expense_date, i.date), 'YYYY-MM') AS month,
-    COALESCE(SUM(CASE WHEN e.status != 'skipped' THEN e.amount ELSE 0 END), 0)::numeric AS total_expenses,
-    COALESCE(SUM(CASE WHEN i.status != 'skipped' THEN i.amount ELSE 0 END), 0)::numeric AS total_incomes
-FROM expenses e
-FULL OUTER JOIN incomes i ON e.user_id = i.user_id AND TO_CHAR(COALESCE(e.expense_date, i.date), 'YYYY-MM') = TO_CHAR(i.date, 'YYYY-MM')
-WHERE (e.user_id = $1 OR i.user_id = $1)
-  AND (e.expense_date >= $2 OR e.expense_date IS NULL OR $2 IS NULL)
-  AND (e.expense_date <= $3 OR e.expense_date IS NULL OR $3 IS NULL)
-  AND (i.date >= $2 OR i.date IS NULL OR $2 IS NULL)
-  AND (i.date <= $3 OR i.date IS NULL OR $3 IS NULL)
-GROUP BY TO_CHAR(COALESCE(e.expense_date, i.date), 'YYYY-MM')
+    month,
+    COALESCE(SUM(total_expenses), 0)::numeric AS total_expenses,
+    COALESCE(SUM(total_incomes), 0)::numeric AS total_incomes
+FROM (
+    SELECT
+        TO_CHAR(e.expense_date, 'YYYY-MM') AS month,
+        COALESCE(SUM(e.amount), 0)::numeric AS total_expenses,
+        0::numeric AS total_incomes
+    FROM expenses e
+    WHERE e.user_id = $1
+      AND e.status != 'skipped'
+      AND ($2::date IS NULL OR e.expense_date >= $2)
+      AND ($3::date IS NULL OR e.expense_date <= $3)
+    GROUP BY TO_CHAR(e.expense_date, 'YYYY-MM')
+    UNION ALL
+    SELECT
+        TO_CHAR(i.date, 'YYYY-MM') AS month,
+        0::numeric AS total_expenses,
+        COALESCE(SUM(i.amount), 0)::numeric AS total_incomes
+    FROM incomes i
+    WHERE i.user_id = $1
+      AND i.status != 'skipped'
+      AND ($2::date IS NULL OR i.date >= $2)
+      AND ($3::date IS NULL OR i.date <= $3)
+    GROUP BY TO_CHAR(i.date, 'YYYY-MM')
+) AS monthly
+GROUP BY month
 ORDER BY month DESC
 `
 

@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -29,7 +30,7 @@ func SetupTestDB(t *testing.T) *pgxpool.Pool {
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
 				WithOccurrence(2).
-				WithStartupTimeout(60),
+				WithStartupTimeout(60*time.Second),
 		),
 	)
 	if err != nil {
@@ -47,7 +48,19 @@ func SetupTestDB(t *testing.T) *pgxpool.Pool {
 		t.Fatalf("failed to get connection string: %v", err)
 	}
 
-	conn, err := pgxpool.New(ctx, connStr)
+	cfg, err := pgxpool.ParseConfig(connStr)
+	if err != nil {
+		t.Fatalf("failed to parse connection string: %v", err)
+	}
+	// search_path must be a per-connection setting: a bare `SET search_path`
+	// only affects the single pooled session that runs it, so unqualified
+	// queries on other pooled connections would not see the corefinance schema.
+	if cfg.ConnConfig.RuntimeParams == nil {
+		cfg.ConnConfig.RuntimeParams = map[string]string{}
+	}
+	cfg.ConnConfig.RuntimeParams["search_path"] = "corefinance,public"
+
+	conn, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		t.Fatalf("failed to create connection: %v", err)
 	}
@@ -81,7 +94,7 @@ func SetupTestDB(t *testing.T) *pgxpool.Pool {
 		t.Fatalf("failed to execute schema: %v", err)
 	}
 
-	pool, err := pgxpool.New(ctx, connStr)
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		t.Fatalf("failed to create pool: %v", err)
 	}

@@ -1,30 +1,55 @@
 -- name: GetSummary :one
 SELECT
-    COALESCE(SUM(CASE WHEN e.status != 'skipped' THEN e.amount ELSE 0 END), 0)::numeric AS total_expenses,
-    COALESCE(SUM(CASE WHEN i.status != 'skipped' THEN i.amount ELSE 0 END), 0)::numeric AS total_incomes,
-    COUNT(DISTINCT e.id) FILTER (WHERE e.status != 'skipped') AS expense_count,
-    COUNT(DISTINCT i.id) FILTER (WHERE i.status != 'skipped') AS income_count
-FROM expenses e
-FULL OUTER JOIN incomes i ON e.user_id = i.user_id
-WHERE (e.user_id = @user_id OR i.user_id = @user_id)
-  AND (e.expense_date >= @start_date OR e.expense_date IS NULL OR @start_date IS NULL)
-  AND (e.expense_date <= @end_date OR e.expense_date IS NULL OR @end_date IS NULL)
-  AND (i.date >= @start_date OR i.date IS NULL OR @start_date IS NULL)
-  AND (i.date <= @end_date OR i.date IS NULL OR @end_date IS NULL);
+    (SELECT COALESCE(SUM(e.amount), 0)::numeric FROM expenses e
+     WHERE e.user_id = @user_id
+       AND e.status != 'skipped'
+       AND (@start_date::date IS NULL OR e.expense_date >= @start_date)
+       AND (@end_date::date IS NULL OR e.expense_date <= @end_date)) AS total_expenses,
+    (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
+     WHERE i.user_id = @user_id
+       AND i.status != 'skipped'
+       AND (@start_date::date IS NULL OR i.date >= @start_date)
+       AND (@end_date::date IS NULL OR i.date <= @end_date)) AS total_incomes,
+    (SELECT COUNT(*)::bigint FROM expenses e
+     WHERE e.user_id = @user_id
+       AND e.status != 'skipped'
+       AND (@start_date::date IS NULL OR e.expense_date >= @start_date)
+       AND (@end_date::date IS NULL OR e.expense_date <= @end_date)) AS expense_count,
+    (SELECT COUNT(*)::bigint FROM incomes i
+     WHERE i.user_id = @user_id
+       AND i.status != 'skipped'
+       AND (@start_date::date IS NULL OR i.date >= @start_date)
+       AND (@end_date::date IS NULL OR i.date <= @end_date)) AS income_count;
 
 -- name: GetTrends :many
 SELECT
-    TO_CHAR(COALESCE(e.expense_date, i.date), 'YYYY-MM') AS month,
-    COALESCE(SUM(CASE WHEN e.status != 'skipped' THEN e.amount ELSE 0 END), 0)::numeric AS total_expenses,
-    COALESCE(SUM(CASE WHEN i.status != 'skipped' THEN i.amount ELSE 0 END), 0)::numeric AS total_incomes
-FROM expenses e
-FULL OUTER JOIN incomes i ON e.user_id = i.user_id AND TO_CHAR(COALESCE(e.expense_date, i.date), 'YYYY-MM') = TO_CHAR(i.date, 'YYYY-MM')
-WHERE (e.user_id = @user_id OR i.user_id = @user_id)
-  AND (e.expense_date >= @start_date OR e.expense_date IS NULL OR @start_date IS NULL)
-  AND (e.expense_date <= @end_date OR e.expense_date IS NULL OR @end_date IS NULL)
-  AND (i.date >= @start_date OR i.date IS NULL OR @start_date IS NULL)
-  AND (i.date <= @end_date OR i.date IS NULL OR @end_date IS NULL)
-GROUP BY TO_CHAR(COALESCE(e.expense_date, i.date), 'YYYY-MM')
+    month,
+    COALESCE(SUM(total_expenses), 0)::numeric AS total_expenses,
+    COALESCE(SUM(total_incomes), 0)::numeric AS total_incomes
+FROM (
+    SELECT
+        TO_CHAR(e.expense_date, 'YYYY-MM') AS month,
+        COALESCE(SUM(e.amount), 0)::numeric AS total_expenses,
+        0::numeric AS total_incomes
+    FROM expenses e
+    WHERE e.user_id = @user_id
+      AND e.status != 'skipped'
+      AND (@start_date::date IS NULL OR e.expense_date >= @start_date)
+      AND (@end_date::date IS NULL OR e.expense_date <= @end_date)
+    GROUP BY TO_CHAR(e.expense_date, 'YYYY-MM')
+    UNION ALL
+    SELECT
+        TO_CHAR(i.date, 'YYYY-MM') AS month,
+        0::numeric AS total_expenses,
+        COALESCE(SUM(i.amount), 0)::numeric AS total_incomes
+    FROM incomes i
+    WHERE i.user_id = @user_id
+      AND i.status != 'skipped'
+      AND (@start_date::date IS NULL OR i.date >= @start_date)
+      AND (@end_date::date IS NULL OR i.date <= @end_date)
+    GROUP BY TO_CHAR(i.date, 'YYYY-MM')
+) AS monthly
+GROUP BY month
 ORDER BY month DESC;
 
 -- name: GetCategoryBreakdown :many
@@ -47,15 +72,16 @@ ORDER BY total_amount DESC;
 -- name: GetSavingsRate :one
 WITH totals AS (
     SELECT
-        COALESCE(SUM(CASE WHEN e.status != 'skipped' THEN e.amount ELSE 0 END), 0)::numeric AS total_expenses,
-        COALESCE(SUM(CASE WHEN i.status != 'skipped' THEN i.amount ELSE 0 END), 0)::numeric AS total_incomes
-    FROM expenses e
-    FULL OUTER JOIN incomes i ON e.user_id = i.user_id
-    WHERE (e.user_id = @user_id OR i.user_id = @user_id)
-      AND (e.expense_date >= @start_date OR e.expense_date IS NULL OR @start_date IS NULL)
-      AND (e.expense_date <= @end_date OR e.expense_date IS NULL OR @end_date IS NULL)
-      AND (i.date >= @start_date OR i.date IS NULL OR @start_date IS NULL)
-      AND (i.date <= @end_date OR i.date IS NULL OR @end_date IS NULL)
+        (SELECT COALESCE(SUM(e.amount), 0)::numeric FROM expenses e
+         WHERE e.user_id = @user_id
+           AND e.status != 'skipped'
+           AND (@start_date::date IS NULL OR e.expense_date >= @start_date)
+           AND (@end_date::date IS NULL OR e.expense_date <= @end_date)) AS total_expenses,
+        (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
+         WHERE i.user_id = @user_id
+           AND i.status != 'skipped'
+           AND (@start_date::date IS NULL OR i.date >= @start_date)
+           AND (@end_date::date IS NULL OR i.date <= @end_date)) AS total_incomes
 )
 SELECT
     total_incomes,
@@ -69,15 +95,16 @@ FROM totals;
 -- name: GetFiftyThirtyTwenty :one
 WITH totals AS (
     SELECT
-        COALESCE(SUM(CASE WHEN e.status != 'skipped' THEN e.amount ELSE 0 END), 0)::numeric AS total_expenses,
-        COALESCE(SUM(CASE WHEN i.status != 'skipped' THEN i.amount ELSE 0 END), 0)::numeric AS total_incomes
-    FROM expenses e
-    FULL OUTER JOIN incomes i ON e.user_id = i.user_id
-    WHERE (e.user_id = @user_id OR i.user_id = @user_id)
-      AND (e.expense_date >= @start_date OR e.expense_date IS NULL OR @start_date IS NULL)
-      AND (e.expense_date <= @end_date OR e.expense_date IS NULL OR @end_date IS NULL)
-      AND (i.date >= @start_date OR i.date IS NULL OR @start_date IS NULL)
-      AND (i.date <= @end_date OR i.date IS NULL OR @end_date IS NULL)
+        (SELECT COALESCE(SUM(e.amount), 0)::numeric FROM expenses e
+         WHERE e.user_id = @user_id
+           AND e.status != 'skipped'
+           AND (@start_date::date IS NULL OR e.expense_date >= @start_date)
+           AND (@end_date::date IS NULL OR e.expense_date <= @end_date)) AS total_expenses,
+        (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
+         WHERE i.user_id = @user_id
+           AND i.status != 'skipped'
+           AND (@start_date::date IS NULL OR i.date >= @start_date)
+           AND (@end_date::date IS NULL OR i.date <= @end_date)) AS total_incomes
 ),
 category_totals AS (
     SELECT
@@ -127,16 +154,12 @@ FROM (
 ) AS monthly;
 
 -- name: GetCurrentTotalMoney :one
-SELECT
-    (COALESCE(SUM(CASE WHEN i.status != 'skipped' THEN i.amount ELSE 0 END), 0)
-     - COALESCE(SUM(CASE WHEN e.status != 'skipped' THEN e.amount ELSE 0 END), 0))::numeric AS total_money
-FROM expenses e
-FULL OUTER JOIN incomes i ON e.user_id = i.user_id
-WHERE (e.user_id = @user_id OR i.user_id = @user_id)
-  AND (e.expense_date >= @start_date OR e.expense_date IS NULL OR @start_date IS NULL)
-  AND (e.expense_date <= @end_date OR e.expense_date IS NULL OR @end_date IS NULL)
-  AND (i.date >= @start_date OR i.date IS NULL OR @start_date IS NULL)
-  AND (i.date <= @end_date OR i.date IS NULL OR @end_date IS NULL);
+SELECT (
+    (SELECT COALESCE(SUM(i.amount), 0) FROM incomes i
+     WHERE i.user_id = @user_id AND i.status != 'skipped')
+    - (SELECT COALESCE(SUM(e.amount), 0) FROM expenses e
+     WHERE e.user_id = @user_id AND e.status != 'skipped')
+)::numeric AS total_money;
 
 -- name: GetMonthOverMonthTrends :many
 SELECT

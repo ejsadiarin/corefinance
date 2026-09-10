@@ -31,7 +31,7 @@ type Querier interface {
 	DeleteRecurringIncomeRule(ctx context.Context, arg DeleteRecurringIncomeRuleParams) error
 	DeleteTag(ctx context.Context, arg DeleteTagParams) error
 	GetCategoryBreakdown(ctx context.Context, arg GetCategoryBreakdownParams) ([]GetCategoryBreakdownRow, error)
-	GetCurrentTotalMoney(ctx context.Context, arg GetCurrentTotalMoneyParams) (decimal.Decimal, error)
+	GetCurrentTotalMoney(ctx context.Context, userID uuid.UUID) (decimal.Decimal, error)
 	GetExpense(ctx context.Context, arg GetExpenseParams) (GetExpenseRow, error)
 	GetExpenseCategory(ctx context.Context, arg GetExpenseCategoryParams) (ExpenseCategory, error)
 	GetExpenseStatsByCategory(ctx context.Context, arg GetExpenseStatsByCategoryParams) ([]GetExpenseStatsByCategoryRow, error)

@@ -148,10 +148,8 @@ func (h *Handler) CurrentTotalMoney(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	startDate := helper.ParseQueryString(r, "start_date")
-	endDate := helper.ParseQueryString(r, "end_date")
 	slog.Debug("stats.CurrentTotalMoney: request received", "user_id", userID)
-	total, err := h.service.CurrentTotalMoney(r.Context(), userID, startDate, endDate)
+	total, err := h.service.CurrentTotalMoney(r.Context(), userID)
 	if err != nil {
 		slog.Error("stats.CurrentTotalMoney: failed", "error", err, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
