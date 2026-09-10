@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 )
 
@@ -16,10 +17,14 @@ type Querier interface {
 	AddTagToIncome(ctx context.Context, arg AddTagToIncomeParams) error
 	CheckSkippedExpense(ctx context.Context, arg CheckSkippedExpenseParams) (bool, error)
 	CheckSkippedIncome(ctx context.Context, arg CheckSkippedIncomeParams) (bool, error)
+	CountLegacyExpenses(ctx context.Context) (int64, error)
+	CountLegacyIncomes(ctx context.Context) (int64, error)
 	CreateExpense(ctx context.Context, arg CreateExpenseParams) (Expense, error)
 	CreateExpenseCategory(ctx context.Context, arg CreateExpenseCategoryParams) (ExpenseCategory, error)
+	CreateExpenseInstance(ctx context.Context, arg CreateExpenseInstanceParams) (int64, error)
 	CreateIncome(ctx context.Context, arg CreateIncomeParams) (Income, error)
 	CreateIncomeCategory(ctx context.Context, arg CreateIncomeCategoryParams) (IncomeCategory, error)
+	CreateIncomeInstance(ctx context.Context, arg CreateIncomeInstanceParams) (int64, error)
 	CreateRecurringExpenseRule(ctx context.Context, arg CreateRecurringExpenseRuleParams) (RecurringExpenseRule, error)
 	CreateRecurringIncomeRule(ctx context.Context, arg CreateRecurringIncomeRuleParams) (RecurringIncomeRule, error)
 	CreateTag(ctx context.Context, arg CreateTagParams) (Tag, error)
@@ -30,6 +35,8 @@ type Querier interface {
 	DeleteRecurringExpenseRule(ctx context.Context, arg DeleteRecurringExpenseRuleParams) error
 	DeleteRecurringIncomeRule(ctx context.Context, arg DeleteRecurringIncomeRuleParams) error
 	DeleteTag(ctx context.Context, arg DeleteTagParams) error
+	FlipLegacyExpenseToOneTime(ctx context.Context, id uuid.UUID) error
+	FlipLegacyIncomeToOneTime(ctx context.Context, id uuid.UUID) error
 	GetCategoryBreakdown(ctx context.Context, arg GetCategoryBreakdownParams) ([]GetCategoryBreakdownRow, error)
 	GetCurrentTotalMoney(ctx context.Context, userID uuid.UUID) (decimal.Decimal, error)
 	GetExpense(ctx context.Context, arg GetExpenseParams) (GetExpenseRow, error)
@@ -52,6 +59,10 @@ type Querier interface {
 	GetTotalIncomesByDateRange(ctx context.Context, arg GetTotalIncomesByDateRangeParams) (decimal.Decimal, error)
 	GetTrends(ctx context.Context, arg GetTrendsParams) ([]GetTrendsRow, error)
 	GetUpcomingRecurringExpenses(ctx context.Context, userID uuid.UUID) ([]GetUpcomingRecurringExpensesRow, error)
+	// Worker materialization queries (D3/D4/D5): active-rule selection, idempotent
+	// instance inserts, and legacy inline-rule backfill support.
+	ListActiveExpenseRules(ctx context.Context, startDate pgtype.Date) ([]RecurringExpenseRule, error)
+	ListActiveIncomeRules(ctx context.Context, startDate pgtype.Date) ([]RecurringIncomeRule, error)
 	ListAllExpenseTagsByUser(ctx context.Context, userID uuid.UUID) ([]ExpenseTag, error)
 	ListAllExpensesByUser(ctx context.Context, userID uuid.UUID) ([]Expense, error)
 	ListAllIncomeTagsByUser(ctx context.Context, userID uuid.UUID) ([]IncomeTag, error)
@@ -60,6 +71,8 @@ type Querier interface {
 	ListExpenses(ctx context.Context, arg ListExpensesParams) ([]ListExpensesRow, error)
 	ListIncomeCategories(ctx context.Context, userID uuid.UUID) ([]IncomeCategory, error)
 	ListIncomes(ctx context.Context, arg ListIncomesParams) ([]ListIncomesRow, error)
+	ListLegacyExpenses(ctx context.Context) ([]Expense, error)
+	ListLegacyIncomes(ctx context.Context) ([]Income, error)
 	ListRecurringExpenseRules(ctx context.Context, userID uuid.UUID) ([]ListRecurringExpenseRulesRow, error)
 	ListRecurringIncomeRules(ctx context.Context, userID uuid.UUID) ([]RecurringIncomeRule, error)
 	ListTags(ctx context.Context, userID uuid.UUID) ([]Tag, error)

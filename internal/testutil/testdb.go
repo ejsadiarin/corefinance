@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -107,18 +109,54 @@ func SetupTestDB(t *testing.T) *pgxpool.Pool {
 }
 
 func loadSchema() ([]byte, error) {
-	paths := []string{
-		"../../db/schema.sql",
-		"internal/db/schema.sql",
-		"../db/schema.sql",
-		"db/schema.sql",
+	// Single source of truth: the goose migrations directory. Concatenate the
+	// Up section of every migration in lexicographic (zero-padded) order,
+	// mirroring what `goose up` and `sqlc generate` apply.
+	dirs := []string{
+		"../../db/migrations",
+		"internal/db/migrations",
+		"../db/migrations",
+		"db/migrations",
 	}
-	for _, p := range paths {
-		if data, err := os.ReadFile(p); err == nil {
-			return data, nil
+	var dir string
+	for _, d := range dirs {
+		if st, err := os.Stat(d); err == nil && st.IsDir() {
+			dir = d
+			break
 		}
 	}
-	return nil, fmt.Errorf("schema.sql not found in any of the expected locations")
+	if dir == "" {
+		return nil, fmt.Errorf("db/migrations not found in any of the expected locations")
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+			files = append(files, filepath.Join(dir, e.Name()))
+		}
+	}
+	sort.Strings(files)
+	if len(files) == 0 {
+		return nil, fmt.Errorf("no migration files found in %s", dir)
+	}
+	var sb strings.Builder
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			return nil, err
+		}
+		// Keep only the Up section: goose Down sections start here.
+		up := string(data)
+		if idx := strings.Index(up, "-- +goose Down"); idx >= 0 {
+			up = up[:idx]
+		}
+		sb.WriteString(up)
+		sb.WriteString("\n")
+	}
+	return []byte(sb.String()), nil
 }
 
 func adaptSchemaForTests(schema []byte) string {
