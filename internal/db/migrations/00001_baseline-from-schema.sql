@@ -3,6 +3,8 @@
 -- (extensions, tables, constraints, primary keys, foreign keys, indexes).
 -- Faithful copy: only this header comment and the goose annotations differ.
 
+CREATE SCHEMA IF NOT EXISTS corefinance;
+
 CREATE EXTENSION IF NOT EXISTS pg_uuidv7;
 
 CREATE TABLE expense_categories (

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/pressly/goose/v3"
 
@@ -15,6 +16,15 @@ import (
 
 func dsn() string {
 	if connStr := os.Getenv("DATABASE_URL"); connStr != "" {
+		// Unlike cmd/api (AfterConnect hook), this binary sets no session
+		// defaults, so guarantee the corefinance schema is in scope.
+		if !strings.Contains(connStr, "search_path") {
+			sep := "?"
+			if strings.Contains(connStr, "?") {
+				sep = "&"
+			}
+			connStr += sep + "search_path=corefinance"
+		}
 		return connStr
 	}
 	return fmt.Sprintf(
@@ -42,7 +52,17 @@ func main() {
 
 	goose.SetBaseFS(migrations.FS)
 	if err := goose.SetDialect("postgres"); err != nil {
-		slog.Error("failed to set goose dialect", "error", err)
+		slog.Error("failed to set dialect", "error", err)
+		os.Exit(1)
+	}
+
+	// The baseline creates the schema too, but goose bookkeeping
+	// (version table) runs before any migration — and with search_path
+	// pointing at a not-yet-existing schema every statement fails.
+	// Ensure it here; the baseline's own CREATE SCHEMA stays as the
+	// migration-native record and is a no-op afterwards.
+	if _, err := db.Exec(`CREATE SCHEMA IF NOT EXISTS corefinance`); err != nil {
+		slog.Error("failed to ensure corefinance schema", "error", err)
 		os.Exit(1)
 	}
 

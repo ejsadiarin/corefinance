@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -28,6 +29,15 @@ import (
 
 func dsn() string {
 	if connStr := os.Getenv("DATABASE_URL"); connStr != "" {
+		// Unlike cmd/api (AfterConnect hook), this binary sets no session
+		// defaults, so guarantee the corefinance schema is in scope.
+		if !strings.Contains(connStr, "search_path") {
+			sep := "?"
+			if strings.Contains(connStr, "?") {
+				sep = "&"
+			}
+			connStr += sep + "search_path=corefinance"
+		}
 		return connStr
 	}
 	return fmt.Sprintf(
