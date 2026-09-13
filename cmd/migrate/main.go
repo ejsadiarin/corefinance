@@ -18,12 +18,15 @@ func dsn() string {
 	if connStr := os.Getenv("DATABASE_URL"); connStr != "" {
 		// Unlike cmd/api (AfterConnect hook), this binary sets no session
 		// defaults, so guarantee the corefinance schema is in scope.
+		// Use the options=-c form (not a bare search_path param): libpq
+		// rejects unknown URI params outright and some proxies poolers
+		// drop them, while options is forwarded everywhere.
 		if !strings.Contains(connStr, "search_path") {
 			sep := "?"
 			if strings.Contains(connStr, "?") {
 				sep = "&"
 			}
-			connStr += sep + "search_path=corefinance"
+			connStr += sep + "options=-c%20search_path%3Dcorefinance"
 		}
 		return connStr
 	}
