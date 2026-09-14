@@ -16,8 +16,9 @@ import (
 
 func dsn() string {
 	if connStr := os.Getenv("DATABASE_URL"); connStr != "" {
-		// Unlike cmd/api (AfterConnect hook), this binary sets no session
-		// defaults, so guarantee the corefinance schema is in scope.
+		// The owner role carries no search_path default, so scope the
+		// session explicitly here (migrate is the one binary allowed to
+		// do this: it always runs on a direct connection, never pooled).
 		// Use the options=-c form (not a bare search_path param): libpq
 		// rejects unknown URI params outright and some proxies poolers
 		// drop them, while options is forwarded everywhere on direct
@@ -32,7 +33,7 @@ func dsn() string {
 		return connStr
 	}
 	return fmt.Sprintf(
-		"postgres://%s:%s@%s:%s/%s?sslmode=disable&search_path=corefinance",
+		"postgres://%s:%s@%s:%s/%s?sslmode=disable&options=-c%20search_path%3Dcorefinance",
 		os.Getenv("DB_USERNAME"),
 		os.Getenv("DB_PASSWORD"),
 		os.Getenv("DB_HOST"),
