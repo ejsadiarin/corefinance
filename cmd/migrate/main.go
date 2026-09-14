@@ -20,7 +20,8 @@ func dsn() string {
 		// defaults, so guarantee the corefinance schema is in scope.
 		// Use the options=-c form (not a bare search_path param): libpq
 		// rejects unknown URI params outright and some proxies poolers
-		// drop them, while options is forwarded everywhere.
+		// drop them, while options is forwarded everywhere on direct
+		// connections.
 		if !strings.Contains(connStr, "search_path") {
 			sep := "?"
 			if strings.Contains(connStr, "?") {
@@ -41,6 +42,16 @@ func dsn() string {
 }
 
 func main() {
+	// Migrations must run on a direct (unpooled) connection: poolers
+	// reject search_path scoping, which this binary needs because the
+	// baseline migration is intentionally schema-unqualified and the
+	// owner role carries no search_path default. Fail fast instead of
+	// migrating the wrong schema.
+	if strings.Contains(os.Getenv("DATABASE_URL"), "-pooler") {
+		slog.Error("migrate requires a direct (unpooled) DATABASE_URL; refusing to run through a pooler")
+		os.Exit(1)
+	}
+
 	db, err := sql.Open("pgx", dsn())
 	if err != nil {
 		slog.Error("failed to open database", "error", err)

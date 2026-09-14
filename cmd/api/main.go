@@ -11,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
@@ -48,7 +47,7 @@ func buildPool() *pgxpool.Pool {
 	connStr := os.Getenv("DATABASE_URL")
 	if connStr == "" {
 		connStr = fmt.Sprintf(
-			"postgres://%s:%s@%s:%s/%s?sslmode=disable&search_path=corefinance",
+			"postgres://%s:%s@%s:%s/%s?sslmode=disable",
 			os.Getenv("DB_USERNAME"),
 			os.Getenv("DB_PASSWORD"),
 			os.Getenv("DB_HOST"),
@@ -56,6 +55,11 @@ func buildPool() *pgxpool.Pool {
 			os.Getenv("DB_DATABASE"),
 		)
 	}
+	// NOTE: no search_path handling here by design. Schema scoping lives
+	// exclusively in the connecting role's default
+	// (ALTER ROLE <app> SET search_path = corefinance), which is the only
+	// mechanism that survives connection poolers. Set it in every
+	// environment, including local dev.
 
 	config, err := pgxpool.ParseConfig(connStr)
 	if err != nil {
@@ -68,11 +72,6 @@ func buildPool() *pgxpool.Pool {
 	config.MaxConnLifetime = time.Hour
 	config.MaxConnIdleTime = 30 * time.Minute
 	config.HealthCheckPeriod = time.Minute
-
-	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
-		_, err := conn.Exec(ctx, "SET search_path TO corefinance")
-		return err
-	}
 
 	pool, err := pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {

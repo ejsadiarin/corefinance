@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -28,23 +27,16 @@ import (
 //               match the legacy predicate.
 
 func dsn() string {
+	// NOTE: no search_path handling here by design. Schema scoping lives
+	// exclusively in the connecting role's default
+	// (ALTER ROLE <app> SET search_path = corefinance), which is the only
+	// mechanism that survives connection poolers. Set it in every
+	// environment, including local dev.
 	if connStr := os.Getenv("DATABASE_URL"); connStr != "" {
-		// Unlike cmd/api (AfterConnect hook), this binary sets no session
-		// defaults, so guarantee the corefinance schema is in scope.
-		// Use the options=-c form (not a bare search_path param): libpq
-		// rejects unknown URI params outright and some proxies poolers
-		// drop them, while options is forwarded everywhere.
-		if !strings.Contains(connStr, "search_path") {
-			sep := "?"
-			if strings.Contains(connStr, "?") {
-				sep = "&"
-			}
-			connStr += sep + "options=-c%20search_path%3Dcorefinance"
-		}
 		return connStr
 	}
 	return fmt.Sprintf(
-		"postgres://%s:%s@%s:%s/%s?sslmode=disable&search_path=corefinance",
+		"postgres://%s:%s@%s:%s/%s?sslmode=disable",
 		os.Getenv("DB_USERNAME"),
 		os.Getenv("DB_PASSWORD"),
 		os.Getenv("DB_HOST"),
