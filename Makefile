@@ -10,10 +10,14 @@
 #
 # Environment Variables:
 # - DATABASE_URL (required): PostgreSQL connection string (runtime, app role, pooler endpoint)
-# - MIGRATE_URL (optional, defaults to DATABASE_URL): connection string for
+# - MIGRATION_URL (optional, defaults to DATABASE_URL): connection string for
 #   goose migrations — must be the schema OWNER over the direct (non-pooler)
-#   endpoint, with search_path set, e.g.:
-#   postgresql://corefinance_owner:...@<direct-host>/coredb?sslmode=require&search_path=corefinance
+#   endpoint, with search_path set via the options form, e.g.:
+#   postgresql://neondb_owner:...@<direct-host>/coredb?sslmode=require&options=-c%20search_path%3Dcorefinance
+#   NOTE: a bare &search_path=... param does NOT work — libpq rejects unknown
+#   URI params, so the session silently lands in public (goose then reads
+#   public.goose_db_version). The options form is executed by the server at
+#   session start. Pooler endpoints drop options, hence direct host required.
 # - PORT (optional, default 6969): Server port
 # - ENV (optional, default development): Environment
 # ==============================================================================
@@ -36,8 +40,10 @@ GOOSE_DRIVER=postgres
 GOOSE_MIGRATION_DIR=./internal/db/migrations
 # Migrations run as the schema OWNER on the direct endpoint (goose takes
 # session-level locks; Neon pooler/PgBouncer transaction mode breaks that
-# and some DDL). Falls back to DATABASE_URL if not set.
-MIGRATE_URL ?= $(DATABASE_URL)
+# and some DDL, and poolers drop the options param). Falls back to
+# DATABASE_URL if not set. CI (prod) and local CLI (dev) both invoke the
+# goose CLI directly through the migrate-* targets below.
+MIGRATION_URL ?= $(DATABASE_URL)
 
 # Build configuration
 BINARY_NAME=corefinance
@@ -161,19 +167,19 @@ run-background:
 
 migrate-up:
 	@echo -e "${YELLOW}Running database migrations...${NC}"
-	@goose -dir $(GOOSE_MIGRATION_DIR) $(GOOSE_DRIVER) "$(MIGRATE_URL)" up
+	@goose -dir $(GOOSE_MIGRATION_DIR) $(GOOSE_DRIVER) "$(MIGRATION_URL)" up
 
 migrate-down:
 	@echo -e "${YELLOW}Rolling back last migration...${NC}"
-	@goose -dir $(GOOSE_MIGRATION_DIR) $(GOOSE_DRIVER) "$(MIGRATE_URL)" down
+	@goose -dir $(GOOSE_MIGRATION_DIR) $(GOOSE_DRIVER) "$(MIGRATION_URL)" down
 
 migrate-redo:
 	@echo -e "${YELLOW}Redo last migration...${NC}"
-	@goose -dir $(GOOSE_MIGRATION_DIR) $(GOOSE_DRIVER) "$(MIGRATE_URL)" redo
+	@goose -dir $(GOOSE_MIGRATION_DIR) $(GOOSE_DRIVER) "$(MIGRATION_URL)" redo
 
 migrate-status:
 	@echo -e "${YELLOW}Checking migration status...${NC}"
-	@goose -dir $(GOOSE_MIGRATION_DIR) $(GOOSE_DRIVER) "$(MIGRATE_URL)" status
+	@goose -dir $(GOOSE_MIGRATION_DIR) $(GOOSE_DRIVER) "$(MIGRATION_URL)" status
 
 migrate-create:
 	@echo -e "${YELLOW}Creating new migration...${NC}"
@@ -184,13 +190,13 @@ migrate-create:
 
 migrate-baseline:
 	@echo -e "${YELLOW}Baselining existing database...${NC}"
-	@goose -dir $(GOOSE_MIGRATION_DIR) $(GOOSE_DRIVER) "$(MIGRATE_URL)" version
+	@goose -dir $(GOOSE_MIGRATION_DIR) $(GOOSE_DRIVER) "$(MIGRATION_URL)" version
 	@echo -e "${YELLOW}Please manually mark migrations as applied if needed${NC}"
 
 migrate-fix:
 	@echo -e "${YELLOW}Fixing migration issues...${NC}"
 	@echo -e "${YELLOW}Current version:${NC}"
-	@goose -dir $(GOOSE_MIGRATION_DIR) $(GOOSE_DRIVER) "$(MIGRATE_URL)" version
+	@goose -dir $(GOOSE_MIGRATION_DIR) $(GOOSE_DRIVER) "$(MIGRATION_URL)" version
 
 # ==============================================================================
 # Code Generation
@@ -344,6 +350,7 @@ env-check:
 	@echo "ENV=$(ENV)"
 	@echo "PORT=$(PORT)"
 	@echo "DATABASE_URL=$(shell echo $(DATABASE_URL) | cut -c1-50)..."
+	@echo "MIGRATION_URL=$(shell echo $(MIGRATION_URL) | cut -c1-50)..."
 	@echo "GOPATH=$(shell go env GOPATH)"
 	@echo "GOVERSION=$(shell go version)"
 
