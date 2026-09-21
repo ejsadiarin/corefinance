@@ -58,4 +58,4 @@ main
 
 # http client
 .http-client.env.json
-
+openspec

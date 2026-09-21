@@ -1,3 +1,0 @@
-# TODO: make separate Dockerfile for cron worker
-
-FROM golang:alpine AS builder
