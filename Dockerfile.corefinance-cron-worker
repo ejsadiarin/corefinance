@@ -1,0 +1,37 @@
+# syntax=docker/dockerfile:1
+
+# Production image for the corefinance recurring-rule materialization worker.
+# Build context: ./services/corefinance (see compose.yml, target: worker)
+# Final image contains ONLY the statically-linked binary on top of
+# chainguard/static (ca-certificates + tzdata, no shell) — no source,
+# no go toolchain, no .env. Config is injected via environment
+# (DATABASE_URL or DB_* vars).
+#
+# Run modes (see cmd/worker/main.go flags):
+#   default (no args)  — long-running daemon: one pass at startup, then
+#                        every 24h. This is what compose.yml runs.
+#   --once             — single materialization pass and exit. Use this
+#                        as the container args for a Kubernetes CronJob:
+#                          args: ["--once"]
+#   --backfill         — one-off legacy inline-rule conversion (D5) and
+#                        exit. Run manually once, not on a schedule:
+#                          args: ["--backfill"]
+
+FROM golang:1.26-alpine AS builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+# Copy only what the build needs — keeps the build context small and
+# cache-friendly. (.dockerignore allowlists the same set.)
+COPY cmd ./cmd
+COPY internal ./internal
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/worker ./cmd/worker
+
+FROM cgr.dev/chainguard/static:latest AS worker
+WORKDIR /app
+COPY --from=builder --chown=nonroot:nonroot /app/worker /app/worker
+USER nonroot
+ENTRYPOINT ["/app/worker"]
+# Default with no args = daemon mode; CronJobs override with --once/--backfill.
+CMD []

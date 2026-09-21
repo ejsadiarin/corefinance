@@ -1,0 +1,26 @@
+# syntax=docker/dockerfile:1
+
+# Production image for the corefinance HTTP API.
+# Build context: ./services/corefinance (see compose.yml)
+# Final image contains ONLY the statically-linked binary on top of
+# chainguard/static (ca-certificates + tzdata, no shell) — no source,
+# no go toolchain, no .env. Config is injected via environment
+# (DATABASE_URL or DB_* vars, PORT).
+
+FROM golang:1.26-alpine AS builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+# Copy only what the build needs — keeps the build context small and
+# cache-friendly. (.dockerignore allowlists the same set.)
+COPY cmd ./cmd
+COPY internal ./internal
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/server ./cmd/api
+
+FROM cgr.dev/chainguard/static:latest AS api
+WORKDIR /app
+COPY --from=builder --chown=nonroot:nonroot /app/server /app/server
+USER nonroot
+EXPOSE 6969
+ENTRYPOINT ["/app/server"]
