@@ -3,11 +3,14 @@ package recurring
 import (
 	"context"
 	"log/slog"
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/helper"
+	"github.com/ejsadiarin/corefinance/internal/materialize"
 )
 
 type Service struct {
@@ -18,11 +21,37 @@ func NewService(queries db.Querier) *Service {
 	return &Service{queries: queries}
 }
 
+// syncExpenseInstance materializes today's instance for a single expense rule
+// right after a rule write. Fail-open by design: errors are logged and the
+// rule write stays authoritative — the next worker pass converges.
+func (s *Service) syncExpenseInstance(ctx context.Context, rule db.RecurringExpenseRule) {
+	n, err := materialize.MaterializeExpenseRuleToday(ctx, s.queries, rule, time.Now())
+	if err != nil {
+		slog.Error("recurring.Service sync expense instance failed", "rule_id", rule.ID, "error", err)
+		return
+	}
+	if n > 0 {
+		slog.Info("recurring.Service synced today's expense instance", "rule_id", rule.ID)
+	}
+}
+
+// syncIncomeInstance is the income-rule counterpart of syncExpenseInstance.
+func (s *Service) syncIncomeInstance(ctx context.Context, rule db.RecurringIncomeRule) {
+	n, err := materialize.MaterializeIncomeRuleToday(ctx, s.queries, rule, time.Now())
+	if err != nil {
+		slog.Error("recurring.Service sync income instance failed", "rule_id", rule.ID, "error", err)
+		return
+	}
+	if n > 0 {
+		slog.Info("recurring.Service synced today's income instance", "rule_id", rule.ID)
+	}
+}
+
 // --- Income Rules ---
 
 func (s *Service) CreateIncomeRule(ctx context.Context, userID uuid.UUID, req CreateIncomeRuleRequest) (db.RecurringIncomeRule, error) {
 	slog.Debug("recurring.Service.CreateIncomeRule", "user_id", userID)
-	return s.queries.CreateRecurringIncomeRule(ctx, db.CreateRecurringIncomeRuleParams{
+	rule, err := s.queries.CreateRecurringIncomeRule(ctx, db.CreateRecurringIncomeRuleParams{
 		UserID:        userID,
 		Amount:        decimal.NewFromFloat(req.Amount),
 		Currency:      req.Currency,
@@ -31,6 +60,11 @@ func (s *Service) CreateIncomeRule(ctx context.Context, userID uuid.UUID, req Cr
 		StartDate:     helper.ToPgDate(req.StartDate),
 		EndDate:       helper.ToPgDatePtr(req.EndDate),
 	})
+	if err != nil {
+		return db.RecurringIncomeRule{}, err
+	}
+	s.syncIncomeInstance(ctx, rule)
+	return rule, nil
 }
 
 func (s *Service) ListIncomeRules(ctx context.Context, userID uuid.UUID) ([]db.RecurringIncomeRule, error) {
@@ -48,7 +82,7 @@ func (s *Service) GetIncomeRule(ctx context.Context, id uuid.UUID, userID uuid.U
 
 func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateIncomeRuleRequest) (db.RecurringIncomeRule, error) {
 	slog.Debug("recurring.Service.UpdateIncomeRule", "id", id, "user_id", userID)
-	return s.queries.UpdateRecurringIncomeRule(ctx, db.UpdateRecurringIncomeRuleParams{
+	rule, err := s.queries.UpdateRecurringIncomeRule(ctx, db.UpdateRecurringIncomeRuleParams{
 		ID:            id,
 		UserID:        userID,
 		Amount:        decimal.NewFromFloat(req.Amount),
@@ -58,6 +92,11 @@ func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 		StartDate:     helper.ToPgDate(req.StartDate),
 		EndDate:       helper.ToPgDatePtr(req.EndDate),
 	})
+	if err != nil {
+		return db.RecurringIncomeRule{}, err
+	}
+	s.syncIncomeInstance(ctx, rule)
+	return rule, nil
 }
 
 func (s *Service) DeleteIncomeRule(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
@@ -72,7 +111,7 @@ func (s *Service) DeleteIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 
 func (s *Service) CreateExpenseRule(ctx context.Context, userID uuid.UUID, req CreateExpenseRuleRequest) (db.RecurringExpenseRule, error) {
 	slog.Debug("recurring.Service.CreateExpenseRule", "user_id", userID)
-	return s.queries.CreateRecurringExpenseRule(ctx, db.CreateRecurringExpenseRuleParams{
+	rule, err := s.queries.CreateRecurringExpenseRule(ctx, db.CreateRecurringExpenseRuleParams{
 		UserID:        userID,
 		Description:   req.Description,
 		Amount:        decimal.NewFromFloat(req.Amount),
@@ -84,6 +123,11 @@ func (s *Service) CreateExpenseRule(ctx context.Context, userID uuid.UUID, req C
 		EndDate:       helper.ToPgDatePtr(req.EndDate),
 		Priority:      req.Priority,
 	})
+	if err != nil {
+		return db.RecurringExpenseRule{}, err
+	}
+	s.syncExpenseInstance(ctx, rule)
+	return rule, nil
 }
 
 func (s *Service) GetExpenseRule(ctx context.Context, id uuid.UUID, userID uuid.UUID) (db.GetRecurringExpenseRuleRow, error) {
@@ -96,7 +140,7 @@ func (s *Service) GetExpenseRule(ctx context.Context, id uuid.UUID, userID uuid.
 
 func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateExpenseRuleRequest) (db.RecurringExpenseRule, error) {
 	slog.Debug("recurring.Service.UpdateExpenseRule", "id", id, "user_id", userID)
-	return s.queries.UpdateRecurringExpenseRule(ctx, db.UpdateRecurringExpenseRuleParams{
+	rule, err := s.queries.UpdateRecurringExpenseRule(ctx, db.UpdateRecurringExpenseRuleParams{
 		ID:            id,
 		UserID:        userID,
 		Description:   req.Description,
@@ -109,6 +153,11 @@ func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uu
 		EndDate:       helper.ToPgDatePtr(req.EndDate),
 		Priority:      req.Priority,
 	})
+	if err != nil {
+		return db.RecurringExpenseRule{}, err
+	}
+	s.syncExpenseInstance(ctx, rule)
+	return rule, nil
 }
 
 func (s *Service) DeleteExpenseRule(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {

@@ -116,7 +116,7 @@ func main() {
 		os.Exit(runOnce(context.Background(), pool, queries, false))
 	}
 
-	// Long-running mode: one pass at startup, then every 24h on a stdlib ticker.
+	// Long-running mode: one pass at startup, then every hour on a stdlib ticker.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -124,9 +124,9 @@ func main() {
 		slog.Error("initial materialize pass failed, continuing with schedule")
 	}
 
-	ticker := time.NewTicker(24 * time.Hour)
+	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
-	slog.Info("worker started, daily materialization scheduled")
+	slog.Info("worker started, hourly materialization scheduled")
 	for {
 		select {
 		case <-ctx.Done():
