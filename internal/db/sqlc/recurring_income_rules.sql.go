@@ -16,7 +16,7 @@ import (
 const createRecurringIncomeRule = `-- name: CreateRecurringIncomeRule :one
 INSERT INTO recurring_income_rules (user_id, amount, currency, description, recurring_type, start_date, end_date)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at
+RETURNING id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active
 `
 
 type CreateRecurringIncomeRuleParams struct {
@@ -51,6 +51,7 @@ func (q *Queries) CreateRecurringIncomeRule(ctx context.Context, arg CreateRecur
 		&i.EndDate,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IsActive,
 	)
 	return i, err
 }
@@ -71,7 +72,7 @@ func (q *Queries) DeleteRecurringIncomeRule(ctx context.Context, arg DeleteRecur
 }
 
 const getRecurringIncomeRule = `-- name: GetRecurringIncomeRule :one
-SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at FROM recurring_income_rules
+SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active FROM recurring_income_rules
 WHERE id = $1 AND user_id = $2
 `
 
@@ -94,13 +95,14 @@ func (q *Queries) GetRecurringIncomeRule(ctx context.Context, arg GetRecurringIn
 		&i.EndDate,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IsActive,
 	)
 	return i, err
 }
 
 const listRecurringIncomeRules = `-- name: ListRecurringIncomeRules :many
-SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at FROM recurring_income_rules
-WHERE user_id = $1
+SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active FROM recurring_income_rules
+WHERE user_id = $1 AND is_active = true
 ORDER BY created_at DESC
 `
 
@@ -124,6 +126,7 @@ func (q *Queries) ListRecurringIncomeRules(ctx context.Context, userID uuid.UUID
 			&i.EndDate,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.IsActive,
 		); err != nil {
 			return nil, err
 		}
@@ -138,9 +141,11 @@ func (q *Queries) ListRecurringIncomeRules(ctx context.Context, userID uuid.UUID
 const updateRecurringIncomeRule = `-- name: UpdateRecurringIncomeRule :one
 UPDATE recurring_income_rules
 SET amount = $3, currency = $4, description = $5, recurring_type = $6,
-    start_date = $7, end_date = $8, updated_at = now()
+    start_date = $7, end_date = $8,
+    is_active = COALESCE($9, is_active),
+    updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at
+RETURNING id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active
 `
 
 type UpdateRecurringIncomeRuleParams struct {
@@ -152,6 +157,7 @@ type UpdateRecurringIncomeRuleParams struct {
 	RecurringType string          `db:"recurring_type" json:"recurring_type"`
 	StartDate     pgtype.Date     `db:"start_date" json:"start_date"`
 	EndDate       pgtype.Date     `db:"end_date" json:"end_date"`
+	IsActive      pgtype.Bool     `db:"is_active" json:"is_active"`
 }
 
 func (q *Queries) UpdateRecurringIncomeRule(ctx context.Context, arg UpdateRecurringIncomeRuleParams) (RecurringIncomeRule, error) {
@@ -164,6 +170,7 @@ func (q *Queries) UpdateRecurringIncomeRule(ctx context.Context, arg UpdateRecur
 		arg.RecurringType,
 		arg.StartDate,
 		arg.EndDate,
+		arg.IsActive,
 	)
 	var i RecurringIncomeRule
 	err := row.Scan(
@@ -177,6 +184,7 @@ func (q *Queries) UpdateRecurringIncomeRule(ctx context.Context, arg UpdateRecur
 		&i.EndDate,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IsActive,
 	)
 	return i, err
 }

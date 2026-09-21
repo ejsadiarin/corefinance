@@ -215,6 +215,64 @@ func TestRecurringService_UpdateIncomeRule(t *testing.T) {
 	})
 }
 
+func TestRecurringService_UpdateIncomeRuleIsActive(t *testing.T) {
+	userID := uuid.New()
+	ruleID := uuid.New()
+
+	newReq := func() UpdateIncomeRuleRequest {
+		return UpdateIncomeRuleRequest{
+			Amount:        5000,
+			Currency:      "PHP",
+			Description:   "Salary",
+			RecurringType: "monthly",
+			StartDate:     "2026-01-01",
+		}
+	}
+
+	t.Run("pause persists", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			UpdateRecurringIncomeRuleFn: func(ctx context.Context, arg db.UpdateRecurringIncomeRuleParams) (db.RecurringIncomeRule, error) {
+				assert.Equal(t, pgtype.Bool{Bool: false, Valid: true}, arg.IsActive)
+				return db.RecurringIncomeRule{ID: ruleID, IsActive: false}, nil
+			},
+		}
+		svc := NewService(mock)
+		req := newReq()
+		req.IsActive = ptrBool(false)
+		result, err := svc.UpdateIncomeRule(context.Background(), ruleID, userID, req)
+		require.NoError(t, err)
+		assert.False(t, result.IsActive)
+	})
+
+	t.Run("resume persists", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			UpdateRecurringIncomeRuleFn: func(ctx context.Context, arg db.UpdateRecurringIncomeRuleParams) (db.RecurringIncomeRule, error) {
+				assert.Equal(t, pgtype.Bool{Bool: true, Valid: true}, arg.IsActive)
+				return db.RecurringIncomeRule{ID: ruleID, IsActive: true}, nil
+			},
+		}
+		svc := NewService(mock)
+		req := newReq()
+		req.IsActive = ptrBool(true)
+		result, err := svc.UpdateIncomeRule(context.Background(), ruleID, userID, req)
+		require.NoError(t, err)
+		assert.True(t, result.IsActive)
+	})
+
+	t.Run("omitted preserves state", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			UpdateRecurringIncomeRuleFn: func(ctx context.Context, arg db.UpdateRecurringIncomeRuleParams) (db.RecurringIncomeRule, error) {
+				assert.Equal(t, pgtype.Bool{Valid: false}, arg.IsActive)
+				return db.RecurringIncomeRule{ID: ruleID, IsActive: true}, nil
+			},
+		}
+		svc := NewService(mock)
+		result, err := svc.UpdateIncomeRule(context.Background(), ruleID, userID, newReq())
+		require.NoError(t, err)
+		assert.True(t, result.IsActive)
+	})
+}
+
 func TestRecurringService_DeleteIncomeRule(t *testing.T) {
 	userID := uuid.New()
 	ruleID := uuid.New()
@@ -368,6 +426,7 @@ func TestRecurringService_UpdateExpenseRule(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		catID := uuid.New().String()
 		notes := "Updated notes"
+		isActive := true
 		mock := &mock.MockQuerier{
 			UpdateRecurringExpenseRuleFn: func(ctx context.Context, arg db.UpdateRecurringExpenseRuleParams) (db.RecurringExpenseRule, error) {
 				assert.Equal(t, ruleID, arg.ID)
@@ -394,7 +453,7 @@ func TestRecurringService_UpdateExpenseRule(t *testing.T) {
 			RecurringType: "monthly",
 			StartDate:     "2026-01-01",
 			Priority:      "need",
-			IsActive:      true,
+			IsActive:      &isActive,
 		})
 		require.NoError(t, err)
 		assert.Equal(t, "Updated Rent", result.Description)
@@ -416,6 +475,65 @@ func TestRecurringService_UpdateExpenseRule(t *testing.T) {
 			Priority:      "want",
 		})
 		require.Error(t, err)
+	})
+}
+
+func TestRecurringService_UpdateExpenseRuleIsActive(t *testing.T) {
+	userID := uuid.New()
+	ruleID := uuid.New()
+
+	newReq := func() UpdateExpenseRuleRequest {
+		return UpdateExpenseRuleRequest{
+			Amount:        2000,
+			Currency:      "PHP",
+			Description:   "Rent",
+			RecurringType: "monthly",
+			StartDate:     "2026-01-01",
+			Priority:      "need",
+		}
+	}
+
+	t.Run("pause persists", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			UpdateRecurringExpenseRuleFn: func(ctx context.Context, arg db.UpdateRecurringExpenseRuleParams) (db.RecurringExpenseRule, error) {
+				assert.Equal(t, pgtype.Bool{Bool: false, Valid: true}, arg.IsActive)
+				return db.RecurringExpenseRule{ID: ruleID, IsActive: false}, nil
+			},
+		}
+		svc := NewService(mock)
+		req := newReq()
+		req.IsActive = ptrBool(false)
+		result, err := svc.UpdateExpenseRule(context.Background(), ruleID, userID, req)
+		require.NoError(t, err)
+		assert.False(t, result.IsActive)
+	})
+
+	t.Run("resume persists", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			UpdateRecurringExpenseRuleFn: func(ctx context.Context, arg db.UpdateRecurringExpenseRuleParams) (db.RecurringExpenseRule, error) {
+				assert.Equal(t, pgtype.Bool{Bool: true, Valid: true}, arg.IsActive)
+				return db.RecurringExpenseRule{ID: ruleID, IsActive: true}, nil
+			},
+		}
+		svc := NewService(mock)
+		req := newReq()
+		req.IsActive = ptrBool(true)
+		result, err := svc.UpdateExpenseRule(context.Background(), ruleID, userID, req)
+		require.NoError(t, err)
+		assert.True(t, result.IsActive)
+	})
+
+	t.Run("omitted preserves state", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			UpdateRecurringExpenseRuleFn: func(ctx context.Context, arg db.UpdateRecurringExpenseRuleParams) (db.RecurringExpenseRule, error) {
+				assert.Equal(t, pgtype.Bool{Valid: false}, arg.IsActive)
+				return db.RecurringExpenseRule{ID: ruleID, IsActive: true}, nil
+			},
+		}
+		svc := NewService(mock)
+		result, err := svc.UpdateExpenseRule(context.Background(), ruleID, userID, newReq())
+		require.NoError(t, err)
+		assert.True(t, result.IsActive)
 	})
 }
 

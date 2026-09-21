@@ -167,7 +167,7 @@ func TestRecurringService_UpdateExpenseRuleSyncsTodayInstance(t *testing.T) {
 			RecurringType: "daily",
 			StartDate:     today.Time.Format("2006-01-02"),
 			Priority:      "need",
-			IsActive:      true,
+			IsActive:      ptrBool(true),
 		})
 		require.NoError(t, err)
 		assert.Equal(t, ruleID, result.ID)
@@ -192,6 +192,7 @@ func TestRecurringService_CreateIncomeRuleSyncsTodayInstance(t *testing.T) {
 					Description:   "Salary",
 					RecurringType: "daily",
 					StartDate:     today,
+					IsActive:      true,
 				}, nil
 			},
 			CreateIncomeInstanceFn: func(ctx context.Context, arg db.CreateIncomeInstanceParams) (int64, error) {
@@ -225,6 +226,7 @@ func TestRecurringService_CreateIncomeRuleSyncsTodayInstance(t *testing.T) {
 					UserID:        userID,
 					RecurringType: "daily",
 					StartDate:     future,
+					IsActive:      true,
 				}, nil
 			},
 			CreateIncomeInstanceFn: func(ctx context.Context, arg db.CreateIncomeInstanceParams) (int64, error) {
@@ -252,6 +254,7 @@ func TestRecurringService_CreateIncomeRuleSyncsTodayInstance(t *testing.T) {
 					Description:   "Salary",
 					RecurringType: "daily",
 					StartDate:     today,
+					IsActive:      true,
 				}, nil
 			},
 			CreateIncomeInstanceFn: func(ctx context.Context, arg db.CreateIncomeInstanceParams) (int64, error) {
@@ -286,6 +289,7 @@ func TestRecurringService_UpdateIncomeRuleSyncsTodayInstance(t *testing.T) {
 					Description:   "Salary",
 					RecurringType: "daily",
 					StartDate:     today,
+					IsActive:      true,
 				}, nil
 			},
 			CreateIncomeInstanceFn: func(ctx context.Context, arg db.CreateIncomeInstanceParams) (int64, error) {
@@ -301,6 +305,7 @@ func TestRecurringService_UpdateIncomeRuleSyncsTodayInstance(t *testing.T) {
 			Description:   "Salary",
 			RecurringType: "daily",
 			StartDate:     today.Time.Format("2006-01-02"),
+			IsActive:      ptrBool(true),
 		})
 		require.NoError(t, err)
 		assert.Equal(t, ruleID, result.ID)
@@ -316,6 +321,7 @@ func TestRecurringService_UpdateIncomeRuleSyncsTodayInstance(t *testing.T) {
 					Description:   "Salary",
 					RecurringType: "daily",
 					StartDate:     today,
+					IsActive:      true,
 				}, nil
 			},
 			CreateIncomeInstanceFn: func(ctx context.Context, arg db.CreateIncomeInstanceParams) (int64, error) {
@@ -329,6 +335,7 @@ func TestRecurringService_UpdateIncomeRuleSyncsTodayInstance(t *testing.T) {
 			Description:   "Salary",
 			RecurringType: "daily",
 			StartDate:     today.Time.Format("2006-01-02"),
+			IsActive:      ptrBool(true),
 		})
 		require.NoError(t, err, "sync failure must not fail the rule write")
 		assert.Equal(t, ruleID, result.ID)

@@ -47,7 +47,7 @@ func MaterializeExpenseRuleToday(ctx context.Context, q db.Querier, rule db.Recu
 // rule when it is due today. Same idempotency and guard semantics as
 // MaterializeExpenseRuleToday. Returns the number of rows inserted (0 or 1).
 func MaterializeIncomeRuleToday(ctx context.Context, q db.Querier, rule db.RecurringIncomeRule, today time.Time) (int64, error) {
-	if !rule.StartDate.Valid {
+	if !rule.IsActive || !rule.StartDate.Valid {
 		return 0, nil
 	}
 	if rule.EndDate.Valid && truncateDate(today).After(truncateDate(rule.EndDate.Time)) {

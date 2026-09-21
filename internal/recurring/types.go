@@ -20,6 +20,7 @@ type UpdateIncomeRuleRequest struct {
 	RecurringType string   `json:"recurring_type"`
 	StartDate     string   `json:"start_date"`
 	EndDate       *string  `json:"end_date,omitempty"`
+	IsActive      *bool    `json:"is_active,omitempty"`
 }
 
 type CreateExpenseRuleRequest struct {
@@ -44,7 +45,7 @@ type UpdateExpenseRuleRequest struct {
 	StartDate     string   `json:"start_date"`
 	EndDate       *string  `json:"end_date,omitempty"`
 	Priority      string   `json:"priority"`
-	IsActive      bool     `json:"is_active"`
+	IsActive      *bool    `json:"is_active,omitempty"`
 }
 
 type IncomeRuleResponse struct {

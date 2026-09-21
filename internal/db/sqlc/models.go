@@ -109,6 +109,7 @@ type RecurringIncomeRule struct {
 	EndDate       pgtype.Date        `db:"end_date" json:"end_date"`
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	IsActive      bool               `db:"is_active" json:"is_active"`
 }
 
 type Tag struct {

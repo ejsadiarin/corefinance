@@ -178,8 +178,9 @@ func (q *Queries) ListActiveExpenseRules(ctx context.Context, startDate pgtype.D
 }
 
 const listActiveIncomeRules = `-- name: ListActiveIncomeRules :many
-SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at FROM recurring_income_rules
-WHERE start_date <= $1
+SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active FROM recurring_income_rules
+WHERE is_active = true
+  AND start_date <= $1
   AND (end_date IS NULL OR end_date >= $1)
 ORDER BY start_date ASC
 `
@@ -204,6 +205,7 @@ func (q *Queries) ListActiveIncomeRules(ctx context.Context, startDate pgtype.Da
 			&i.EndDate,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.IsActive,
 		); err != nil {
 			return nil, err
 		}

@@ -20,6 +20,7 @@ WHERE r.id = $1 AND r.user_id = $2;
 UPDATE recurring_expense_rules
 SET description = $3, amount = $4, currency = $5, category_id = $6, notes = $7,
     recurring_type = $8, start_date = $9, end_date = $10, priority = $11,
+    is_active = COALESCE(sqlc.narg(is_active), is_active),
     updated_at = now()
 WHERE id = $1 AND user_id = $2
 RETURNING *;

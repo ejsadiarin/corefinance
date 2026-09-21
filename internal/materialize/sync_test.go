@@ -5,9 +5,12 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 )
 
 func countRuleIncomes(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ruleID uuid.UUID) int {
@@ -115,4 +118,75 @@ func TestMaterializeIncomeRuleToday_NotDue(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), n)
 	assert.Equal(t, 0, countRuleIncomes(t, ctx, pool, rule.ID))
+}
+
+// New income rules are born active (migration 00004 default), so the sync
+// helper inserts for them; pausing flips the helper to a no-op.
+func TestMaterializeIncomeRuleToday_PauseAndResume(t *testing.T) {
+	pool, q := newMaterializeTest(t)
+	ctx := context.Background()
+	userID := uuid.New()
+	today := d("2026-09-10")
+
+	rule := seedIncomeRule(t, ctx, q, userID, "daily", "2026-09-01")
+	require.True(t, rule.IsActive, "seeded rule must be active by default")
+
+	n, err := MaterializeIncomeRuleToday(ctx, q, rule, today)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n)
+
+	rule.IsActive = false
+	n, err = MaterializeIncomeRuleToday(ctx, q, rule, today)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), n, "paused rule must insert nothing")
+	assert.Equal(t, 1, countRuleIncomes(t, ctx, pool, rule.ID))
+}
+
+// The daily worker pass skips paused income rules and picks them back up
+// after resume, preserving already-materialized history.
+func TestMaterializeDue_PausedIncomeRuleSkippedThenResumed(t *testing.T) {
+	pool, q := newMaterializeTest(t)
+	ctx := context.Background()
+	userID := uuid.New()
+	today := d("2026-09-10")
+
+	rule := seedIncomeRule(t, ctx, q, userID, "daily", "2026-09-01")
+
+	paused, err := q.UpdateRecurringIncomeRule(ctx, db.UpdateRecurringIncomeRuleParams{
+		ID:            rule.ID,
+		UserID:        rule.UserID,
+		Amount:        rule.Amount,
+		Currency:      rule.Currency,
+		Description:   rule.Description,
+		RecurringType: rule.RecurringType,
+		StartDate:     rule.StartDate,
+		EndDate:       rule.EndDate,
+		IsActive:      pgtype.Bool{Bool: false, Valid: true},
+	})
+	require.NoError(t, err)
+	require.False(t, paused.IsActive)
+
+	n, err := MaterializeDue(ctx, pool, q, today)
+	require.NoError(t, err)
+	assert.Equal(t, 0, n, "paused rule must produce no instances")
+	assert.Equal(t, 0, countRuleIncomes(t, ctx, pool, rule.ID))
+
+	resumed, err := q.UpdateRecurringIncomeRule(ctx, db.UpdateRecurringIncomeRuleParams{
+		ID:            rule.ID,
+		UserID:        rule.UserID,
+		Amount:        rule.Amount,
+		Currency:      rule.Currency,
+		Description:   rule.Description,
+		RecurringType: rule.RecurringType,
+		StartDate:     rule.StartDate,
+		EndDate:       rule.EndDate,
+		IsActive:      pgtype.Bool{Bool: true, Valid: true},
+	})
+	require.NoError(t, err)
+	require.True(t, resumed.IsActive)
+
+	n, err = MaterializeDue(ctx, pool, q, today)
+	require.NoError(t, err)
+	assert.Equal(t, 1, n, "resumed rule must materialize again")
+	assert.Equal(t, 1, countRuleIncomes(t, ctx, pool, rule.ID))
 }

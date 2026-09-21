@@ -207,6 +207,7 @@ const updateRecurringExpenseRule = `-- name: UpdateRecurringExpenseRule :one
 UPDATE recurring_expense_rules
 SET description = $3, amount = $4, currency = $5, category_id = $6, notes = $7,
     recurring_type = $8, start_date = $9, end_date = $10, priority = $11,
+    is_active = COALESCE($12, is_active),
     updated_at = now()
 WHERE id = $1 AND user_id = $2
 RETURNING id, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, created_at, updated_at
@@ -224,6 +225,7 @@ type UpdateRecurringExpenseRuleParams struct {
 	StartDate     pgtype.Date     `db:"start_date" json:"start_date"`
 	EndDate       pgtype.Date     `db:"end_date" json:"end_date"`
 	Priority      string          `db:"priority" json:"priority"`
+	IsActive      pgtype.Bool     `db:"is_active" json:"is_active"`
 }
 
 func (q *Queries) UpdateRecurringExpenseRule(ctx context.Context, arg UpdateRecurringExpenseRuleParams) (RecurringExpenseRule, error) {
@@ -239,6 +241,7 @@ func (q *Queries) UpdateRecurringExpenseRule(ctx context.Context, arg UpdateRecu
 		arg.StartDate,
 		arg.EndDate,
 		arg.Priority,
+		arg.IsActive,
 	)
 	var i RecurringExpenseRule
 	err := row.Scan(

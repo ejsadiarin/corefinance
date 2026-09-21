@@ -10,7 +10,8 @@ ORDER BY start_date ASC;
 
 -- name: ListActiveIncomeRules :many
 SELECT * FROM recurring_income_rules
-WHERE start_date <= $1
+WHERE is_active = true
+  AND start_date <= $1
   AND (end_date IS NULL OR end_date >= $1)
 ORDER BY start_date ASC;
 

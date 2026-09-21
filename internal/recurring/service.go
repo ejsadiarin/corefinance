@@ -91,6 +91,7 @@ func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 		RecurringType: req.RecurringType,
 		StartDate:     helper.ToPgDate(req.StartDate),
 		EndDate:       helper.ToPgDatePtr(req.EndDate),
+		IsActive:      helper.ToPgBool(req.IsActive),
 	})
 	if err != nil {
 		return db.RecurringIncomeRule{}, err
@@ -152,6 +153,7 @@ func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uu
 		StartDate:     helper.ToPgDate(req.StartDate),
 		EndDate:       helper.ToPgDatePtr(req.EndDate),
 		Priority:      req.Priority,
+		IsActive:      helper.ToPgBool(req.IsActive),
 	})
 	if err != nil {
 		return db.RecurringExpenseRule{}, err

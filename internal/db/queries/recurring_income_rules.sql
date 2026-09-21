@@ -5,7 +5,7 @@ RETURNING *;
 
 -- name: ListRecurringIncomeRules :many
 SELECT * FROM recurring_income_rules
-WHERE user_id = $1
+WHERE user_id = $1 AND is_active = true
 ORDER BY created_at DESC;
 
 -- name: GetRecurringIncomeRule :one
@@ -15,7 +15,9 @@ WHERE id = $1 AND user_id = $2;
 -- name: UpdateRecurringIncomeRule :one
 UPDATE recurring_income_rules
 SET amount = $3, currency = $4, description = $5, recurring_type = $6,
-    start_date = $7, end_date = $8, updated_at = now()
+    start_date = $7, end_date = $8,
+    is_active = COALESCE(sqlc.narg(is_active), is_active),
+    updated_at = now()
 WHERE id = $1 AND user_id = $2
 RETURNING *;
 
