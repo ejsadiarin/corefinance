@@ -1,15 +1,20 @@
 @baseUrl=http://localhost:6969
-@userId=
+@gateway=http://localhost:8080
+@jwt=
 
 ### Budget API Testing
 
 ### Notes
 ### ============================================
 # How to use this file:
-# 1. Set @userId at the top of this file with your user ID
-# 2. Run any request - the X-User-ID header will be automatically set
+# 1. Get a token: log in via the gateway (POST {{gateway}}/api/auth/login),
+#    then call any gateway-proxied route — or paste a gateway-created JWT
+#    below as @jwt (exchange a service key at POST {{gateway}}/api/auth/token).
+# 2. Run any request - Authorization: Bearer {{jwt}} is sent automatically.
 #
-# Auth: All requests require the X-User-ID header (set by coregateway)
+# Auth: every route except /health, /, /websocket and
+# /api/budget/priority-groups requires a gateway-created internal JWT.
+# X-User-ID is NOT accepted from the wire (spoofing returns 401).
 #
 # Endpoints implemented (canonical prefix /api/budget/* for ALL verbs):
 # - Expense Categories: full CRUD (soft delete via is_active)
@@ -45,7 +50,7 @@ GET {{baseUrl}}/health HTTP/1.1
 
 POST {{baseUrl}}/api/budget/expense-categories HTTP/1.1
 Content-Type: application/json
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 {
   "name": "Food & Dining",
@@ -57,14 +62,14 @@ X-User-ID: {{userId}}
 ### List Expense Categories
 
 GET {{baseUrl}}/api/budget/expense-categories HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Update Expense Category
 
 PUT {{baseUrl}}/api/budget/expense-categories/{category_id} HTTP/1.1
 Content-Type: application/json
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 {
   "name": "Food & Dining (Updated)",
@@ -76,7 +81,7 @@ X-User-ID: {{userId}}
 ### Delete Expense Category
 
 DELETE {{baseUrl}}/api/budget/expense-categories/{category_id} HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### ============================================
@@ -92,7 +97,7 @@ X-User-ID: {{userId}}
 
 POST {{baseUrl}}/api/budget/income-categories HTTP/1.1
 Content-Type: application/json
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 {
   "name": "Salary",
@@ -104,14 +109,14 @@ X-User-ID: {{userId}}
 ### List Income Categories
 
 GET {{baseUrl}}/api/budget/income-categories HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Update Income Category
 
 PUT {{baseUrl}}/api/budget/income-categories/{category_id} HTTP/1.1
 Content-Type: application/json
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 {
   "name": "Salary (Updated)",
@@ -123,7 +128,7 @@ X-User-ID: {{userId}}
 ### Delete Income Category
 
 DELETE {{baseUrl}}/api/budget/income-categories/{category_id} HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### ============================================
@@ -139,7 +144,7 @@ X-User-ID: {{userId}}
 
 POST {{baseUrl}}/api/budget/tags HTTP/1.1
 Content-Type: application/json
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 {
   "name": "essential",
@@ -150,14 +155,14 @@ X-User-ID: {{userId}}
 ### List Tags
 
 GET {{baseUrl}}/api/budget/tags HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Update Tag
 
 PUT {{baseUrl}}/api/budget/tags/{tag_id} HTTP/1.1
 Content-Type: application/json
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 {
   "name": "essential-updated",
@@ -168,7 +173,7 @@ X-User-ID: {{userId}}
 ### Delete Tag
 
 DELETE {{baseUrl}}/api/budget/tags/{tag_id} HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### ============================================
@@ -184,7 +189,7 @@ X-User-ID: {{userId}}
 
 POST {{baseUrl}}/api/budget/expenses HTTP/1.1
 Content-Type: application/json
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 {
   "amount": 500.00,
@@ -202,30 +207,30 @@ X-User-ID: {{userId}}
 ### List Expenses
 
 GET {{baseUrl}}/api/budget/expenses?page=1&page_size=20 HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 ### test (via gateway - canonical prefix is /api/budget for ALL verbs after route refactor)
 
 GET http://localhost:8080/api/budget/expenses?page=1&page_size=20 HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 ### List Expenses (Filtered)
 
 GET {{baseUrl}}/api/budget/expenses?start_date=2026-02-01&end_date=2026-02-28&priority=need&status=posted&page=1&page_size=50 HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Get Expense by ID
 
 GET {{baseUrl}}/api/budget/expenses/{expense_id} HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Update Expense
 
 PUT {{baseUrl}}/api/budget/expenses/{expense_id} HTTP/1.1
 Content-Type: application/json
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 {
   "amount": 550.00,
@@ -243,20 +248,20 @@ X-User-ID: {{userId}}
 ### Delete Expense
 
 DELETE {{baseUrl}}/api/budget/expenses/{expense_id} HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Search Expenses
 
 GET {{baseUrl}}/api/budget/expenses/search?q=groceries&page=1&page_size=20 HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Skip Expense
 
 POST {{baseUrl}}/api/budget/expenses/skip HTTP/1.1
 Content-Type: application/json
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 {
   "id": "{expense_id}"
@@ -266,14 +271,14 @@ X-User-ID: {{userId}}
 ### Check Skipped Expenses
 
 GET {{baseUrl}}/api/budget/expenses/check-skipped?start_date=2026-02-01&end_date=2026-02-28 HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Add Tag to Expense
 
 POST {{baseUrl}}/api/budget/expenses/{expense_id}/tags HTTP/1.1
 Content-Type: application/json
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 {
   "tag_id": "{tag_id}"
@@ -283,13 +288,13 @@ X-User-ID: {{userId}}
 ### Get Tags for Expense
 
 GET {{baseUrl}}/api/budget/expenses/{expense_id}/tags HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Remove Tag from Expense
 
 DELETE {{baseUrl}}/api/budget/expenses/{expense_id}/tags/{tag_id} HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### ============================================
@@ -305,7 +310,7 @@ X-User-ID: {{userId}}
 
 POST {{baseUrl}}/api/budget/incomes HTTP/1.1
 Content-Type: application/json
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 {
   "amount": 30000.00,
@@ -321,26 +326,26 @@ X-User-ID: {{userId}}
 ### List Incomes
 
 GET {{baseUrl}}/api/budget/incomes?page=1&page_size=20 HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### List Incomes (Filtered)
 
 GET {{baseUrl}}/api/budget/incomes?start_date=2026-02-01&end_date=2026-02-28&status=posted&page=1&page_size=50 HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Get Income by ID
 
 GET {{baseUrl}}/api/budget/incomes/{income_id} HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Update Income
 
 PUT {{baseUrl}}/api/budget/incomes/{income_id} HTTP/1.1
 Content-Type: application/json
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 {
   "amount": 32000.00,
@@ -356,14 +361,14 @@ X-User-ID: {{userId}}
 ### Delete Income
 
 DELETE {{baseUrl}}/api/budget/incomes/{income_id} HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Skip Income
 
 POST {{baseUrl}}/api/budget/incomes/skip HTTP/1.1
 Content-Type: application/json
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 {
   "id": "{income_id}"
@@ -373,20 +378,20 @@ X-User-ID: {{userId}}
 ### Check Skipped Incomes
 
 GET {{baseUrl}}/api/budget/incomes/check-skipped?start_date=2026-02-01&end_date=2026-02-28 HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Get Income Occurrences
 
 GET {{baseUrl}}/api/budget/incomes/occurrences?start_date=2026-01-01&end_date=2026-12-31 HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Add Tag to Income
 
 POST {{baseUrl}}/api/budget/incomes/{income_id}/tags HTTP/1.1
 Content-Type: application/json
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 {
   "tag_id": "{tag_id}"
@@ -396,13 +401,13 @@ X-User-ID: {{userId}}
 ### Get Tags for Income
 
 GET {{baseUrl}}/api/budget/incomes/{income_id}/tags HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Remove Tag from Income
 
 DELETE {{baseUrl}}/api/budget/incomes/{income_id}/tags/{tag_id} HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### ============================================
@@ -417,7 +422,7 @@ X-User-ID: {{userId}}
 ### List Priority Groups
 
 GET {{baseUrl}}/api/budget/priority-groups HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### ============================================
@@ -432,7 +437,7 @@ X-User-ID: {{userId}}
 ### Get Budget Remaining (Current Month)
 
 GET {{baseUrl}}/api/budget/remaining HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### ============================================
@@ -447,49 +452,49 @@ X-User-ID: {{userId}}
 ### Get Summary
 
 GET {{baseUrl}}/api/budget/stats/summary HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Get Summary (Custom Period)
 
 GET {{baseUrl}}/api/budget/stats/summary?start_date=2026-02-01&end_date=2026-02-28 HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Get Trends
 
 GET {{baseUrl}}/api/budget/stats/trends HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Get Trends (Custom Period)
 
 GET {{baseUrl}}/api/budget/stats/trends?start_date=2026-01-01&end_date=2026-12-31 HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Get Category Breakdown
 
 GET {{baseUrl}}/api/budget/stats/category-breakdown HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Get Category Breakdown (Custom Period)
 
 GET {{baseUrl}}/api/budget/stats/category-breakdown?start_date=2026-02-01&end_date=2026-02-28 HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Get Savings Rate
 
 GET {{baseUrl}}/api/budget/stats/savings-rate HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Get Savings Rate (Custom Period)
 
 GET {{baseUrl}}/api/budget/stats/savings-rate?start_date=2026-01-15&end_date=2026-02-17 HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### ============================================
@@ -504,43 +509,43 @@ X-User-ID: {{userId}}
 ### Get 50/30/20 Analysis
 
 GET {{baseUrl}}/api/budget/analysis/503020 HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Get 50/30/20 Analysis (Custom Period)
 
 GET {{baseUrl}}/api/budget/analysis/503020?start_date=2026-02-01&end_date=2026-02-28 HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Get Spending Velocity
 
 GET {{baseUrl}}/api/budget/velocity HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Get Upcoming Bills
 
 GET {{baseUrl}}/api/budget/forecast/upcoming HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Get Current Total Money
 
 GET {{baseUrl}}/api/budget/current-total-money HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Get Month-over-Month Trends
 
 GET {{baseUrl}}/api/budget/trends/month-over-month HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Get Month-over-Month Trends (Custom Period)
 
 GET {{baseUrl}}/api/budget/trends/month-over-month?start_date=2026-01-01&end_date=2026-12-31 HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### ============================================
@@ -556,7 +561,7 @@ X-User-ID: {{userId}}
 
 POST {{baseUrl}}/api/budget/recurring-expenses HTTP/1.1
 Content-Type: application/json
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 {
   "amount": 1500.00,
@@ -574,20 +579,20 @@ X-User-ID: {{userId}}
 ### List Recurring Expense Rules
 
 GET {{baseUrl}}/api/budget/recurring-expenses HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Get Recurring Expense Rule
 
 GET {{baseUrl}}/api/budget/recurring-expenses/{expense_rule_id} HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Update Recurring Expense Rule
 
 PUT {{baseUrl}}/api/budget/recurring-expenses/{expense_rule_id} HTTP/1.1
 Content-Type: application/json
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 {
   "amount": 1800.00,
@@ -605,7 +610,7 @@ X-User-ID: {{userId}}
 ### Delete Recurring Expense Rule
 
 DELETE {{baseUrl}}/api/budget/recurring-expenses/{expense_rule_id} HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### ============================================
@@ -621,7 +626,7 @@ X-User-ID: {{userId}}
 
 POST {{baseUrl}}/api/budget/recurring-incomes HTTP/1.1
 Content-Type: application/json
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 {
   "amount": 30000.00,
@@ -636,20 +641,20 @@ X-User-ID: {{userId}}
 ### List Recurring Income Rules
 
 GET {{baseUrl}}/api/budget/recurring-incomes HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Get Recurring Income Rule
 
 GET {{baseUrl}}/api/budget/recurring-incomes/{rule_id} HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Update Recurring Income Rule
 
 PUT {{baseUrl}}/api/budget/recurring-incomes/{rule_id} HTTP/1.1
 Content-Type: application/json
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 {
   "amount": 32000.00,
@@ -664,7 +669,7 @@ X-User-ID: {{userId}}
 ### Delete Recurring Income Rule
 
 DELETE {{baseUrl}}/api/budget/recurring-incomes/{rule_id} HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### ============================================
@@ -679,14 +684,14 @@ X-User-ID: {{userId}}
 ### Export Budget Data
 
 GET {{baseUrl}}/api/budget/export HTTP/1.1
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 
 ### Import Budget Data
 
 POST {{baseUrl}}/api/budget/import HTTP/1.1
 Content-Type: application/json
-X-User-ID: {{userId}}
+Authorization: Bearer {{jwt}}
 
 {
   "expense_categories": [],
@@ -699,6 +704,33 @@ X-User-ID: {{userId}}
   "expense_tags": [],
   "income_tags": []
 }
+
+
+### ============================================
+### Identity contract (expect 401s without a valid JWT)
+### ============================================
+
+### Spoof attempt: bare X-User-ID, no JWT (expect 401)
+
+GET {{baseUrl}}/api/budget/expenses/
+X-User-ID: 00000000-0000-0000-0000-000000000000
+
+### Service JWT on a user route (expect 401, no user established)
+
+GET {{baseUrl}}/api/budget/expenses/
+Authorization: Bearer {{service_jwt}}
+
+### Service endpoint with service JWT (expect 200)
+
+GET {{baseUrl}}/internal/recurring/active
+Authorization: Bearer {{service_jwt}}
+
+### Service endpoint with user JWT (expect 403, domains do not cross)
+
+GET {{baseUrl}}/internal/recurring/active
+Authorization: Bearer {{jwt}}
+
+# @service_jwt = PASTE_SERVICE_JWT_HERE
 
 
 ### ============================================
