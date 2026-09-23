@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/ejsadiarin/corefinance/internal/auth"
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/logger"
 	"github.com/ejsadiarin/corefinance/internal/server"
@@ -88,6 +89,13 @@ func buildPool() *pgxpool.Pool {
 	return pool
 }
 
+func getenv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
 func main() {
 	logger.Setup()
 
@@ -101,7 +109,22 @@ func main() {
 		port = 6969
 	}
 
-	srv := server.New(port, pool, queries)
+	// Internal JWT identity: the gateway is the sole signer, this service
+	// holds public material only. Fail closed when unverifiable.
+	verifier, err := auth.NewVerifier(auth.Config{
+		Issuer:   getenv("JWT_ISSUER", "https://gateway.internal"),
+		Audience: getenv("JWT_AUDIENCE", "corefinance"),
+		JWKSURL:  getenv("JWT_JWKS_URL", "https://gateway.internal/.well-known/jwks.json"),
+		PublicPaths: []string{
+			"/api/budget/priority-groups",
+		},
+	})
+	if err != nil {
+		slog.Error("failed to establish JWT verification", "error", err)
+		os.Exit(1)
+	}
+
+	srv := server.New(port, pool, queries, verifier)
 
 	done := make(chan bool, 1)
 	go gracefulShutdown(srv, pool, done)

@@ -29,8 +29,11 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	r.Get("/websocket", s.websocketHandler)
 
-	// budget tracking routes
+	// budget tracking routes. Identity is the verified internal JWT
+	// only; X-User-ID from the wire is stripped and never trusted.
+	// /priority-groups stays public (reference data, no user scope).
 	r.Route("/api/budget", func(r chi.Router) {
+		r.Use(s.Verifier.Middleware)
 		// priority groups (reference data)
 		r.Get("/priority-groups", s.BudgetHandler.PriorityGroups)
 

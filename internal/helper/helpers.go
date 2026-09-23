@@ -59,9 +59,9 @@ func ParseQueryString(r *http.Request, key string) *string {
 }
 
 func GetUserID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	userID, ok := auth.GetUserID(r)
+	userID, ok := auth.UserIDFromContext(r.Context())
 	if !ok {
-		RespondErrorJSON(w, http.StatusUnauthorized, "X-User-ID header is required")
+		RespondErrorJSON(w, http.StatusUnauthorized, "valid internal credentials are required")
 		return uuid.Nil, false
 	}
 	return userID, true

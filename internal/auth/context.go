@@ -2,14 +2,16 @@ package auth
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/google/uuid"
 )
 
 type contextKey string
 
-const userKey contextKey = "user_id"
+const (
+	userKey   contextKey = "user_id"
+	scopesKey contextKey = "scopes"
+)
 
 // WithUserID stores the user ID in the context.
 func WithUserID(ctx context.Context, id uuid.UUID) context.Context {
@@ -22,17 +24,24 @@ func UserIDFromContext(ctx context.Context) (uuid.UUID, bool) {
 	return id, ok
 }
 
-// GetUserID is a convenience handler that extracts the user ID from the
-// X-User-ID header and returns it. This is used when coregateway passes
-// the user ID via header (inter-service communication).
-func GetUserID(r *http.Request) (uuid.UUID, bool) {
-	userIDStr := r.Header.Get("X-User-ID")
-	if userIDStr == "" {
-		return uuid.Nil, false
+// WithScopes stores the verified scope list (space-delimited scope claim,
+// split by the verifier) in the context.
+func WithScopes(ctx context.Context, scopes []string) context.Context {
+	return context.WithValue(ctx, scopesKey, scopes)
+}
+
+// ScopesFromContext extracts the verified scope list; empty when none.
+func ScopesFromContext(ctx context.Context) []string {
+	scopes, _ := ctx.Value(scopesKey).([]string)
+	return scopes
+}
+
+// HasScope reports whether the verified scope list contains scope.
+func HasScope(ctx context.Context, scope string) bool {
+	for _, s := range ScopesFromContext(ctx) {
+		if s == scope {
+			return true
+		}
 	}
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		return uuid.Nil, false
-	}
-	return userID, true
+	return false
 }

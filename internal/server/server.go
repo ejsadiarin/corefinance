@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/ejsadiarin/corefinance/internal/auth"
 	"github.com/ejsadiarin/corefinance/internal/budget"
 	"github.com/ejsadiarin/corefinance/internal/category"
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
@@ -27,15 +28,22 @@ type Server struct {
 	StatsHandler     *stats.Handler
 	RecurringHandler *recurring.Handler
 	BudgetHandler    *budget.Handler
+	Verifier         *auth.Verifier
 	Queries          *db.Queries
 	Pool             *pgxpool.Pool
 }
 
-func New(port int, pool *pgxpool.Pool, queries *db.Queries) *http.Server {
+// New builds the server. verifier must be non-nil: without JWT
+// verification the service refuses to serve budget routes.
+func New(port int, pool *pgxpool.Pool, queries *db.Queries, verifier *auth.Verifier) *http.Server {
+	if verifier == nil {
+		panic("server: auth verifier is required")
+	}
 	s := &Server{
-		port:    port,
-		Pool:    pool,
-		Queries: queries,
+		port:     port,
+		Pool:     pool,
+		Queries:  queries,
+		Verifier: verifier,
 	}
 
 	s.ExpenseHandler = expense.NewHandler(expense.NewService(queries))
