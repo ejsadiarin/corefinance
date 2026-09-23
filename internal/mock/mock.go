@@ -13,79 +13,81 @@ import (
 var _ db.Querier = (*MockQuerier)(nil)
 
 type MockQuerier struct {
-	AddTagToExpenseFn               func(ctx context.Context, arg db.AddTagToExpenseParams) error
-	AddTagToIncomeFn                func(ctx context.Context, arg db.AddTagToIncomeParams) error
-	CheckSkippedExpenseFn           func(ctx context.Context, arg db.CheckSkippedExpenseParams) (bool, error)
-	CheckSkippedIncomeFn            func(ctx context.Context, arg db.CheckSkippedIncomeParams) (bool, error)
-	CountLegacyExpensesFn           func(ctx context.Context) (int64, error)
-	CountLegacyIncomesFn            func(ctx context.Context) (int64, error)
-	CreateExpenseFn                 func(ctx context.Context, arg db.CreateExpenseParams) (db.Expense, error)
-	CreateExpenseCategoryFn         func(ctx context.Context, arg db.CreateExpenseCategoryParams) (db.ExpenseCategory, error)
-	CreateExpenseInstanceFn         func(ctx context.Context, arg db.CreateExpenseInstanceParams) (int64, error)
-	CreateIncomeFn                  func(ctx context.Context, arg db.CreateIncomeParams) (db.Income, error)
-	CreateIncomeCategoryFn          func(ctx context.Context, arg db.CreateIncomeCategoryParams) (db.IncomeCategory, error)
-	CreateIncomeInstanceFn          func(ctx context.Context, arg db.CreateIncomeInstanceParams) (int64, error)
-	CreateRecurringExpenseRuleFn    func(ctx context.Context, arg db.CreateRecurringExpenseRuleParams) (db.RecurringExpenseRule, error)
-	CreateRecurringIncomeRuleFn     func(ctx context.Context, arg db.CreateRecurringIncomeRuleParams) (db.RecurringIncomeRule, error)
-	CreateTagFn                     func(ctx context.Context, arg db.CreateTagParams) (db.Tag, error)
-	DeleteExpenseFn                 func(ctx context.Context, arg db.DeleteExpenseParams) error
-	DeleteExpenseCategoryFn         func(ctx context.Context, arg db.DeleteExpenseCategoryParams) error
-	DeleteIncomeFn                  func(ctx context.Context, arg db.DeleteIncomeParams) error
-	DeleteIncomeCategoryFn          func(ctx context.Context, arg db.DeleteIncomeCategoryParams) error
-	DeleteRecurringExpenseRuleFn    func(ctx context.Context, arg db.DeleteRecurringExpenseRuleParams) error
-	DeleteRecurringIncomeRuleFn     func(ctx context.Context, arg db.DeleteRecurringIncomeRuleParams) error
-	DeleteTagFn                     func(ctx context.Context, arg db.DeleteTagParams) error
-	FlipLegacyExpenseToOneTimeFn    func(ctx context.Context, id uuid.UUID) error
-	FlipLegacyIncomeToOneTimeFn     func(ctx context.Context, id uuid.UUID) error
-	GetCategoryBreakdownFn          func(ctx context.Context, arg db.GetCategoryBreakdownParams) ([]db.GetCategoryBreakdownRow, error)
-	GetCurrentTotalMoneyFn          func(ctx context.Context, userID uuid.UUID) (decimal.Decimal, error)
-	GetExpenseFn                    func(ctx context.Context, arg db.GetExpenseParams) (db.GetExpenseRow, error)
-	GetExpenseCategoryFn            func(ctx context.Context, arg db.GetExpenseCategoryParams) (db.ExpenseCategory, error)
-	GetExpenseStatsByCategoryFn     func(ctx context.Context, arg db.GetExpenseStatsByCategoryParams) ([]db.GetExpenseStatsByCategoryRow, error)
-	GetFiftyThirtyTwentyFn          func(ctx context.Context, arg db.GetFiftyThirtyTwentyParams) (db.GetFiftyThirtyTwentyRow, error)
-	GetIncomeFn                     func(ctx context.Context, arg db.GetIncomeParams) (db.GetIncomeRow, error)
-	GetIncomeCategoryFn             func(ctx context.Context, arg db.GetIncomeCategoryParams) (db.IncomeCategory, error)
-	GetIncomeOccurrencesFn          func(ctx context.Context, arg db.GetIncomeOccurrencesParams) ([]db.Income, error)
-	GetMonthOverMonthTrendsFn       func(ctx context.Context, arg db.GetMonthOverMonthTrendsParams) ([]db.GetMonthOverMonthTrendsRow, error)
-	GetRecurringExpenseRuleFn       func(ctx context.Context, arg db.GetRecurringExpenseRuleParams) (db.GetRecurringExpenseRuleRow, error)
-	GetRecurringIncomeRuleFn        func(ctx context.Context, arg db.GetRecurringIncomeRuleParams) (db.RecurringIncomeRule, error)
-	GetSavingsRateFn                func(ctx context.Context, arg db.GetSavingsRateParams) (db.GetSavingsRateRow, error)
-	GetSpendingVelocityFn           func(ctx context.Context, arg db.GetSpendingVelocityParams) (db.GetSpendingVelocityRow, error)
-	GetSummaryFn                    func(ctx context.Context, arg db.GetSummaryParams) (db.GetSummaryRow, error)
-	GetTagFn                        func(ctx context.Context, arg db.GetTagParams) (db.Tag, error)
-	GetTagsByExpenseIDFn            func(ctx context.Context, expenseID uuid.UUID) ([]db.Tag, error)
-	GetTagsByIncomeIDFn             func(ctx context.Context, incomeID uuid.UUID) ([]db.Tag, error)
-	GetTotalExpensesByDateRangeFn   func(ctx context.Context, arg db.GetTotalExpensesByDateRangeParams) (decimal.Decimal, error)
-	GetTotalIncomesByDateRangeFn    func(ctx context.Context, arg db.GetTotalIncomesByDateRangeParams) (decimal.Decimal, error)
-	GetTrendsFn                     func(ctx context.Context, arg db.GetTrendsParams) ([]db.GetTrendsRow, error)
-	GetUpcomingRecurringExpensesFn  func(ctx context.Context, userID uuid.UUID) ([]db.GetUpcomingRecurringExpensesRow, error)
-	ListActiveExpenseRulesFn        func(ctx context.Context, startDate pgtype.Date) ([]db.RecurringExpenseRule, error)
-	ListActiveIncomeRulesFn         func(ctx context.Context, startDate pgtype.Date) ([]db.RecurringIncomeRule, error)
-	ListAllExpenseTagsByUserFn      func(ctx context.Context, userID uuid.UUID) ([]db.ExpenseTag, error)
-	ListAllExpensesByUserFn         func(ctx context.Context, userID uuid.UUID) ([]db.Expense, error)
-	ListAllIncomeTagsByUserFn       func(ctx context.Context, userID uuid.UUID) ([]db.IncomeTag, error)
-	ListAllIncomesByUserFn          func(ctx context.Context, userID uuid.UUID) ([]db.Income, error)
-	ListExpenseCategoriesFn         func(ctx context.Context, userID uuid.UUID) ([]db.ExpenseCategory, error)
-	ListExpensesFn                  func(ctx context.Context, arg db.ListExpensesParams) ([]db.ListExpensesRow, error)
-	ListIncomeCategoriesFn          func(ctx context.Context, userID uuid.UUID) ([]db.IncomeCategory, error)
-	ListIncomesFn                   func(ctx context.Context, arg db.ListIncomesParams) ([]db.ListIncomesRow, error)
-	ListLegacyExpensesFn            func(ctx context.Context) ([]db.Expense, error)
-	ListLegacyIncomesFn             func(ctx context.Context) ([]db.Income, error)
-	ListRecurringExpenseRulesFn     func(ctx context.Context, userID uuid.UUID) ([]db.ListRecurringExpenseRulesRow, error)
-	ListRecurringIncomeRulesFn      func(ctx context.Context, userID uuid.UUID) ([]db.RecurringIncomeRule, error)
-	ListTagsFn                      func(ctx context.Context, userID uuid.UUID) ([]db.Tag, error)
-	RemoveTagFromExpenseFn          func(ctx context.Context, arg db.RemoveTagFromExpenseParams) error
-	RemoveTagFromIncomeFn           func(ctx context.Context, arg db.RemoveTagFromIncomeParams) error
-	SearchExpensesFn                func(ctx context.Context, arg db.SearchExpensesParams) ([]db.SearchExpensesRow, error)
-	SkipExpenseFn                   func(ctx context.Context, arg db.SkipExpenseParams) error
-	SkipIncomeFn                    func(ctx context.Context, arg db.SkipIncomeParams) error
-	UpdateExpenseFn                 func(ctx context.Context, arg db.UpdateExpenseParams) (db.Expense, error)
-	UpdateExpenseCategoryFn         func(ctx context.Context, arg db.UpdateExpenseCategoryParams) (db.ExpenseCategory, error)
-	UpdateIncomeFn                  func(ctx context.Context, arg db.UpdateIncomeParams) (db.Income, error)
-	UpdateIncomeCategoryFn          func(ctx context.Context, arg db.UpdateIncomeCategoryParams) (db.IncomeCategory, error)
-	UpdateRecurringExpenseRuleFn    func(ctx context.Context, arg db.UpdateRecurringExpenseRuleParams) (db.RecurringExpenseRule, error)
-	UpdateRecurringIncomeRuleFn     func(ctx context.Context, arg db.UpdateRecurringIncomeRuleParams) (db.RecurringIncomeRule, error)
-	UpdateTagFn                     func(ctx context.Context, arg db.UpdateTagParams) (db.Tag, error)
+	AddTagToExpenseFn                func(ctx context.Context, arg db.AddTagToExpenseParams) error
+	AddTagToIncomeFn                 func(ctx context.Context, arg db.AddTagToIncomeParams) error
+	CheckSkippedExpenseFn            func(ctx context.Context, arg db.CheckSkippedExpenseParams) (bool, error)
+	CheckSkippedIncomeFn             func(ctx context.Context, arg db.CheckSkippedIncomeParams) (bool, error)
+	CountLegacyExpensesFn            func(ctx context.Context) (int64, error)
+	CountLegacyIncomesFn             func(ctx context.Context) (int64, error)
+	CreateExpenseFn                  func(ctx context.Context, arg db.CreateExpenseParams) (db.Expense, error)
+	CreateExpenseCategoryFn          func(ctx context.Context, arg db.CreateExpenseCategoryParams) (db.ExpenseCategory, error)
+	CreateExpenseInstanceFn          func(ctx context.Context, arg db.CreateExpenseInstanceParams) (int64, error)
+	CreateIncomeFn                   func(ctx context.Context, arg db.CreateIncomeParams) (db.Income, error)
+	CreateIncomeCategoryFn           func(ctx context.Context, arg db.CreateIncomeCategoryParams) (db.IncomeCategory, error)
+	CreateIncomeInstanceFn           func(ctx context.Context, arg db.CreateIncomeInstanceParams) (int64, error)
+	CreateRecurringExpenseRuleFn     func(ctx context.Context, arg db.CreateRecurringExpenseRuleParams) (db.RecurringExpenseRule, error)
+	CreateRecurringIncomeRuleFn      func(ctx context.Context, arg db.CreateRecurringIncomeRuleParams) (db.RecurringIncomeRule, error)
+	CreateTagFn                      func(ctx context.Context, arg db.CreateTagParams) (db.Tag, error)
+	DeleteExpenseFn                  func(ctx context.Context, arg db.DeleteExpenseParams) error
+	DeleteExpenseCategoryFn          func(ctx context.Context, arg db.DeleteExpenseCategoryParams) error
+	DeleteIncomeFn                   func(ctx context.Context, arg db.DeleteIncomeParams) error
+	DeleteIncomeCategoryFn           func(ctx context.Context, arg db.DeleteIncomeCategoryParams) error
+	DeleteRecurringExpenseRuleFn     func(ctx context.Context, arg db.DeleteRecurringExpenseRuleParams) error
+	DeleteRecurringIncomeRuleFn      func(ctx context.Context, arg db.DeleteRecurringIncomeRuleParams) error
+	DeleteTagFn                      func(ctx context.Context, arg db.DeleteTagParams) error
+	FlipLegacyExpenseToOneTimeFn     func(ctx context.Context, id uuid.UUID) error
+	FlipLegacyIncomeToOneTimeFn      func(ctx context.Context, id uuid.UUID) error
+	GetCategoryBreakdownFn           func(ctx context.Context, arg db.GetCategoryBreakdownParams) ([]db.GetCategoryBreakdownRow, error)
+	GetCurrentTotalMoneyFn           func(ctx context.Context, userID uuid.UUID) (decimal.Decimal, error)
+	GetExpenseFn                     func(ctx context.Context, arg db.GetExpenseParams) (db.GetExpenseRow, error)
+	GetExpenseCategoryFn             func(ctx context.Context, arg db.GetExpenseCategoryParams) (db.ExpenseCategory, error)
+	GetExpenseStatsByCategoryFn      func(ctx context.Context, arg db.GetExpenseStatsByCategoryParams) ([]db.GetExpenseStatsByCategoryRow, error)
+	GetFiftyThirtyTwentyFn           func(ctx context.Context, arg db.GetFiftyThirtyTwentyParams) (db.GetFiftyThirtyTwentyRow, error)
+	GetIncomeFn                      func(ctx context.Context, arg db.GetIncomeParams) (db.GetIncomeRow, error)
+	GetIncomeCategoryFn              func(ctx context.Context, arg db.GetIncomeCategoryParams) (db.IncomeCategory, error)
+	GetIncomeOccurrencesFn           func(ctx context.Context, arg db.GetIncomeOccurrencesParams) ([]db.Income, error)
+	GetMonthOverMonthTrendsFn        func(ctx context.Context, arg db.GetMonthOverMonthTrendsParams) ([]db.GetMonthOverMonthTrendsRow, error)
+	GetRecurringExpenseRuleFn        func(ctx context.Context, arg db.GetRecurringExpenseRuleParams) (db.GetRecurringExpenseRuleRow, error)
+	GetRecurringIncomeRuleFn         func(ctx context.Context, arg db.GetRecurringIncomeRuleParams) (db.RecurringIncomeRule, error)
+	GetSavingsRateFn                 func(ctx context.Context, arg db.GetSavingsRateParams) (db.GetSavingsRateRow, error)
+	GetSpendingVelocityFn            func(ctx context.Context, arg db.GetSpendingVelocityParams) (db.GetSpendingVelocityRow, error)
+	GetSummaryFn                     func(ctx context.Context, arg db.GetSummaryParams) (db.GetSummaryRow, error)
+	GetTagFn                         func(ctx context.Context, arg db.GetTagParams) (db.Tag, error)
+	GetTagsByExpenseIDFn             func(ctx context.Context, expenseID uuid.UUID) ([]db.Tag, error)
+	GetTagsByIncomeIDFn              func(ctx context.Context, incomeID uuid.UUID) ([]db.Tag, error)
+	GetTotalExpensesByDateRangeFn    func(ctx context.Context, arg db.GetTotalExpensesByDateRangeParams) (decimal.Decimal, error)
+	GetTotalIncomesByDateRangeFn     func(ctx context.Context, arg db.GetTotalIncomesByDateRangeParams) (decimal.Decimal, error)
+	GetTrendsFn                      func(ctx context.Context, arg db.GetTrendsParams) ([]db.GetTrendsRow, error)
+	GetUpcomingRecurringExpensesFn   func(ctx context.Context, userID uuid.UUID) ([]db.GetUpcomingRecurringExpensesRow, error)
+	ListActiveExpenseRulesFn         func(ctx context.Context, startDate pgtype.Date) ([]db.RecurringExpenseRule, error)
+	ListActiveIncomeRulesFn          func(ctx context.Context, startDate pgtype.Date) ([]db.RecurringIncomeRule, error)
+	ListAllExpenseTagsByUserFn       func(ctx context.Context, userID uuid.UUID) ([]db.ExpenseTag, error)
+	ListAllExpensesByUserFn          func(ctx context.Context, userID uuid.UUID) ([]db.Expense, error)
+	ListAllIncomeTagsByUserFn        func(ctx context.Context, userID uuid.UUID) ([]db.IncomeTag, error)
+	ListAllIncomesByUserFn           func(ctx context.Context, userID uuid.UUID) ([]db.Income, error)
+	ListExpenseCategoriesFn          func(ctx context.Context, userID uuid.UUID) ([]db.ExpenseCategory, error)
+	ListExpensesFn                   func(ctx context.Context, arg db.ListExpensesParams) ([]db.ListExpensesRow, error)
+	ListIncomeCategoriesFn           func(ctx context.Context, userID uuid.UUID) ([]db.IncomeCategory, error)
+	ListIncomesFn                    func(ctx context.Context, arg db.ListIncomesParams) ([]db.ListIncomesRow, error)
+	ListLegacyExpensesFn             func(ctx context.Context) ([]db.Expense, error)
+	ListLegacyIncomesFn              func(ctx context.Context) ([]db.Income, error)
+	ListRecurringExpenseRulesFn      func(ctx context.Context, userID uuid.UUID) ([]db.ListRecurringExpenseRulesRow, error)
+	ListRecurringIncomeRulesFn       func(ctx context.Context, userID uuid.UUID) ([]db.RecurringIncomeRule, error)
+	ListTagsFn                       func(ctx context.Context, userID uuid.UUID) ([]db.Tag, error)
+	ListActiveExpenseRulesAllUsersFn func(ctx context.Context) ([]db.ListActiveExpenseRulesAllUsersRow, error)
+	ListActiveIncomeRulesAllUsersFn  func(ctx context.Context) ([]db.ListActiveIncomeRulesAllUsersRow, error)
+	RemoveTagFromExpenseFn           func(ctx context.Context, arg db.RemoveTagFromExpenseParams) error
+	RemoveTagFromIncomeFn            func(ctx context.Context, arg db.RemoveTagFromIncomeParams) error
+	SearchExpensesFn                 func(ctx context.Context, arg db.SearchExpensesParams) ([]db.SearchExpensesRow, error)
+	SkipExpenseFn                    func(ctx context.Context, arg db.SkipExpenseParams) error
+	SkipIncomeFn                     func(ctx context.Context, arg db.SkipIncomeParams) error
+	UpdateExpenseFn                  func(ctx context.Context, arg db.UpdateExpenseParams) (db.Expense, error)
+	UpdateExpenseCategoryFn          func(ctx context.Context, arg db.UpdateExpenseCategoryParams) (db.ExpenseCategory, error)
+	UpdateIncomeFn                   func(ctx context.Context, arg db.UpdateIncomeParams) (db.Income, error)
+	UpdateIncomeCategoryFn           func(ctx context.Context, arg db.UpdateIncomeCategoryParams) (db.IncomeCategory, error)
+	UpdateRecurringExpenseRuleFn     func(ctx context.Context, arg db.UpdateRecurringExpenseRuleParams) (db.RecurringExpenseRule, error)
+	UpdateRecurringIncomeRuleFn      func(ctx context.Context, arg db.UpdateRecurringIncomeRuleParams) (db.RecurringIncomeRule, error)
+	UpdateTagFn                      func(ctx context.Context, arg db.UpdateTagParams) (db.Tag, error)
 }
 
 func NewMockQuerier() *MockQuerier {
@@ -334,6 +336,14 @@ func (m *MockQuerier) ListRecurringIncomeRules(ctx context.Context, userID uuid.
 
 func (m *MockQuerier) ListTags(ctx context.Context, userID uuid.UUID) ([]db.Tag, error) {
 	return m.ListTagsFn(ctx, userID)
+}
+
+func (m *MockQuerier) ListActiveExpenseRulesAllUsers(ctx context.Context) ([]db.ListActiveExpenseRulesAllUsersRow, error) {
+	return m.ListActiveExpenseRulesAllUsersFn(ctx)
+}
+
+func (m *MockQuerier) ListActiveIncomeRulesAllUsers(ctx context.Context) ([]db.ListActiveIncomeRulesAllUsersRow, error) {
+	return m.ListActiveIncomeRulesAllUsersFn(ctx)
 }
 
 func (m *MockQuerier) RemoveTagFromExpense(ctx context.Context, arg db.RemoveTagFromExpenseParams) error {

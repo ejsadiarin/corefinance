@@ -62,7 +62,13 @@ type Querier interface {
 	// Worker materialization queries (D3/D4/D5): active-rule selection, idempotent
 	// instance inserts, and legacy inline-rule backfill support.
 	ListActiveExpenseRules(ctx context.Context, startDate pgtype.Date) ([]RecurringExpenseRule, error)
+	// Service endpoints (cross-user reads for service identities).
+	// These back scope-gated /internal/* routes called with service JWTs;
+	// they intentionally carry no user filter. Row-level shape mirrors the
+	// user-scoped recurring rule listings minus ownership checks.
+	ListActiveExpenseRulesAllUsers(ctx context.Context) ([]ListActiveExpenseRulesAllUsersRow, error)
 	ListActiveIncomeRules(ctx context.Context, startDate pgtype.Date) ([]RecurringIncomeRule, error)
+	ListActiveIncomeRulesAllUsers(ctx context.Context) ([]ListActiveIncomeRulesAllUsersRow, error)
 	ListAllExpenseTagsByUser(ctx context.Context, userID uuid.UUID) ([]ExpenseTag, error)
 	ListAllExpensesByUser(ctx context.Context, userID uuid.UUID) ([]Expense, error)
 	ListAllIncomeTagsByUser(ctx context.Context, userID uuid.UUID) ([]IncomeTag, error)
