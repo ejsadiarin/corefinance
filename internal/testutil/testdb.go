@@ -21,6 +21,9 @@ const TestUserID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 
 func SetupTestDB(t *testing.T) *pgxpool.Pool {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("short mode: integration test needs Docker (run `make test-integration`)")
+	}
 
 	ctx := context.Background()
 

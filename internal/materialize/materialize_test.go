@@ -69,7 +69,7 @@ func countRuleExpenses(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ru
 
 // Daily rule with start in the past: one pass creates exactly today's
 // instance with one-time/NULL-start/NULL-end/source-set/posted shape.
-func TestMaterializeDue_DailyCreatesTodaysInstance(t *testing.T) {
+func TestMaterializeDue_DailyCreatesTodaysInstance_Integration(t *testing.T) {
 	pool, q := newMaterializeTest(t)
 	ctx := context.Background()
 	userID := uuid.New()
@@ -100,7 +100,7 @@ func TestMaterializeDue_DailyCreatesTodaysInstance(t *testing.T) {
 }
 
 // Double run for the same day inserts nothing the second time.
-func TestMaterializeDue_DoubleRunIdempotent(t *testing.T) {
+func TestMaterializeDue_DoubleRunIdempotent_Integration(t *testing.T) {
 	pool, q := newMaterializeTest(t)
 	ctx := context.Background()
 	userID := uuid.New()
@@ -125,7 +125,7 @@ func TestMaterializeDue_DoubleRunIdempotent(t *testing.T) {
 }
 
 // Ended (end_date < today) and future (start_date > today) rules produce nothing.
-func TestMaterializeDue_EndedAndFutureRulesProduceNothing(t *testing.T) {
+func TestMaterializeDue_EndedAndFutureRulesProduceNothing_Integration(t *testing.T) {
 	pool, q := newMaterializeTest(t)
 	ctx := context.Background()
 	userID := uuid.New()
@@ -146,7 +146,7 @@ func TestMaterializeDue_EndedAndFutureRulesProduceNothing(t *testing.T) {
 
 // Monthly rule starting Jan 31 materializes Feb 28 when run on Feb 28, and
 // nothing when run on Feb 27.
-func TestMaterializeDue_MonthlyClamp(t *testing.T) {
+func TestMaterializeDue_MonthlyClamp_Integration(t *testing.T) {
 	pool, q := newMaterializeTest(t)
 	ctx := context.Background()
 	userID := uuid.New()
@@ -170,7 +170,7 @@ func TestMaterializeDue_MonthlyClamp(t *testing.T) {
 
 // Legacy weekly income becomes a real rule plus history; the legacy row is
 // flipped to one-time and zero legacy-predicate rows remain.
-func TestBackfillLegacy_WeeklyIncome(t *testing.T) {
+func TestBackfillLegacy_WeeklyIncome_Integration(t *testing.T) {
 	pool, q := newMaterializeTest(t)
 	ctx := context.Background()
 	userID := uuid.New()
@@ -228,7 +228,7 @@ func TestBackfillLegacy_WeeklyIncome(t *testing.T) {
 
 // Legacy expense conversion copies category/notes/priority/is_debt into the
 // rule and its history.
-func TestBackfillLegacy_ExpenseCopiesFields(t *testing.T) {
+func TestBackfillLegacy_ExpenseCopiesFields_Integration(t *testing.T) {
 	pool, q := newMaterializeTest(t)
 	ctx := context.Background()
 	userID := uuid.New()

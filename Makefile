@@ -32,7 +32,7 @@ NC = \033[0m # No Color
 
 # Default environment
 ENV ?= development
-PORT ?= 8080
+PORT ?= 6969
 
 # Database configuration
 # NOTE: change migrations dir as needed
@@ -85,9 +85,10 @@ help:
 	@echo "  make generate         Run all code generation"
 	@echo ""
 	@echo -e "${GREEN}Testing${NC}"
-	@echo "  make test             Run all tests"
-	@echo "  make test-unit        Run unit tests"
-	@echo "  make test-integration Run integration tests"
+	@echo "  make test             Run all tests (unit + integration, needs Docker)"
+	@echo "  make test-unit        Run unit tests only (no Docker needed)"
+	@echo "  make test-integration Run integration tests only (needs Docker)"
+	@echo "  make test-race        Run unit tests with race detector"
 	@echo "  make test-coverage    Run tests with coverage"
 	@echo "  make watch-test      Run tests with live reload"
 	@echo ""
@@ -96,6 +97,7 @@ help:
 	@echo "  make fmt              Format code"
 	@echo "  make vet              Run go vet"
 	@echo "  make staticcheck      Run static analysis"
+	@echo "  make check-refs       Verify README/Makefile file & target references"
 	@echo "  make check            Run all checks (fmt, vet, lint)"
 	@echo ""
 	@echo -e "${GREEN}Dependencies${NC}"
@@ -123,7 +125,7 @@ help:
 
 run:
 	@echo -e "${YELLOW}Starting corefinance in development mode...${NC}"
-	@ENV=$(ENV) PORT=$(PORT) go run ./cmd/server
+	@ENV=$(ENV) PORT=$(PORT) go run ./cmd/api
 
 dev:
 	@echo -e "${YELLOW}Starting corefinance with live reload...${NC}"
@@ -131,7 +133,7 @@ dev:
 		ENV=$(ENV) PORT=$(PORT) air; \
 	else \
 		echo -e "${RED}air not found. Run: go install github.com/air-verse/air@latest${NC}"; \
-		ENV=$(ENV) PORT=$(PORT) go run ./cmd/server; \
+		ENV=$(ENV) PORT=$(PORT) go run ./cmd/api; \
 	fi
 
 # ==============================================================================
@@ -141,12 +143,12 @@ dev:
 build:
 	@echo -e "${YELLOW}Building corefinance...${NC}"
 	@mkdir -p $(BUILD_DIR)
-	@go build -o $(BUILD_DIR)/$(BINARY_NAME) -ldflags="-s -w" ./cmd/server
+	@go build -o $(BUILD_DIR)/$(BINARY_NAME) -ldflags="-s -w" ./cmd/api
 	@echo -e "${GREEN}Built successfully: $(BUILD_DIR)/$(BINARY_NAME)${NC}"
 
 build-docker:
 	@echo -e "${YELLOW}Building Docker image...${NC}"
-	@docker build -t api-gateway:latest .
+	@docker build -t corefinance:latest .
 
 # ==============================================================================
 # Running
@@ -213,7 +215,7 @@ sqlc-check:
 
 swagger:
 	@echo -e "${YELLOW}Generating Swagger documentation...${NC}"
-	@swag init -g cmd/server/main.go -o docs --parseDependency --parseInternal
+	@swag init -g cmd/api/main.go -o docs --parseDependency --parseInternal
 	@echo -e "${GREEN}Swagger docs generated in docs/${NC}"
 
 generate: sqlc swagger
@@ -224,16 +226,20 @@ generate: sqlc swagger
 # ==============================================================================
 
 test:
-	@echo -e "${YELLOW}Running all tests...${NC}"
-	@go test ./... -v
+	@echo -e "${YELLOW}Running all tests (unit + integration, needs Docker)...${NC}"
+	@go test ./... -count=1 -timeout 10m
 
 test-unit:
-	@echo -e "${YELLOW}Running unit tests...${NC}"
-	@go test ./... -v -run "TestUnit|Test.*Unit" -short
+	@echo -e "${YELLOW}Running unit tests (skips Docker-backed integration)...${NC}"
+	@go test ./... -short -count=1
 
 test-integration:
-	@echo -e "${YELLOW}Running integration tests...${NC}"
-	@go test ./... -v -run "TestIntegration|Test.*Integration" -timeout 5m
+	@echo -e "${YELLOW}Running integration tests (needs Docker)...${NC}"
+	@go test ./... -run '_Integration' -count=1 -timeout 10m -v
+
+test-race:
+	@echo -e "${YELLOW}Running unit tests with race detector...${NC}"
+	@go test ./... -short -race -count=1 -timeout 10m
 
 test-coverage:
 	@echo -e "${YELLOW}Running tests with coverage...${NC}"
@@ -281,6 +287,10 @@ staticcheck:
 
 check: fmt vet lint staticcheck
 	@echo -e "${GREEN}All checks passed!${NC}"
+
+check-refs:
+	@echo -e "${YELLOW}Checking README/Makefile references...${NC}"
+	@./scripts/check-refs.sh
 
 # ==============================================================================
 # Dependencies
@@ -359,9 +369,9 @@ env-check:
         migrate-up migrate-down migrate-redo migrate-status \
         migrate-create migrate-baseline migrate-fix \
         sqlc sqlc-check swagger generate \
-        test test-unit test-integration test-coverage watch-test \
-        lint fmt vet staticcheck check \
+        test test-unit test-integration test-coverage test-race watch-test \
+        lint fmt vet staticcheck check check-refs \
         install tidy mod-download mod-verify \
         clean prune \
         api-health \
-        docs-open profile-cpu profile-memory env-check
+        profile-cpu profile-memory env-check

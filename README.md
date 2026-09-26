@@ -14,17 +14,18 @@ internal/tag/                 — tags + tag associations
 internal/recurring/           — recurring expense/income rules
 internal/stats/               — analytics (summary, trends, 50/30/20, velocity)
 internal/helper/              — shared utilities
-internal/auth/                — user ID extraction from headers
+internal/auth/                — internal JWT verification (JWKS), identity injection
 internal/db/sqlc/             — generated sqlc code
 internal/db/queries/          — SQL queries
-internal/db/schema.sql        — database schema
+internal/db/migrations/       — goose migrations (source of truth)
+internal/db/bootstrap.sql     — one-time role/grants bootstrap (not a migration)
 ```
 
 ## Environment Variables
 
 | Variable | Description |
 |---|---|
-| `PORT` | Server port (default: `8080`) |
+| `PORT` | Server port (default: `6969`) |
 | `ENV` | `development` for debug logs, anything else for production |
 | `DB_HOST` | PostgreSQL host |
 | `DB_PORT` | PostgreSQL port |
@@ -32,6 +33,9 @@ internal/db/schema.sql        — database schema
 | `DB_USERNAME` | Database user |
 | `DB_PASSWORD` | Database password |
 | `DB_SCHEMA` | Schema name (default: `corefinance`) |
+| `JWT_ISSUER` | Expected internal JWT issuer (default: `https://gateway.internal`) |
+| `JWT_AUDIENCE` | Expected internal JWT audience (default: `corefinance`) |
+| `JWT_JWKS_URL` | Gateway JWKS URL (default: `https://gateway.internal/.well-known/jwks.json`) |
 
 ## API Routes
 
@@ -63,7 +67,9 @@ All routes are prefixed with `/budget`.
 
 ## Auth
 
-All requests require the `X-User-ID` header, set by the coregateway.
+All requests (except listed public paths) require a gateway-minted internal
+JWT (`Authorization: Bearer ...`, Ed25519, verified against the gateway
+JWKS). `X-User-ID` is stripped on every request and never trusted.
 
 ## Requirements
 
@@ -80,3 +86,16 @@ go run cmd/api/main.go
 # Generate sqlc code
 sqlc generate
 ```
+
+## Testing
+
+```sh
+make test             # everything (unit + integration, needs Docker)
+make test-unit        # unit only, no Docker needed
+make test-integration # Docker-backed integration only (testcontainers)
+make test-race        # unit tests with race detector
+make check-refs       # verify README/Makefile references
+```
+
+Integration tests spin ephemeral Postgres via testcontainers
+(`internal/testutil/testdb.go`).
