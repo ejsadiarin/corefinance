@@ -13,6 +13,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"golang.org/x/sync/singleflight"
 )
 
 // Claims mirrors the gateway's internal JWT envelope.
@@ -27,6 +28,12 @@ const clockSkewLeeway = 60 * time.Second
 
 // defaultCacheTTL bounds how long fetched JWKS keys are trusted without refresh.
 const defaultCacheTTL = 5 * time.Minute
+
+// negativeCacheTTL bounds how long an unknown kid is rejected without a
+// fetch after a refresh succeeded yet the kid was still absent
+// (forgery/mis-issue). Fetch failures never write negative entries, so a
+// JWKS outage cannot poison rotation; success never writes them either.
+const negativeCacheTTL = 30 * time.Second
 
 // ServiceIdentity is a non-user caller (e.g. another service) established
 // by a service JWT. It carries no user and must never satisfy user-scoped
@@ -70,6 +77,12 @@ type Verifier struct {
 	keys      map[string]ed25519.PublicKey
 	fetchedAt time.Time
 	public    map[string]bool
+	// negative caches unknown kids (expiry per kid) seen absent after a
+	// successful refresh. Guarded by mu.
+	negative map[string]time.Time
+	// sf coalesces concurrent refresh-triggering verifications into one
+	// in-flight JWKS fetch.
+	sf singleflight.Group
 }
 
 // NewVerifier builds a Verifier and performs the initial JWKS fetch.
@@ -91,9 +104,10 @@ func NewVerifier(cfg Config) (*Verifier, error) {
 		cfg.HTTPClient = &http.Client{Timeout: 10 * time.Second}
 	}
 	v := &Verifier{
-		cfg:    cfg,
-		keys:   map[string]ed25519.PublicKey{},
-		public: map[string]bool{},
+		cfg:      cfg,
+		keys:     map[string]ed25519.PublicKey{},
+		public:   map[string]bool{},
+		negative: map[string]time.Time{},
 	}
 	for _, p := range cfg.PublicPaths {
 		v.public[p] = true
@@ -161,18 +175,43 @@ func (v *Verifier) keyFor(kid string) (ed25519.PublicKey, bool) {
 	v.mu.RLock()
 	key, ok := v.keys[kid]
 	fresh := time.Since(v.fetchedAt) < v.cfg.CacheTTL
-	v.mu.RUnlock()
 	if ok && fresh {
+		v.mu.RUnlock()
 		return key, true
 	}
-	// Unknown kid or stale cache: exactly one refresh attempt.
-	if err := v.refresh(); err != nil {
+	if until, neg := v.negative[kid]; neg && time.Now().Before(until) {
+		v.mu.RUnlock()
 		return nil, false
 	}
-	v.mu.RLock()
-	defer v.mu.RUnlock()
+	v.mu.RUnlock()
+
+	// Unknown kid or stale cache: exactly one refresh attempt, coalesced
+	// with concurrent verifications into a single in-flight JWKS fetch.
+	// On fetch failure the caller gets a 401 and the next request retries;
+	// nothing is cached.
+	_, err, _ := v.sf.Do("jwks-refresh", func() (any, error) {
+		return nil, v.refresh()
+	})
+	if err != nil {
+		return nil, false
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
 	key, ok = v.keys[kid]
-	return key, ok
+	if !ok {
+		// Refresh succeeded but the kid is still absent: negative-cache it.
+		now := time.Now()
+		for k, until := range v.negative {
+			if !now.Before(until) {
+				delete(v.negative, k)
+			}
+		}
+		v.negative[kid] = now.Add(negativeCacheTTL)
+		return nil, false
+	}
+	// Success: no negative entry is written; drop any stale one.
+	delete(v.negative, kid)
+	return key, true
 }
 
 // Middleware verifies the internal JWT, strips any untrusted X-User-ID

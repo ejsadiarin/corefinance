@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,11 +17,18 @@ import (
 )
 
 type jwksServer struct {
-	mu   sync.Mutex
-	keys map[string]ed25519.PublicKey
+	mu      sync.Mutex
+	keys    map[string]ed25519.PublicKey
+	fetches atomic.Int64
+	fail    atomic.Bool
 }
 
 func (s *jwksServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.fetches.Add(1)
+	if s.fail.Load() {
+		http.Error(w, "jwks unavailable", http.StatusInternalServerError)
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	type entry struct {
@@ -305,5 +313,157 @@ func TestNewVerifierFailsClosed(t *testing.T) {
 		JWKSURL:  "http://127.0.0.1:1/unreachable",
 	}); err == nil {
 		t.Error("expected error when JWKS is unreachable")
+	}
+}
+
+func TestConcurrentStaleCacheCoalescesRefresh(t *testing.T) {
+	v, srv, _, kid := setup(t)
+	base := srv.fetches.Load()
+
+	// Expire the cache so every request takes the refresh path.
+	v.mu.Lock()
+	v.fetchedAt = time.Now().Add(-time.Hour)
+	v.mu.Unlock()
+
+	const n = 20
+	found := make([]bool, n)
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			_, found[i] = v.keyFor(kid)
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	for i, ok := range found {
+		if !ok {
+			t.Errorf("request %d: expected key, got miss", i)
+		}
+	}
+	if got := srv.fetches.Load() - base; got != 1 {
+		t.Errorf("JWKS fetches = %d, want exactly 1", got)
+	}
+}
+
+func TestForgedKidNegativeCache(t *testing.T) {
+	v, srv, _, _ := setup(t)
+	base := srv.fetches.Load()
+
+	_, forgedPriv := genKey(t)
+	now := time.Now()
+	forged := signToken(t, forgedPriv, "forged-kid", "https://gateway.internal", "corefinance", uuid.New().String(), "session", "", now, now.Add(5*time.Minute))
+	serve := func() int {
+		req := httptest.NewRequest(http.MethodGet, "/api/budget/expenses/", nil)
+		req.Header.Set("Authorization", "Bearer "+forged)
+		rec := httptest.NewRecorder()
+		v.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})).ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	if code := serve(); code != http.StatusUnauthorized {
+		t.Errorf("first forged request: status = %d, want 401", code)
+	}
+	if code := serve(); code != http.StatusUnauthorized {
+		t.Errorf("second forged request: status = %d, want 401", code)
+	}
+	if got := srv.fetches.Load() - base; got != 1 {
+		t.Errorf("JWKS fetches = %d, want exactly 1 (second hit must be negatively cached)", got)
+	}
+}
+
+func TestRotatedKidVerifiesWithoutNegativeEntry(t *testing.T) {
+	v, srv, _, _ := setup(t)
+	pubB, privB := genKey(t)
+	now := time.Now()
+	tokenString := signToken(t, privB, "2026-09-b", "https://gateway.internal", "corefinance", uuid.New().String(), "session", "", now, now.Add(5*time.Minute))
+
+	// Publish the new key mid-test: the verifier must refresh on unknown kid.
+	srv.mu.Lock()
+	srv.keys["2026-09-b"] = pubB
+	srv.mu.Unlock()
+	base := srv.fetches.Load()
+
+	serve := func() (int, bool) {
+		req := httptest.NewRequest(http.MethodGet, "/api/budget/expenses/", nil)
+		req.Header.Set("Authorization", "Bearer "+tokenString)
+		rec := httptest.NewRecorder()
+		nextCalled := false
+		v.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { nextCalled = true })).ServeHTTP(rec, req)
+		return rec.Code, nextCalled
+	}
+
+	if code, nextCalled := serve(); !nextCalled || code != http.StatusOK {
+		t.Fatalf("rotated kid: status = %d, nextCalled = %v; want 200 and true", code, nextCalled)
+	}
+	if code, nextCalled := serve(); !nextCalled || code != http.StatusOK {
+		t.Fatalf("repeat rotated kid: status = %d, nextCalled = %v; want 200 and true", code, nextCalled)
+	}
+	if got := srv.fetches.Load() - base; got != 1 {
+		t.Errorf("JWKS fetches = %d, want exactly 1", got)
+	}
+	v.mu.RLock()
+	_, neg := v.negative["2026-09-b"]
+	v.mu.RUnlock()
+	if neg {
+		t.Error("success must not write a negative entry for the kid")
+	}
+}
+
+func TestRefreshFailureWritesNoNegativeEntry(t *testing.T) {
+	v, srv, priv, kid := setup(t)
+	base := srv.fetches.Load()
+
+	expire := func() {
+		v.mu.Lock()
+		v.fetchedAt = time.Now().Add(-time.Hour)
+		v.mu.Unlock()
+	}
+	negative := func(k string) bool {
+		v.mu.RLock()
+		defer v.mu.RUnlock()
+		_, ok := v.negative[k]
+		return ok
+	}
+	serve := func() int {
+		req := httptest.NewRequest(http.MethodGet, "/api/budget/expenses/", nil)
+		req.Header.Set("Authorization", "Bearer "+validToken(t, priv, kid, uuid.New().String()))
+		rec := httptest.NewRecorder()
+		v.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})).ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	srv.fail.Store(true)
+	expire()
+	if code := serve(); code != http.StatusUnauthorized {
+		t.Fatalf("failed refresh: status = %d, want 401", code)
+	}
+	if negative(kid) {
+		t.Error("fetch failure must not write a negative entry")
+	}
+	// Next request retries the fetch instead of serving a cached failure.
+	expire()
+	if code := serve(); code != http.StatusUnauthorized {
+		t.Fatalf("retry after failure: status = %d, want 401", code)
+	}
+	if got := srv.fetches.Load() - base; got != 2 {
+		t.Errorf("JWKS fetches = %d, want 2 (one per attempt, no caching of failures)", got)
+	}
+
+	srv.fail.Store(false)
+	expire()
+	nextCalled := false
+	req := httptest.NewRequest(http.MethodGet, "/api/budget/expenses/", nil)
+	req.Header.Set("Authorization", "Bearer "+validToken(t, priv, kid, uuid.New().String()))
+	v.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { nextCalled = true })).ServeHTTP(httptest.NewRecorder(), req)
+	if !nextCalled {
+		t.Error("request after JWKS recovery must verify")
+	}
+	if negative(kid) {
+		t.Error("success must not write a negative entry")
 	}
 }
