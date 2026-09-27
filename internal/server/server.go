@@ -29,6 +29,7 @@ type Server struct {
 	StatsHandler     *stats.Handler
 	RecurringHandler *recurring.Handler
 	BudgetHandler    *budget.Handler
+	AdminHandler     *budget.AdminHandler
 	ServiceHandler   *service.Handler
 	Verifier         *auth.Verifier
 	Queries          *db.Queries
@@ -55,6 +56,7 @@ func New(port int, pool *pgxpool.Pool, queries *db.Queries, verifier *auth.Verif
 	s.StatsHandler = stats.NewHandler(stats.NewService(queries))
 	s.RecurringHandler = recurring.NewHandler(recurring.NewService(queries))
 	s.BudgetHandler = budget.NewHandler(budget.NewService(queries, pool))
+	s.AdminHandler = budget.NewAdminHandler(pool, queries)
 	s.ServiceHandler = service.NewHandler(service.NewService(queries))
 
 	return &http.Server{

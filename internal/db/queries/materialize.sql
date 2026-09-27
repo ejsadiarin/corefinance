@@ -50,3 +50,37 @@ WHERE recurring_type != 'one-time' AND source_rule_id IS NULL;
 -- name: CountLegacyIncomes :one
 SELECT COUNT(*)::bigint AS legacy_count FROM incomes
 WHERE recurring_type != 'one-time' AND source_rule_id IS NULL;
+
+-- name: ListActiveExpenseRulesByUser :many
+SELECT * FROM recurring_expense_rules
+WHERE user_id = $1
+  AND is_active = true
+  AND start_date <= $2
+  AND (end_date IS NULL OR end_date >= $2)
+ORDER BY start_date ASC;
+
+-- name: ListActiveIncomeRulesByUser :many
+SELECT * FROM recurring_income_rules
+WHERE user_id = $1
+  AND is_active = true
+  AND start_date <= $2
+  AND (end_date IS NULL OR end_date >= $2)
+ORDER BY start_date ASC;
+
+-- name: ListLegacyExpensesByUser :many
+SELECT * FROM expenses
+WHERE user_id = $1 AND recurring_type != 'one-time' AND source_rule_id IS NULL
+ORDER BY start_date ASC NULLS LAST, expense_date ASC;
+
+-- name: ListLegacyIncomesByUser :many
+SELECT * FROM incomes
+WHERE user_id = $1 AND recurring_type != 'one-time' AND source_rule_id IS NULL
+ORDER BY start_date ASC NULLS LAST, date ASC;
+
+-- name: CountLegacyExpensesByUser :one
+SELECT COUNT(*)::bigint AS legacy_count FROM expenses
+WHERE user_id = $1 AND recurring_type != 'one-time' AND source_rule_id IS NULL;
+
+-- name: CountLegacyIncomesByUser :one
+SELECT COUNT(*)::bigint AS legacy_count FROM incomes
+WHERE user_id = $1 AND recurring_type != 'one-time' AND source_rule_id IS NULL;

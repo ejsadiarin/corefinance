@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -409,6 +410,202 @@ func BackfillLegacy(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries
 		}
 
 		legacyIncomes, err := q.ListLegacyIncomes(ctx)
+		if err != nil {
+			return fmt.Errorf("list legacy incomes: %w", err)
+		}
+		for _, leg := range legacyIncomes {
+			start := leg.Date.Time
+			if leg.StartDate.Valid {
+				start = leg.StartDate.Time
+			}
+			rule, err := q.CreateRecurringIncomeRule(ctx, db.CreateRecurringIncomeRuleParams{
+				UserID:        leg.UserID,
+				Amount:        leg.Amount,
+				Currency:      leg.Currency,
+				Description:   leg.Description,
+				RecurringType: leg.RecurringType,
+				StartDate:     pgDate(start),
+				EndDate:       pgDateOrNull(leg.EndDate),
+			})
+			if err != nil {
+				return fmt.Errorf("create income rule from legacy %s: %w", leg.ID, err)
+			}
+			res.IncomeRules++
+			anchor := truncateDate(leg.Date.Time)
+			for _, d := range DueDates(start, leg.RecurringType, pgTimeOrNil(leg.EndDate), today) {
+				if d.Equal(anchor) {
+					continue
+				}
+				n, err := q.CreateIncomeInstance(ctx, db.CreateIncomeInstanceParams{
+					UserID:       leg.UserID,
+					CategoryID:   leg.CategoryID,
+					Amount:       leg.Amount,
+					Currency:     leg.Currency,
+					Description:  leg.Description,
+					Notes:        leg.Notes,
+					Date:         pgDate(d),
+					Priority:     leg.Priority,
+					SourceRuleID: pgtype.UUID{Bytes: rule.ID, Valid: true},
+				})
+				if err != nil {
+					return fmt.Errorf("backfill income instance: %w", err)
+				}
+				res.IncomeInstances += int(n)
+			}
+			if err := q.FlipLegacyIncomeToOneTime(ctx, leg.ID); err != nil {
+				return fmt.Errorf("flip legacy income %s: %w", leg.ID, err)
+			}
+		}
+		return nil
+	})
+	return res, err
+}
+
+// CountLegacyRowsForUser counts legacy inline rows for one user only.
+// ponytail: reuses the global advisory lock caller-side via BackfillLegacyForUser;
+// the count itself is lock-free and safe to call for dry_run.
+func CountLegacyRowsForUser(ctx context.Context, q *db.Queries, userID uuid.UUID) (expenses, incomes int64, err error) {
+	expenses, err = q.CountLegacyExpensesByUser(ctx, userID)
+	if err != nil {
+		return 0, 0, fmt.Errorf("count legacy expenses: %w", err)
+	}
+	incomes, err = q.CountLegacyIncomesByUser(ctx, userID)
+	if err != nil {
+		return 0, 0, fmt.Errorf("count legacy incomes: %w", err)
+	}
+	return expenses, incomes, nil
+}
+
+// materializeHistoryForUser is the per-user variant of materializeHistory:
+// only the given user's active rules are converged. Same idempotency
+// (ON CONFLICT DO NOTHING), same global advisory lock via the caller.
+func materializeHistoryForUser(ctx context.Context, q *db.Queries, userID uuid.UUID, today time.Time) (expenseN, incomeN int, err error) {
+	todayPg := pgDate(today)
+
+	expenseRules, err := q.ListActiveExpenseRulesByUser(ctx, db.ListActiveExpenseRulesByUserParams{
+		UserID:    userID,
+		StartDate: todayPg,
+	})
+	if err != nil {
+		return 0, 0, fmt.Errorf("list active expense rules: %w", err)
+	}
+	for _, r := range expenseRules {
+		for _, d := range DueDates(r.StartDate.Time, r.RecurringType, pgTimeOrNil(r.EndDate), today) {
+			n, err := q.CreateExpenseInstance(ctx, db.CreateExpenseInstanceParams{
+				UserID:       r.UserID,
+				CategoryID:   r.CategoryID,
+				Amount:       r.Amount,
+				Currency:     r.Currency,
+				Description:  r.Description,
+				Notes:        r.Notes,
+				ExpenseDate:  pgDate(d),
+				Priority:     r.Priority,
+				IsDebt:       false,
+				SourceRuleID: pgtype.UUID{Bytes: r.ID, Valid: true},
+			})
+			if err != nil {
+				return expenseN, incomeN, fmt.Errorf("create expense instance: %w", err)
+			}
+			expenseN += int(n)
+		}
+	}
+
+	incomeRules, err := q.ListActiveIncomeRulesByUser(ctx, db.ListActiveIncomeRulesByUserParams{
+		UserID:    userID,
+		StartDate: todayPg,
+	})
+	if err != nil {
+		return expenseN, incomeN, fmt.Errorf("list active income rules: %w", err)
+	}
+	for _, r := range incomeRules {
+		for _, d := range DueDates(r.StartDate.Time, r.RecurringType, pgTimeOrNil(r.EndDate), today) {
+			n, err := q.CreateIncomeInstance(ctx, db.CreateIncomeInstanceParams{
+				UserID:       r.UserID,
+				CategoryID:   pgtype.UUID{},
+				Amount:       r.Amount,
+				Currency:     r.Currency,
+				Description:  r.Description,
+				Notes:        pgtype.Text{},
+				Date:         pgDate(d),
+				Priority:     "want",
+				SourceRuleID: pgtype.UUID{Bytes: r.ID, Valid: true},
+			})
+			if err != nil {
+				return expenseN, incomeN, fmt.Errorf("create income instance: %w", err)
+			}
+			incomeN += int(n)
+		}
+	}
+	return expenseN, incomeN, nil
+}
+
+// BackfillLegacyForUser is the per-user variant of BackfillLegacy used by the
+// admin HTTP endpoint: phase 1 converges only the user's active rules, phase 2
+// converts only the user's legacy rows. Global advisory lock is reused, so
+// concurrent CLI and HTTP backfills still serialize.
+func BackfillLegacyForUser(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, userID uuid.UUID, today time.Time) (BackfillResult, error) {
+	var res BackfillResult
+	err := withMaterializeLock(ctx, pool, queries, func(q *db.Queries) error {
+		e, i, err := materializeHistoryForUser(ctx, q, userID, today)
+		if err != nil {
+			return err
+		}
+		res.ExpenseInstances += e
+		res.IncomeInstances += i
+
+		legacyExpenses, err := q.ListLegacyExpensesByUser(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("list legacy expenses: %w", err)
+		}
+		for _, leg := range legacyExpenses {
+			start := leg.ExpenseDate.Time
+			if leg.StartDate.Valid {
+				start = leg.StartDate.Time
+			}
+			rule, err := q.CreateRecurringExpenseRule(ctx, db.CreateRecurringExpenseRuleParams{
+				UserID:        leg.UserID,
+				Description:   leg.Description,
+				Amount:        leg.Amount,
+				Currency:      leg.Currency,
+				CategoryID:    leg.CategoryID,
+				Notes:         leg.Notes,
+				RecurringType: leg.RecurringType,
+				StartDate:     pgDate(start),
+				EndDate:       pgDateOrNull(leg.EndDate),
+				Priority:      leg.Priority,
+			})
+			if err != nil {
+				return fmt.Errorf("create expense rule from legacy %s: %w", leg.ID, err)
+			}
+			res.ExpenseRules++
+			anchor := truncateDate(leg.ExpenseDate.Time)
+			for _, d := range DueDates(start, leg.RecurringType, pgTimeOrNil(leg.EndDate), today) {
+				if d.Equal(anchor) {
+					continue
+				}
+				n, err := q.CreateExpenseInstance(ctx, db.CreateExpenseInstanceParams{
+					UserID:       leg.UserID,
+					CategoryID:   leg.CategoryID,
+					Amount:       leg.Amount,
+					Currency:     leg.Currency,
+					Description:  leg.Description,
+					Notes:        leg.Notes,
+					ExpenseDate:  pgDate(d),
+					Priority:     leg.Priority,
+					IsDebt:       leg.IsDebt,
+					SourceRuleID: pgtype.UUID{Bytes: rule.ID, Valid: true},
+				})
+				if err != nil {
+					return fmt.Errorf("backfill expense instance: %w", err)
+				}
+				res.ExpenseInstances += int(n)
+			}
+			if err := q.FlipLegacyExpenseToOneTime(ctx, leg.ID); err != nil {
+				return fmt.Errorf("flip legacy expense %s: %w", leg.ID, err)
+			}
+		}
+
+		legacyIncomes, err := q.ListLegacyIncomesByUser(ctx, userID)
 		if err != nil {
 			return fmt.Errorf("list legacy incomes: %w", err)
 		}

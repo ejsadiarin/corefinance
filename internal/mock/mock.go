@@ -18,7 +18,9 @@ type MockQuerier struct {
 	CheckSkippedExpenseFn            func(ctx context.Context, arg db.CheckSkippedExpenseParams) (bool, error)
 	CheckSkippedIncomeFn             func(ctx context.Context, arg db.CheckSkippedIncomeParams) (bool, error)
 	CountLegacyExpensesFn            func(ctx context.Context) (int64, error)
+	CountLegacyExpensesByUserFn      func(ctx context.Context, userID uuid.UUID) (int64, error)
 	CountLegacyIncomesFn             func(ctx context.Context) (int64, error)
+	CountLegacyIncomesByUserFn       func(ctx context.Context, userID uuid.UUID) (int64, error)
 	CreateExpenseFn                  func(ctx context.Context, arg db.CreateExpenseParams) (db.Expense, error)
 	CreateExpenseCategoryFn          func(ctx context.Context, arg db.CreateExpenseCategoryParams) (db.ExpenseCategory, error)
 	CreateExpenseInstanceFn          func(ctx context.Context, arg db.CreateExpenseInstanceParams) (int64, error)
@@ -60,7 +62,9 @@ type MockQuerier struct {
 	GetTrendsFn                      func(ctx context.Context, arg db.GetTrendsParams) ([]db.GetTrendsRow, error)
 	GetUpcomingRecurringExpensesFn   func(ctx context.Context, userID uuid.UUID) ([]db.GetUpcomingRecurringExpensesRow, error)
 	ListActiveExpenseRulesFn         func(ctx context.Context, startDate pgtype.Date) ([]db.RecurringExpenseRule, error)
+	ListActiveExpenseRulesByUserFn   func(ctx context.Context, arg db.ListActiveExpenseRulesByUserParams) ([]db.RecurringExpenseRule, error)
 	ListActiveIncomeRulesFn          func(ctx context.Context, startDate pgtype.Date) ([]db.RecurringIncomeRule, error)
+	ListActiveIncomeRulesByUserFn    func(ctx context.Context, arg db.ListActiveIncomeRulesByUserParams) ([]db.RecurringIncomeRule, error)
 	ListAllExpenseTagsByUserFn       func(ctx context.Context, userID uuid.UUID) ([]db.ExpenseTag, error)
 	ListAllExpensesByUserFn          func(ctx context.Context, userID uuid.UUID) ([]db.Expense, error)
 	ListAllIncomeTagsByUserFn        func(ctx context.Context, userID uuid.UUID) ([]db.IncomeTag, error)
@@ -70,7 +74,9 @@ type MockQuerier struct {
 	ListIncomeCategoriesFn           func(ctx context.Context, userID uuid.UUID) ([]db.IncomeCategory, error)
 	ListIncomesFn                    func(ctx context.Context, arg db.ListIncomesParams) ([]db.ListIncomesRow, error)
 	ListLegacyExpensesFn             func(ctx context.Context) ([]db.Expense, error)
+	ListLegacyExpensesByUserFn       func(ctx context.Context, userID uuid.UUID) ([]db.Expense, error)
 	ListLegacyIncomesFn              func(ctx context.Context) ([]db.Income, error)
+	ListLegacyIncomesByUserFn        func(ctx context.Context, userID uuid.UUID) ([]db.Income, error)
 	ListRecurringExpenseRulesFn      func(ctx context.Context, userID uuid.UUID) ([]db.ListRecurringExpenseRulesRow, error)
 	ListRecurringIncomeRulesFn       func(ctx context.Context, userID uuid.UUID) ([]db.RecurringIncomeRule, error)
 	ListTagsFn                       func(ctx context.Context, userID uuid.UUID) ([]db.Tag, error)
@@ -116,6 +122,14 @@ func (m *MockQuerier) CountLegacyExpenses(ctx context.Context) (int64, error) {
 
 func (m *MockQuerier) CountLegacyIncomes(ctx context.Context) (int64, error) {
 	return m.CountLegacyIncomesFn(ctx)
+}
+
+func (m *MockQuerier) CountLegacyExpensesByUser(ctx context.Context, userID uuid.UUID) (int64, error) {
+	return m.CountLegacyExpensesByUserFn(ctx, userID)
+}
+
+func (m *MockQuerier) CountLegacyIncomesByUser(ctx context.Context, userID uuid.UUID) (int64, error) {
+	return m.CountLegacyIncomesByUserFn(ctx, userID)
 }
 
 func (m *MockQuerier) CreateExpense(ctx context.Context, arg db.CreateExpenseParams) (db.Expense, error) {
@@ -286,6 +300,14 @@ func (m *MockQuerier) ListActiveIncomeRules(ctx context.Context, startDate pgtyp
 	return m.ListActiveIncomeRulesFn(ctx, startDate)
 }
 
+func (m *MockQuerier) ListActiveExpenseRulesByUser(ctx context.Context, arg db.ListActiveExpenseRulesByUserParams) ([]db.RecurringExpenseRule, error) {
+	return m.ListActiveExpenseRulesByUserFn(ctx, arg)
+}
+
+func (m *MockQuerier) ListActiveIncomeRulesByUser(ctx context.Context, arg db.ListActiveIncomeRulesByUserParams) ([]db.RecurringIncomeRule, error) {
+	return m.ListActiveIncomeRulesByUserFn(ctx, arg)
+}
+
 func (m *MockQuerier) ListAllExpenseTagsByUser(ctx context.Context, userID uuid.UUID) ([]db.ExpenseTag, error) {
 	return m.ListAllExpenseTagsByUserFn(ctx, userID)
 }
@@ -324,6 +346,14 @@ func (m *MockQuerier) ListLegacyExpenses(ctx context.Context) ([]db.Expense, err
 
 func (m *MockQuerier) ListLegacyIncomes(ctx context.Context) ([]db.Income, error) {
 	return m.ListLegacyIncomesFn(ctx)
+}
+
+func (m *MockQuerier) ListLegacyExpensesByUser(ctx context.Context, userID uuid.UUID) ([]db.Expense, error) {
+	return m.ListLegacyExpensesByUserFn(ctx, userID)
+}
+
+func (m *MockQuerier) ListLegacyIncomesByUser(ctx context.Context, userID uuid.UUID) ([]db.Income, error) {
+	return m.ListLegacyIncomesByUserFn(ctx, userID)
 }
 
 func (m *MockQuerier) ListRecurringExpenseRules(ctx context.Context, userID uuid.UUID) ([]db.ListRecurringExpenseRulesRow, error) {

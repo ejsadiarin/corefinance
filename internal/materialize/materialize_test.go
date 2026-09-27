@@ -274,3 +274,47 @@ func TestBackfillLegacy_ExpenseCopiesFields_Integration(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), after)
 }
+
+// Per-user backfill converts only the target user's legacy rows; another
+// user's rows are untouched.
+func TestBackfillLegacyForUser_ScopesToTargetUser_Integration(t *testing.T) {
+	pool, q := newMaterializeTest(t)
+	ctx := context.Background()
+	userA := uuid.New()
+	userB := uuid.New()
+	today := d("2026-08-15")
+
+	seed := func(userID uuid.UUID) {
+		t.Helper()
+		_, err := q.CreateIncome(ctx, db.CreateIncomeParams{
+			UserID:        userID,
+			Amount:        decimal.NewFromFloat(500),
+			Currency:      "PHP",
+			Description:   "allowance",
+			Date:          pgtype.Date{Time: d("2026-08-01"), Valid: true},
+			RecurringType: "weekly",
+			Priority:      "want",
+			Status:        "posted",
+			StartDate:     pgtype.Date{Time: d("2026-08-01"), Valid: true},
+		})
+		require.NoError(t, err)
+	}
+	seed(userA)
+	seed(userB)
+
+	res, err := BackfillLegacyForUser(ctx, pool, q, userA, today)
+	require.NoError(t, err)
+	assert.Equal(t, 1, res.IncomeRules)
+
+	expA, incA, err := CountLegacyRowsForUser(ctx, q, userA)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), expA+incA, "target user must converge")
+
+	expB, incB, err := CountLegacyRowsForUser(ctx, q, userB)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), expB+incB, "other user must be untouched")
+
+	rules, err := q.ListRecurringIncomeRules(ctx, userB)
+	require.NoError(t, err)
+	assert.Empty(t, rules)
+}
