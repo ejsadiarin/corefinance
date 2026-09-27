@@ -275,6 +275,90 @@ func TestBackfillLegacy_ExpenseCopiesFields_Integration(t *testing.T) {
 	assert.Equal(t, int64(0), after)
 }
 
+// Every *ByUser query sees only the given user's rows.
+func TestByUserQueries_ScopeToUser_Integration(t *testing.T) {
+	pool, q := newMaterializeTest(t)
+	_ = pool
+	ctx := context.Background()
+	userA := uuid.New()
+	userB := uuid.New()
+
+	seedExpenseRule(t, ctx, q, userA, "daily", "2026-09-01", nil)
+	seedExpenseRule(t, ctx, q, userB, "daily", "2026-09-01", nil)
+	seedIncomeRule(t, ctx, q, userA, "daily", "2026-09-01")
+
+	expenseA, err := q.ListActiveExpenseRulesByUser(ctx, db.ListActiveExpenseRulesByUserParams{
+		UserID:    userA,
+		StartDate: pgtype.Date{Time: d("2026-09-10"), Valid: true},
+	})
+	require.NoError(t, err)
+	assert.Len(t, expenseA, 1)
+	assert.Equal(t, userA, expenseA[0].UserID)
+
+	incomeA, err := q.ListActiveIncomeRulesByUser(ctx, db.ListActiveIncomeRulesByUserParams{
+		UserID:    userA,
+		StartDate: pgtype.Date{Time: d("2026-09-10"), Valid: true},
+	})
+	require.NoError(t, err)
+	assert.Len(t, incomeA, 1)
+
+	incomeB, err := q.ListActiveIncomeRulesByUser(ctx, db.ListActiveIncomeRulesByUserParams{
+		UserID:    userB,
+		StartDate: pgtype.Date{Time: d("2026-09-10"), Valid: true},
+	})
+	require.NoError(t, err)
+	assert.Empty(t, incomeB)
+
+	seedLegacy := func(userID uuid.UUID) {
+		t.Helper()
+		_, err := q.CreateExpense(ctx, db.CreateExpenseParams{
+			UserID:        userID,
+			Amount:        decimal.NewFromFloat(100),
+			Currency:      "PHP",
+			Description:   "legacy",
+			ExpenseDate:   pgtype.Date{Time: d("2026-09-01"), Valid: true},
+			RecurringType: "weekly",
+			Priority:      "need",
+			Status:        "posted",
+			StartDate:     pgtype.Date{Time: d("2026-09-01"), Valid: true},
+		})
+		require.NoError(t, err)
+		_, err = q.CreateIncome(ctx, db.CreateIncomeParams{
+			UserID:        userID,
+			Amount:        decimal.NewFromFloat(500),
+			Currency:      "PHP",
+			Description:   "legacy",
+			Date:          pgtype.Date{Time: d("2026-09-01"), Valid: true},
+			RecurringType: "weekly",
+			Priority:      "want",
+			Status:        "posted",
+			StartDate:     pgtype.Date{Time: d("2026-09-01"), Valid: true},
+		})
+		require.NoError(t, err)
+	}
+	seedLegacy(userA)
+	seedLegacy(userB)
+
+	legExpA, err := q.ListLegacyExpensesByUser(ctx, userA)
+	require.NoError(t, err)
+	assert.Len(t, legExpA, 1)
+	legIncA, err := q.ListLegacyIncomesByUser(ctx, userA)
+	require.NoError(t, err)
+	assert.Len(t, legIncA, 1)
+
+	expCount, err := q.CountLegacyExpensesByUser(ctx, userA)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), expCount)
+	incCount, err := q.CountLegacyIncomesByUser(ctx, userB)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), incCount)
+
+	expA2, incA2, err := CountLegacyRowsForUser(ctx, q, userA)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), expA2)
+	assert.Equal(t, int64(1), incA2)
+}
+
 // Per-user backfill converts only the target user's legacy rows; another
 // user's rows are untouched.
 func TestBackfillLegacyForUser_ScopesToTargetUser_Integration(t *testing.T) {
