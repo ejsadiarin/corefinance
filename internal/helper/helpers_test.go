@@ -37,19 +37,6 @@ func TestGetUserIDFromContext(t *testing.T) {
 	}
 }
 
-func TestGetUserIDServiceTokenRejected(t *testing.T) {
-	// A service identity carries no user: user-scoped endpoints answer 401.
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req = req.WithContext(auth.WithService(req.Context(), "corereminder", []string{"finance:read"}))
-	rec := httptest.NewRecorder()
-	if _, ok := helper.GetUserID(rec, req); ok {
-		t.Error("service identity must not satisfy user endpoints")
-	}
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("status = %d, want 401", rec.Code)
-	}
-}
-
 func TestGetUserIDAnonymousRejected(t *testing.T) {
 	rec := httptest.NewRecorder()
 	if _, ok := helper.GetUserID(rec, httptest.NewRequest(http.MethodGet, "/", nil)); ok {

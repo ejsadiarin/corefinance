@@ -1,15 +1,17 @@
 @baseUrl=http://localhost:6969
 @gateway=http://localhost:8080
-@jwt=
+@jwt=eyJhbGciOiJFZERTQSIsImtpZCI6IjIwMjYtMDktYSIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2dhdGV3YXkuaW50ZXJuYWwiLCJhdWQiOlsiY29yZWZpbmFuY2UiXSwiZXhwIjoxNzkwNTk3OTc3LCJpYXQiOjE3OTA1OTc2NzcsImF6cCI6Im15LXN2YyJ9.ggTHS526RmRyx9uH8ZsjxMRa3lJ6hk70-B-YQ6HKZFJBGEYD4aT64s0voscOZFhUx9Nzxa2FbuLqYfFv8QaUBg
 
 ### Budget API Testing
 
 ### Notes
 ### ============================================
 # How to use this file:
-# 1. Get a token: log in via the gateway (POST {{gateway}}/api/auth/login),
-#    then call any gateway-proxied route — or paste a gateway-created JWT
-#    below as @jwt (exchange a service key at POST {{gateway}}/api/auth/token).
+# 1. Get a token: log in via the gateway (POST {{gateway}}/api/auth/login
+#    or /api/auth/demo), then call any gateway-proxied route — the edge
+#    mints the internal JWT per request. To call :6969 directly, copy the
+#    downstream Authorization value from a proxied request and paste it
+#    below as @jwt (5-minute TTL).
 # 2. Run any request - Authorization: Bearer {{jwt}} is sent automatically.
 #
 # Auth: every route except /health, /, /websocket and
@@ -33,6 +35,8 @@
 # - Recurring Expenses: full CRUD
 # - Recurring Incomes: full CRUD
 # - Export/Import: JSON backup with ID remapping
+# - Admin Backfill: per-user legacy inline-rule conversion (admin scope only;
+#   POST only, ?dry_run=true counts without mutating, ?user_id targets anyone)
 # - Health: pgxpool ping + connection stats
 
 
@@ -707,6 +711,58 @@ Authorization: Bearer {{jwt}}
 
 
 ### ============================================
+
+
+### Admin Backfill (per-user legacy conversion)
+
+
+### ============================================
+# Requires an ADMIN-scoped gateway JWT (log in as an admin user via the
+# gateway, then paste that JWT as @jwt). Non-admin JWT -> 403, no JWT -> 401.
+# ?user_id omitted = backfill your own rows; supplied = backfill that user.
+# dry_run=true counts legacy rows without mutating - always check first.
+
+### Backfill Dry-Run (self, expect counts, no mutation)
+
+POST {{baseUrl}}/api/budget/admin/backfill?dry_run=true HTTP/1.1
+Authorization: Bearer {{jwt}}
+
+
+### Backfill Execute (self)
+
+POST {{baseUrl}}/api/budget/admin/backfill HTTP/1.1
+Authorization: Bearer {{jwt}}
+
+
+### Backfill Dry-Run for Another User ff378c7b-e785-4994-8be3-a5586228f1d5
+POST {{baseUrl}}/api/budget/admin/backfill?dry_run=true&user_id=ff378c7b-e785-4994-8be3-a5586228f1d5 HTTP/1.1
+Authorization: Bearer {{jwt}}
+
+
+### Backfill Execute for Another User
+
+POST {{baseUrl}}/api/budget/admin/backfill?user_id={user_id} HTTP/1.1
+Authorization: Bearer {{jwt}}
+
+
+### Backfill via Gateway (admin session cookie, expect 200 + proxied JWT)
+
+POST {{gateway}}/api/budget/admin/backfill?dry_run=true HTTP/1.1
+
+
+### Backfill with Non-Admin JWT (expect 403)
+
+POST {{baseUrl}}/api/budget/admin/backfill?dry_run=true HTTP/1.1
+Authorization: Bearer {{jwt}}
+
+
+### Backfill with Bad user_id (expect 400)
+
+POST {{baseUrl}}/api/budget/admin/backfill?user_id=not-a-uuid HTTP/1.1
+Authorization: Bearer {{jwt}}
+
+
+### ============================================
 ### Identity contract (expect 401s without a valid JWT)
 ### ============================================
 
@@ -715,22 +771,10 @@ Authorization: Bearer {{jwt}}
 GET {{baseUrl}}/api/budget/expenses/
 X-User-ID: 00000000-0000-0000-0000-000000000000
 
-### Service JWT on a user route (expect 401, no user established)
+### Garbled JWT on a user route (expect 401)
 
 GET {{baseUrl}}/api/budget/expenses/
-Authorization: Bearer {{service_jwt}}
-
-### Service endpoint with service JWT (expect 200)
-
-GET {{baseUrl}}/internal/recurring/active
-Authorization: Bearer {{service_jwt}}
-
-### Service endpoint with user JWT (expect 403, domains do not cross)
-
-GET {{baseUrl}}/internal/recurring/active
-Authorization: Bearer {{jwt}}
-
-# @service_jwt = PASTE_SERVICE_JWT_HERE
+Authorization: Bearer PASTE_EXPIRED_OR_GARBLED_JWT_HERE
 
 
 ### ============================================

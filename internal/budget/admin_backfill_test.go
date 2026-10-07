@@ -29,7 +29,7 @@ func adminCtx(userID uuid.UUID, scopes ...string) context.Context {
 func TestAdminBackfill_RejectsWithoutAdminScope(t *testing.T) {
 	h := NewAdminHandler(nil, nil)
 	req := httptest.NewRequest(http.MethodPost, "/api/budget/admin/backfill", nil)
-	req = req.WithContext(adminCtx(uuid.New(), "finance:read"))
+	req = req.WithContext(adminCtx(uuid.New(), "corefinance:read"))
 	rec := httptest.NewRecorder()
 
 	h.Backfill(rec, req)

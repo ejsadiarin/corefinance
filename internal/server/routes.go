@@ -13,8 +13,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/coder/websocket"
-
-	"github.com/ejsadiarin/corefinance/internal/auth"
 )
 
 func (s *Server) RegisterRoutes() http.Handler {
@@ -141,16 +139,6 @@ func (s *Server) RegisterRoutes() http.Handler {
 		// re-checks admin scope for direct callers).
 		r.Route("/admin", func(r chi.Router) {
 			r.Post("/backfill", s.AdminHandler.Backfill)
-		})
-	})
-
-	// service-to-service routes: service JWT plus scope, never user
-	// identity. User tokens fail the scope gate by design.
-	r.Route("/internal", func(r chi.Router) {
-		r.Use(s.Verifier.Middleware)
-		r.Route("/recurring", func(r chi.Router) {
-			r.Use(auth.RequireServiceScope("finance:read"))
-			r.Get("/active", s.ServiceHandler.ActiveRecurringRules)
 		})
 	})
 

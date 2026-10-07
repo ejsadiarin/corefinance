@@ -80,8 +80,6 @@ type MockQuerier struct {
 	ListRecurringExpenseRulesFn      func(ctx context.Context, userID uuid.UUID) ([]db.ListRecurringExpenseRulesRow, error)
 	ListRecurringIncomeRulesFn       func(ctx context.Context, userID uuid.UUID) ([]db.RecurringIncomeRule, error)
 	ListTagsFn                       func(ctx context.Context, userID uuid.UUID) ([]db.Tag, error)
-	ListActiveExpenseRulesAllUsersFn func(ctx context.Context) ([]db.ListActiveExpenseRulesAllUsersRow, error)
-	ListActiveIncomeRulesAllUsersFn  func(ctx context.Context) ([]db.ListActiveIncomeRulesAllUsersRow, error)
 	RemoveTagFromExpenseFn           func(ctx context.Context, arg db.RemoveTagFromExpenseParams) error
 	RemoveTagFromIncomeFn            func(ctx context.Context, arg db.RemoveTagFromIncomeParams) error
 	SearchExpensesFn                 func(ctx context.Context, arg db.SearchExpensesParams) ([]db.SearchExpensesRow, error)
@@ -366,14 +364,6 @@ func (m *MockQuerier) ListRecurringIncomeRules(ctx context.Context, userID uuid.
 
 func (m *MockQuerier) ListTags(ctx context.Context, userID uuid.UUID) ([]db.Tag, error) {
 	return m.ListTagsFn(ctx, userID)
-}
-
-func (m *MockQuerier) ListActiveExpenseRulesAllUsers(ctx context.Context) ([]db.ListActiveExpenseRulesAllUsersRow, error) {
-	return m.ListActiveExpenseRulesAllUsersFn(ctx)
-}
-
-func (m *MockQuerier) ListActiveIncomeRulesAllUsers(ctx context.Context) ([]db.ListActiveIncomeRulesAllUsersRow, error) {
-	return m.ListActiveIncomeRulesAllUsersFn(ctx)
 }
 
 func (m *MockQuerier) RemoveTagFromExpense(ctx context.Context, arg db.RemoveTagFromExpenseParams) error {

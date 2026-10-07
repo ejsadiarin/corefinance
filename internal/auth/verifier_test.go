@@ -274,32 +274,22 @@ func TestUnknownKidRefreshes(t *testing.T) {
 	}
 }
 
-func TestServiceTokenHasNoUser(t *testing.T) {
+func TestSublessTokenRejected(t *testing.T) {
 	v, _, priv, kid := setup(t)
 	now := time.Now()
-	tokenString := signToken(t, priv, kid, "https://gateway.internal", "corefinance", "", "corereminder", "finance:read", now, now.Add(5*time.Minute))
+	tokenString := signToken(t, priv, kid, "https://gateway.internal", "corefinance", "", "corereminder", "corefinance:read", now, now.Add(5*time.Minute))
 
-	var svc *ServiceIdentity
-	var svcOK, userOK, nextCalled bool
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		nextCalled = true
-		_, userOK = UserIDFromContext(r.Context())
-		svc, svcOK = ServiceFromContext(r.Context())
-	})
-	v.Middleware(next).ServeHTTP(httptest.NewRecorder(), func() *http.Request {
-		req := httptest.NewRequest(http.MethodGet, "/api/budget/expenses/", nil)
-		req.Header.Set("Authorization", "Bearer "+tokenString)
-		return req
-	}())
+	nextCalled := false
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/budget/expenses/", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenString)
+	v.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { nextCalled = true })).ServeHTTP(rec, req)
 
-	if !nextCalled {
-		t.Fatal("service token must pass verification")
+	if nextCalled {
+		t.Error("sub-less token must not reach the handler")
 	}
-	if userOK {
-		t.Error("service token must not establish a user")
-	}
-	if !svcOK || svc.Label != "corereminder" || len(svc.Scopes) != 1 || svc.Scopes[0] != "finance:read" {
-		t.Errorf("service identity = %+v, %v", svc, svcOK)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", rec.Code)
 	}
 }
 

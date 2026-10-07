@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
@@ -34,29 +33,6 @@ const defaultCacheTTL = 5 * time.Minute
 // (forgery/mis-issue). Fetch failures never write negative entries, so a
 // JWKS outage cannot poison rotation; success never writes them either.
 const negativeCacheTTL = 30 * time.Second
-
-// ServiceIdentity is a non-user caller (e.g. another service) established
-// by a service JWT. It carries no user and must never satisfy user-scoped
-// endpoints.
-type ServiceIdentity struct {
-	Label  string
-	Scopes []string
-}
-
-type serviceKey string
-
-const serviceContextKey serviceKey = "service"
-
-// WithService stores the service identity in the context.
-func WithService(ctx context.Context, label string, scopes []string) context.Context {
-	return context.WithValue(ctx, serviceContextKey, &ServiceIdentity{Label: label, Scopes: scopes})
-}
-
-// ServiceFromContext extracts the service identity from the context.
-func ServiceFromContext(ctx context.Context) (*ServiceIdentity, bool) {
-	svc, ok := ctx.Value(serviceContextKey).(*ServiceIdentity)
-	return svc, ok
-}
 
 // Config configures JWT verification. The gateway is the sole signer;
 // the verifier holds public material only.
@@ -272,9 +248,9 @@ func (v *Verifier) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Service token: identity without a user. User-scoped endpoints
-		// resolve no user from this context and reject with 401.
-		next.ServeHTTP(w, r.WithContext(WithService(r.Context(), claims.Azp, strings.Fields(claims.Scope))))
+		// Service tokens no longer exist (no minter): a token without a
+		// subject satisfies no endpoint.
+		unauthorized(w)
 	})
 }
 
