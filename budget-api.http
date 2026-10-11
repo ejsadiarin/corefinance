@@ -443,6 +443,11 @@ Authorization: Bearer {{jwt}}
 GET {{baseUrl}}/api/budget/remaining HTTP/1.1
 Authorization: Bearer {{jwt}}
 
+# Targeting arrives ONLY via the signed act_as claim (gateway edge mints it
+# after validating ?user_id=). A raw ?user_id= sent direct-to-downstream is
+# ignored: the response is always the JWT sub's data unless act_as is
+# present with admin scope (then act_as wins).
+
 
 ### ============================================
 

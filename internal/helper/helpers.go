@@ -67,6 +67,20 @@ func GetUserID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 	return userID, true
 }
 
+// ResolveTargetUser returns the acting user: the gateway-asserted act_as
+// target when present with admin scope, else the JWT sub. Raw ?user_id=
+// params are never read here — targeting arrives only via the signed claim.
+func ResolveTargetUser(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
+	userID, ok := GetUserID(w, r)
+	if !ok {
+		return uuid.Nil, false
+	}
+	if actAs, ok := auth.ActAsFromContext(r.Context()); ok && auth.HasScope(r.Context(), "admin") {
+		return actAs, true
+	}
+	return userID, true
+}
+
 // ValidateRequired returns an error if the value is empty
 func ValidateRequired(value, fieldName string) error {
 	if value == "" {

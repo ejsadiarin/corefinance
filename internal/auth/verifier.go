@@ -20,6 +20,7 @@ type Claims struct {
 	jwt.RegisteredClaims
 	Azp   string `json:"azp"`
 	Scope string `json:"scope,omitempty"`
+	ActAs string `json:"act_as,omitempty"`
 }
 
 // clockSkewLeeway tolerates clock differences between gateway and verifiers.
@@ -242,11 +243,17 @@ func (v *Verifier) Middleware(next http.Handler) http.Handler {
 				unauthorized(w)
 				return
 			}
-			ctx := WithUserID(r.Context(), userID)
-			ctx = WithScopes(ctx, strings.Fields(claims.Scope))
-			next.ServeHTTP(w, r.WithContext(ctx))
-			return
+		ctx := WithUserID(r.Context(), userID)
+		ctx = WithScopes(ctx, strings.Fields(claims.Scope))
+		// A malformed act_as is ignored (falls back to sub): only the
+		// gateway can sign claims, so this is a gateway bug, not an
+		// attack — and sub remains the trustworthy identity.
+		if actAs, err := uuid.Parse(claims.ActAs); err == nil && actAs != uuid.Nil {
+			ctx = WithActAs(ctx, actAs)
 		}
+		next.ServeHTTP(w, r.WithContext(ctx))
+		return
+	}
 
 		// Service tokens no longer exist (no minter): a token without a
 		// subject satisfies no endpoint.

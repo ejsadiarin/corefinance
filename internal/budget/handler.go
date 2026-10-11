@@ -23,7 +23,7 @@ func (h *Handler) PriorityGroups(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Remaining(w http.ResponseWriter, r *http.Request) {
-	userID, ok := helper.GetUserID(w, r)
+	userID, ok := helper.ResolveTargetUser(w, r)
 	if !ok {
 		return
 	}
@@ -41,7 +41,7 @@ func (h *Handler) Remaining(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
-	userID, ok := helper.GetUserID(w, r)
+	userID, ok := helper.ResolveTargetUser(w, r)
 	if !ok {
 		return
 	}

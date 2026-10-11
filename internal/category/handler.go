@@ -44,7 +44,7 @@ func (h *Handler) CreateExpense(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListExpense(w http.ResponseWriter, r *http.Request) {
-	userID, ok := helper.GetUserID(w, r)
+	userID, ok := helper.ResolveTargetUser(w, r)
 	if !ok {
 		return
 	}
@@ -135,7 +135,7 @@ func (h *Handler) CreateIncome(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListIncome(w http.ResponseWriter, r *http.Request) {
-	userID, ok := helper.GetUserID(w, r)
+	userID, ok := helper.ResolveTargetUser(w, r)
 	if !ok {
 		return
 	}

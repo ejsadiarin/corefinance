@@ -16,7 +16,7 @@ func NewHandler(service *Service) *Handler {
 }
 
 func (h *Handler) Summary(w http.ResponseWriter, r *http.Request) {
-	userID, ok := helper.GetUserID(w, r)
+	userID, ok := helper.ResolveTargetUser(w, r)
 	if !ok {
 		return
 	}
@@ -34,7 +34,7 @@ func (h *Handler) Summary(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Trends(w http.ResponseWriter, r *http.Request) {
-	userID, ok := helper.GetUserID(w, r)
+	userID, ok := helper.ResolveTargetUser(w, r)
 	if !ok {
 		return
 	}
@@ -52,7 +52,7 @@ func (h *Handler) Trends(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) CategoryBreakdown(w http.ResponseWriter, r *http.Request) {
-	userID, ok := helper.GetUserID(w, r)
+	userID, ok := helper.ResolveTargetUser(w, r)
 	if !ok {
 		return
 	}
@@ -70,7 +70,7 @@ func (h *Handler) CategoryBreakdown(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) SavingsRate(w http.ResponseWriter, r *http.Request) {
-	userID, ok := helper.GetUserID(w, r)
+	userID, ok := helper.ResolveTargetUser(w, r)
 	if !ok {
 		return
 	}
@@ -88,7 +88,7 @@ func (h *Handler) SavingsRate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) FiftyThirtyTwenty(w http.ResponseWriter, r *http.Request) {
-	userID, ok := helper.GetUserID(w, r)
+	userID, ok := helper.ResolveTargetUser(w, r)
 	if !ok {
 		return
 	}
@@ -106,7 +106,7 @@ func (h *Handler) FiftyThirtyTwenty(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UpcomingBills(w http.ResponseWriter, r *http.Request) {
-	userID, ok := helper.GetUserID(w, r)
+	userID, ok := helper.ResolveTargetUser(w, r)
 	if !ok {
 		return
 	}
@@ -122,7 +122,7 @@ func (h *Handler) UpcomingBills(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) SpendingVelocity(w http.ResponseWriter, r *http.Request) {
-	userID, ok := helper.GetUserID(w, r)
+	userID, ok := helper.ResolveTargetUser(w, r)
 	if !ok {
 		return
 	}
@@ -144,7 +144,7 @@ func (h *Handler) SpendingVelocity(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) CurrentTotalMoney(w http.ResponseWriter, r *http.Request) {
-	userID, ok := helper.GetUserID(w, r)
+	userID, ok := helper.ResolveTargetUser(w, r)
 	if !ok {
 		return
 	}
@@ -160,7 +160,7 @@ func (h *Handler) CurrentTotalMoney(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) MonthOverMonthTrends(w http.ResponseWriter, r *http.Request) {
-	userID, ok := helper.GetUserID(w, r)
+	userID, ok := helper.ResolveTargetUser(w, r)
 	if !ok {
 		return
 	}

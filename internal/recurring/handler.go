@@ -40,7 +40,7 @@ func (h *Handler) CreateIncomeRule(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListIncomeRules(w http.ResponseWriter, r *http.Request) {
-	userID, ok := helper.GetUserID(w, r)
+	userID, ok := helper.ResolveTargetUser(w, r)
 	if !ok {
 		return
 	}
@@ -60,7 +60,7 @@ func (h *Handler) GetIncomeRule(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	userID, ok := helper.GetUserID(w, r)
+	userID, ok := helper.ResolveTargetUser(w, r)
 	if !ok {
 		return
 	}
@@ -143,7 +143,7 @@ func (h *Handler) CreateExpenseRule(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListExpenseRules(w http.ResponseWriter, r *http.Request) {
-	userID, ok := helper.GetUserID(w, r)
+	userID, ok := helper.ResolveTargetUser(w, r)
 	if !ok {
 		return
 	}
@@ -163,7 +163,7 @@ func (h *Handler) GetExpenseRule(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	userID, ok := helper.GetUserID(w, r)
+	userID, ok := helper.ResolveTargetUser(w, r)
 	if !ok {
 		return
 	}

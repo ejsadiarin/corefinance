@@ -11,6 +11,7 @@ type contextKey string
 const (
 	userKey   contextKey = "user_id"
 	scopesKey contextKey = "scopes"
+	actAsKey  contextKey = "act_as"
 )
 
 // WithUserID stores the user ID in the context.
@@ -44,4 +45,17 @@ func HasScope(ctx context.Context, scope string) bool {
 		}
 	}
 	return false
+}
+
+// WithActAs stores the gateway-asserted target user (the signed act_as
+// claim) in the context. It is honored only with admin scope.
+func WithActAs(ctx context.Context, id uuid.UUID) context.Context {
+	return context.WithValue(ctx, actAsKey, id)
+}
+
+// ActAsFromContext extracts the gateway-asserted target user; false when
+// the token carries no act_as claim.
+func ActAsFromContext(ctx context.Context) (uuid.UUID, bool) {
+	id, ok := ctx.Value(actAsKey).(uuid.UUID)
+	return id, ok
 }

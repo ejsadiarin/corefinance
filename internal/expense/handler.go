@@ -59,7 +59,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	userID, ok := helper.GetUserID(w, r)
+	userID, ok := helper.ResolveTargetUser(w, r)
 	if !ok {
 		return
 	}
@@ -75,7 +75,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	userID, ok := helper.GetUserID(w, r)
+	userID, ok := helper.ResolveTargetUser(w, r)
 	if !ok {
 		return
 	}
@@ -101,7 +101,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
-	userID, ok := helper.GetUserID(w, r)
+	userID, ok := helper.ResolveTargetUser(w, r)
 	if !ok {
 		return
 	}
@@ -214,7 +214,7 @@ func (h *Handler) Skip(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) CheckSkipped(w http.ResponseWriter, r *http.Request) {
-	userID, ok := helper.GetUserID(w, r)
+	userID, ok := helper.ResolveTargetUser(w, r)
 	if !ok {
 		return
 	}
