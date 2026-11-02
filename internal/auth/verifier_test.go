@@ -457,3 +457,91 @@ func TestRefreshFailureWritesNoNegativeEntry(t *testing.T) {
 		t.Error("success must not write a negative entry")
 	}
 }
+
+func TestRefreshConditionalGet(t *testing.T) {
+	pub, _ := genKey(t)
+	const kid = "2026-09-a"
+
+	type jwk struct {
+		Kty string `json:"kty"`
+		Crv string `json:"crv"`
+		Kid string `json:"kid"`
+		X   string `json:"x"`
+		Use string `json:"use"`
+		Alg string `json:"alg"`
+	}
+
+	var mu sync.Mutex
+	etag := `"v1"`
+	keys := map[string]ed25519.PublicKey{kid: pub}
+	notModified := 0
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		if r.Header.Get("If-None-Match") == etag {
+			notModified++
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("ETag", etag)
+		doc := struct {
+			Keys []jwk `json:"keys"`
+		}{}
+		for k, p := range keys {
+			doc.Keys = append(doc.Keys, jwk{
+				Kty: "OKP", Crv: "Ed25519", Kid: k,
+				X: base64.RawURLEncoding.EncodeToString(p), Use: "sig", Alg: "EdDSA",
+			})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(doc)
+	}))
+	t.Cleanup(srv.Close)
+
+	v, err := NewVerifier(Config{
+		Issuer:   "https://gateway.internal",
+		Audience: "corefinance",
+		JWKSURL:  srv.URL,
+	})
+	if err != nil {
+		t.Fatalf("new verifier: %v", err)
+	}
+
+	// Unchanged key set: the refresh carries the validator and gets a 304.
+	if err := v.refresh(); err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	mu.Lock()
+	conditional := notModified
+	mu.Unlock()
+	if conditional != 1 {
+		t.Fatalf("conditional requests = %d, want 1", conditional)
+	}
+	v.mu.RLock()
+	cached, ok := v.keys[kid]
+	v.mu.RUnlock()
+	if !ok || !cached.Equal(pub) {
+		t.Fatal("304 dropped the cached key")
+	}
+
+	// A new key set (new ETag) replaces the cache.
+	newPub, _ := genKey(t)
+	mu.Lock()
+	etag = `"v2"`
+	keys = map[string]ed25519.PublicKey{"2026-09-b": newPub}
+	mu.Unlock()
+	if err := v.refresh(); err != nil {
+		t.Fatalf("refresh after rotation: %v", err)
+	}
+	v.mu.RLock()
+	_, oldPresent := v.keys[kid]
+	rotated, newPresent := v.keys["2026-09-b"]
+	v.mu.RUnlock()
+	if oldPresent {
+		t.Error("retired kid still published after a changed key set")
+	}
+	if !newPresent || !rotated.Equal(newPub) {
+		t.Error("rotated key was not picked up")
+	}
+}

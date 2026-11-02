@@ -53,7 +53,10 @@ type Verifier struct {
 	mu        sync.RWMutex
 	keys      map[string]ed25519.PublicKey
 	fetchedAt time.Time
-	public    map[string]bool
+	// etag is the validator from the last 200 response; empty before
+	// the first fetch. Guarded by mu.
+	etag   string
+	public map[string]bool
 	// negative caches unknown kids (expiry per kid) seen absent after a
 	// successful refresh. Guarded by mu.
 	negative map[string]time.Time
@@ -106,20 +109,44 @@ type jwksDocument struct {
 	} `json:"keys"`
 }
 
-func (v *Verifier) fetch() (map[string]ed25519.PublicKey, error) {
-	resp, err := v.cfg.HTTPClient.Get(v.cfg.JWKSURL)
+// fetch retrieves the JWKS. After the first success it sends the stored
+// ETag, so an unchanged key set costs a 304 and no body; notModified then
+// tells the caller to keep the keys it already has. A 304 with no stored
+// validator cannot come from a compliant gateway and is an error, not an
+// empty key set.
+func (v *Verifier) fetch() (keys map[string]ed25519.PublicKey, etag string, notModified bool, err error) {
+	req, err := http.NewRequest(http.MethodGet, v.cfg.JWKSURL, nil)
 	if err != nil {
-		return nil, err
+		return nil, "", false, err
+	}
+	v.mu.RLock()
+	stored := v.etag
+	v.mu.RUnlock()
+	if stored != "" {
+		req.Header.Set("If-None-Match", stored)
+	}
+
+	resp, err := v.cfg.HTTPClient.Do(req)
+	if err != nil {
+		return nil, "", false, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("JWKS status %d", resp.StatusCode)
+
+	if resp.StatusCode == http.StatusNotModified {
+		if stored == "" {
+			return nil, "", false, fmt.Errorf("JWKS 304 without a cached validator")
+		}
+		return nil, stored, true, nil
 	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", false, fmt.Errorf("JWKS status %d", resp.StatusCode)
+	}
+
 	var doc jwksDocument
 	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
-		return nil, err
+		return nil, "", false, err
 	}
-	keys := make(map[string]ed25519.PublicKey, len(doc.Keys))
+	keys = make(map[string]ed25519.PublicKey, len(doc.Keys))
 	for _, k := range doc.Keys {
 		if k.Kty != "OKP" || k.Crv != "Ed25519" || k.Kid == "" {
 			continue
@@ -131,19 +158,24 @@ func (v *Verifier) fetch() (map[string]ed25519.PublicKey, error) {
 		keys[k.Kid] = ed25519.PublicKey(raw)
 	}
 	if len(keys) == 0 {
-		return nil, fmt.Errorf("JWKS contains no usable Ed25519 keys")
+		return nil, "", false, fmt.Errorf("JWKS contains no usable Ed25519 keys")
 	}
-	return keys, nil
+	return keys, resp.Header.Get("ETag"), false, nil
 }
 
 func (v *Verifier) refresh() error {
-	keys, err := v.fetch()
+	keys, etag, notModified, err := v.fetch()
 	if err != nil {
 		return err
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	v.keys = keys
+	if !notModified {
+		v.keys = keys
+	}
+	if etag != "" {
+		v.etag = etag
+	}
 	v.fetchedAt = time.Now()
 	return nil
 }
@@ -243,17 +275,17 @@ func (v *Verifier) Middleware(next http.Handler) http.Handler {
 				unauthorized(w)
 				return
 			}
-		ctx := WithUserID(r.Context(), userID)
-		ctx = WithScopes(ctx, strings.Fields(claims.Scope))
-		// A malformed act_as is ignored (falls back to sub): only the
-		// gateway can sign claims, so this is a gateway bug, not an
-		// attack — and sub remains the trustworthy identity.
-		if actAs, err := uuid.Parse(claims.ActAs); err == nil && actAs != uuid.Nil {
-			ctx = WithActAs(ctx, actAs)
+			ctx := WithUserID(r.Context(), userID)
+			ctx = WithScopes(ctx, strings.Fields(claims.Scope))
+			// A malformed act_as is ignored (falls back to sub): only the
+			// gateway can sign claims, so this is a gateway bug, not an
+			// attack — and sub remains the trustworthy identity.
+			if actAs, err := uuid.Parse(claims.ActAs); err == nil && actAs != uuid.Nil {
+				ctx = WithActAs(ctx, actAs)
+			}
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
 		}
-		next.ServeHTTP(w, r.WithContext(ctx))
-		return
-	}
 
 		// Service tokens no longer exist (no minter): a token without a
 		// subject satisfies no endpoint.
