@@ -73,8 +73,14 @@ type Querier interface {
 	ListAllIncomesByUser(ctx context.Context, userID uuid.UUID) ([]Income, error)
 	ListExpenseCategories(ctx context.Context, userID uuid.UUID) ([]ExpenseCategory, error)
 	ListExpenses(ctx context.Context, arg ListExpensesParams) ([]ListExpensesRow, error)
+	// The caller's expenses among the given ids; ids that don't exist or
+	// belong to someone else are simply absent.
+	ListExpensesByIDs(ctx context.Context, arg ListExpensesByIDsParams) ([]ListExpensesByIDsRow, error)
 	ListIncomeCategories(ctx context.Context, userID uuid.UUID) ([]IncomeCategory, error)
 	ListIncomes(ctx context.Context, arg ListIncomesParams) ([]ListIncomesRow, error)
+	// The caller's incomes among the given ids; ids that don't exist or
+	// belong to someone else are simply absent.
+	ListIncomesByIDs(ctx context.Context, arg ListIncomesByIDsParams) ([]ListIncomesByIDsRow, error)
 	ListLegacyExpenses(ctx context.Context) ([]Expense, error)
 	ListLegacyExpensesByUser(ctx context.Context, userID uuid.UUID) ([]Expense, error)
 	ListLegacyIncomes(ctx context.Context) ([]Income, error)

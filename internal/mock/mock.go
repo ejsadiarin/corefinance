@@ -73,6 +73,8 @@ type MockQuerier struct {
 	ListExpensesFn                   func(ctx context.Context, arg db.ListExpensesParams) ([]db.ListExpensesRow, error)
 	ListIncomeCategoriesFn           func(ctx context.Context, userID uuid.UUID) ([]db.IncomeCategory, error)
 	ListIncomesFn                    func(ctx context.Context, arg db.ListIncomesParams) ([]db.ListIncomesRow, error)
+	ListExpensesByIDsFn              func(ctx context.Context, arg db.ListExpensesByIDsParams) ([]db.ListExpensesByIDsRow, error)
+	ListIncomesByIDsFn               func(ctx context.Context, arg db.ListIncomesByIDsParams) ([]db.ListIncomesByIDsRow, error)
 	ListLegacyExpensesFn             func(ctx context.Context) ([]db.Expense, error)
 	ListLegacyExpensesByUserFn       func(ctx context.Context, userID uuid.UUID) ([]db.Expense, error)
 	ListLegacyIncomesFn              func(ctx context.Context) ([]db.Income, error)
@@ -328,6 +330,14 @@ func (m *MockQuerier) ListExpenseCategories(ctx context.Context, userID uuid.UUI
 
 func (m *MockQuerier) ListExpenses(ctx context.Context, arg db.ListExpensesParams) ([]db.ListExpensesRow, error) {
 	return m.ListExpensesFn(ctx, arg)
+}
+
+func (m *MockQuerier) ListExpensesByIDs(ctx context.Context, arg db.ListExpensesByIDsParams) ([]db.ListExpensesByIDsRow, error) {
+	return m.ListExpensesByIDsFn(ctx, arg)
+}
+
+func (m *MockQuerier) ListIncomesByIDs(ctx context.Context, arg db.ListIncomesByIDsParams) ([]db.ListIncomesByIDsRow, error) {
+	return m.ListIncomesByIDsFn(ctx, arg)
 }
 
 func (m *MockQuerier) ListIncomeCategories(ctx context.Context, userID uuid.UUID) ([]db.IncomeCategory, error) {

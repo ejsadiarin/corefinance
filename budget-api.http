@@ -218,6 +218,11 @@ Authorization: Bearer {{jwt}}
 GET http://localhost:8080/api/budget/expenses?page=1&page_size=20 HTTP/1.1
 Authorization: Bearer {{jwt}}
 
+### List Expenses by ID (at most 100; ids that don't exist or aren't yours are left out)
+
+GET {{baseUrl}}/api/budget/expenses?ids={expense_id},{other_expense_id} HTTP/1.1
+Authorization: Bearer {{jwt}}
+
 ### List Expenses (Filtered)
 
 GET {{baseUrl}}/api/budget/expenses?start_date=2026-02-01&end_date=2026-02-28&priority=need&status=posted&page=1&page_size=50 HTTP/1.1
@@ -330,6 +335,12 @@ Authorization: Bearer {{jwt}}
 ### List Incomes
 
 GET {{baseUrl}}/api/budget/incomes?page=1&page_size=20 HTTP/1.1
+Authorization: Bearer {{jwt}}
+
+
+### List Incomes by ID (at most 100; ids that don't exist or aren't yours are left out)
+
+GET {{baseUrl}}/api/budget/incomes?ids={income_id},{other_income_id} HTTP/1.1
 Authorization: Bearer {{jwt}}
 
 

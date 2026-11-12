@@ -45,6 +45,12 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID, userID uuid.UUID) (db.G
 	})
 }
 
+// ListByIDs returns the user's incomes among ids; the rest are left out.
+func (s *Service) ListByIDs(ctx context.Context, userID uuid.UUID, ids []uuid.UUID) ([]db.ListIncomesByIDsRow, error) {
+	slog.Debug("income.Service.ListByIDs", "user_id", userID, "count", len(ids))
+	return s.queries.ListIncomesByIDs(ctx, db.ListIncomesByIDsParams{UserID: userID, Ids: ids})
+}
+
 func (s *Service) List(ctx context.Context, userID uuid.UUID, params ListParams) ([]db.ListIncomesRow, error) {
 	slog.Debug("income.Service.List", "user_id", userID)
 	page, pageSize := int32(params.Page), int32(params.PageSize)

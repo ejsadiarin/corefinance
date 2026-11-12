@@ -46,8 +46,8 @@ All routes are prefixed with `/budget`.
 | | `/expense-categories/*` | Expense category CRUD (soft delete) |
 | | `/income-categories/*` | Income category CRUD (soft delete) |
 | | `/tags/*` | Tag CRUD + tag associations for expenses/incomes |
-| | `/expenses/*` | Expense CRUD, search, skip, check-skipped, tag management |
-| | `/incomes/*` | Income CRUD, skip, check-skipped, occurrences, tag management |
+| | `/expenses/*` | Expense CRUD, search, skip, check-skipped, tag management; `GET /expenses?ids=a,b,c` fetches up to 100 of yours by id, leaving out ids that don't exist or aren't yours |
+| | `/incomes/*` | Income CRUD, skip, check-skipped, occurrences, tag management; `GET /incomes?ids=a,b,c` likewise |
 | | `/recurring-expenses/*` | Recurring expense rule CRUD |
 | | `/recurring-incomes/*` | Recurring income rule CRUD |
 | | `/stats/summary` | Financial summary |

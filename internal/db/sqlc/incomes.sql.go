@@ -385,6 +385,83 @@ func (q *Queries) ListIncomes(ctx context.Context, arg ListIncomesParams) ([]Lis
 	return items, nil
 }
 
+const listIncomesByIDs = `-- name: ListIncomesByIDs :many
+SELECT i.id, i.user_id, i.category_id, i.amount, i.currency, i.description, i.notes, i.date, i.recurring_type, i.priority, i.status, i.start_date, i.end_date, i.source_rule_id, i.created_at, i.updated_at, ic.name AS category_name, ic.color AS category_color, ic.icon AS category_icon
+FROM incomes i
+LEFT JOIN income_categories ic ON i.category_id = ic.id
+WHERE i.user_id = $1 AND i.id = ANY($2::uuid[])
+ORDER BY i.date DESC, i.created_at DESC
+`
+
+type ListIncomesByIDsParams struct {
+	UserID uuid.UUID   `db:"user_id" json:"user_id"`
+	Ids    []uuid.UUID `db:"ids" json:"ids"`
+}
+
+type ListIncomesByIDsRow struct {
+	ID            uuid.UUID          `db:"id" json:"id"`
+	UserID        uuid.UUID          `db:"user_id" json:"user_id"`
+	CategoryID    pgtype.UUID        `db:"category_id" json:"category_id"`
+	Amount        decimal.Decimal    `db:"amount" json:"amount"`
+	Currency      string             `db:"currency" json:"currency"`
+	Description   string             `db:"description" json:"description"`
+	Notes         pgtype.Text        `db:"notes" json:"notes"`
+	Date          pgtype.Date        `db:"date" json:"date"`
+	RecurringType string             `db:"recurring_type" json:"recurring_type"`
+	Priority      string             `db:"priority" json:"priority"`
+	Status        string             `db:"status" json:"status"`
+	StartDate     pgtype.Date        `db:"start_date" json:"start_date"`
+	EndDate       pgtype.Date        `db:"end_date" json:"end_date"`
+	SourceRuleID  pgtype.UUID        `db:"source_rule_id" json:"source_rule_id"`
+	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	CategoryName  pgtype.Text        `db:"category_name" json:"category_name"`
+	CategoryColor pgtype.Text        `db:"category_color" json:"category_color"`
+	CategoryIcon  pgtype.Text        `db:"category_icon" json:"category_icon"`
+}
+
+// The caller's incomes among the given ids; ids that don't exist or
+// belong to someone else are simply absent.
+func (q *Queries) ListIncomesByIDs(ctx context.Context, arg ListIncomesByIDsParams) ([]ListIncomesByIDsRow, error) {
+	rows, err := q.db.Query(ctx, listIncomesByIDs, arg.UserID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListIncomesByIDsRow{}
+	for rows.Next() {
+		var i ListIncomesByIDsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.CategoryID,
+			&i.Amount,
+			&i.Currency,
+			&i.Description,
+			&i.Notes,
+			&i.Date,
+			&i.RecurringType,
+			&i.Priority,
+			&i.Status,
+			&i.StartDate,
+			&i.EndDate,
+			&i.SourceRuleID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CategoryName,
+			&i.CategoryColor,
+			&i.CategoryIcon,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const skipIncome = `-- name: SkipIncome :exec
 UPDATE incomes
 SET status = 'skipped', updated_at = now()

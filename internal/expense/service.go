@@ -69,6 +69,12 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID, params ListParams)
 	})
 }
 
+// ListByIDs returns the user's expenses among ids; the rest are left out.
+func (s *Service) ListByIDs(ctx context.Context, userID uuid.UUID, ids []uuid.UUID) ([]db.ListExpensesByIDsRow, error) {
+	slog.Debug("expense.Service.ListByIDs", "user_id", userID, "count", len(ids))
+	return s.queries.ListExpensesByIDs(ctx, db.ListExpensesByIDsParams{UserID: userID, Ids: ids})
+}
+
 func (s *Service) Search(ctx context.Context, userID uuid.UUID, params SearchParams) ([]db.SearchExpensesRow, error) {
 	slog.Debug("expense.Service.Search", "user_id", userID, "query", params.Query)
 	page, pageSize := int32(params.Page), int32(params.PageSize)

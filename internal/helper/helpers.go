@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/ejsadiarin/corefinance/internal/auth"
 	"github.com/go-chi/chi/v5"
@@ -56,6 +57,35 @@ func ParseQueryString(r *http.Request, key string) *string {
 		return nil
 	}
 	return &val
+}
+
+// MaxIDsPerRequest caps how many ids one ?ids= request may ask for.
+const MaxIDsPerRequest = 100
+
+// ParseIDList reads a comma-separated ?ids= value: each a UUID, at most
+// MaxIDsPerRequest of them, duplicates dropped. An empty value asks for
+// none.
+func ParseIDList(raw string) ([]uuid.UUID, error) {
+	if strings.TrimSpace(raw) == "" {
+		return []uuid.UUID{}, nil
+	}
+	parts := strings.Split(raw, ",")
+	if len(parts) > MaxIDsPerRequest {
+		return nil, fmt.Errorf("at most %d ids per request", MaxIDsPerRequest)
+	}
+	seen := make(map[uuid.UUID]bool, len(parts))
+	ids := make([]uuid.UUID, 0, len(parts))
+	for _, p := range parts {
+		id, err := uuid.Parse(strings.TrimSpace(p))
+		if err != nil {
+			return nil, fmt.Errorf("invalid id %q", p)
+		}
+		if !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
 }
 
 func GetUserID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {

@@ -69,3 +69,12 @@ WHERE user_id = $1
 SELECT * FROM incomes
 WHERE user_id = $1
 ORDER BY date DESC, created_at DESC;
+
+-- name: ListIncomesByIDs :many
+-- The caller's incomes among the given ids; ids that don't exist or
+-- belong to someone else are simply absent.
+SELECT i.*, ic.name AS category_name, ic.color AS category_color, ic.icon AS category_icon
+FROM incomes i
+LEFT JOIN income_categories ic ON i.category_id = ic.id
+WHERE i.user_id = @user_id AND i.id = ANY(@ids::uuid[])
+ORDER BY i.date DESC, i.created_at DESC;

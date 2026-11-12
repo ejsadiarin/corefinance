@@ -79,6 +79,10 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if r.URL.Query().Has("ids") {
+		h.listByIDs(w, r, userID)
+		return
+	}
 	slog.Debug("expense.List: request received", "user_id", userID)
 	params := ListParams{
 		StartDate:     helper.ParseQueryString(r, "start_date"),
@@ -97,6 +101,25 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Debug("expense.List: success", "user_id", userID, "count", len(expenses))
+	helper.RespondJSON(w, http.StatusOK, expenses)
+}
+
+// listByIDs answers GET /expenses?ids=a,b,c: the caller's expenses among
+// those ids. Ids that don't exist or belong to someone else are left out
+// rather than failing the request, so a caller reads a missing one as
+// deleted.
+func (h *Handler) listByIDs(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
+	ids, err := helper.ParseIDList(r.URL.Query().Get("ids"))
+	if err != nil {
+		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	expenses, err := h.service.ListByIDs(r.Context(), userID, ids)
+	if err != nil {
+		slog.Error("expense.ListByIDs: failed", "error", err, "user_id", userID)
+		helper.RespondErrorJSON(w, http.StatusInternalServerError, "failed to fetch expenses")
+		return
+	}
 	helper.RespondJSON(w, http.StatusOK, expenses)
 }
 

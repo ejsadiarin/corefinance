@@ -402,6 +402,85 @@ func (q *Queries) ListExpenses(ctx context.Context, arg ListExpensesParams) ([]L
 	return items, nil
 }
 
+const listExpensesByIDs = `-- name: ListExpensesByIDs :many
+SELECT e.id, e.user_id, e.category_id, e.amount, e.currency, e.description, e.notes, e.expense_date, e.recurring_type, e.priority, e.status, e.is_debt, e.start_date, e.end_date, e.source_rule_id, e.created_at, e.updated_at, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
+FROM expenses e
+LEFT JOIN expense_categories ec ON e.category_id = ec.id
+WHERE e.user_id = $1 AND e.id = ANY($2::uuid[])
+ORDER BY e.expense_date DESC, e.created_at DESC
+`
+
+type ListExpensesByIDsParams struct {
+	UserID uuid.UUID   `db:"user_id" json:"user_id"`
+	Ids    []uuid.UUID `db:"ids" json:"ids"`
+}
+
+type ListExpensesByIDsRow struct {
+	ID            uuid.UUID          `db:"id" json:"id"`
+	UserID        uuid.UUID          `db:"user_id" json:"user_id"`
+	CategoryID    pgtype.UUID        `db:"category_id" json:"category_id"`
+	Amount        decimal.Decimal    `db:"amount" json:"amount"`
+	Currency      string             `db:"currency" json:"currency"`
+	Description   string             `db:"description" json:"description"`
+	Notes         pgtype.Text        `db:"notes" json:"notes"`
+	ExpenseDate   pgtype.Date        `db:"expense_date" json:"expense_date"`
+	RecurringType string             `db:"recurring_type" json:"recurring_type"`
+	Priority      string             `db:"priority" json:"priority"`
+	Status        string             `db:"status" json:"status"`
+	IsDebt        bool               `db:"is_debt" json:"is_debt"`
+	StartDate     pgtype.Date        `db:"start_date" json:"start_date"`
+	EndDate       pgtype.Date        `db:"end_date" json:"end_date"`
+	SourceRuleID  pgtype.UUID        `db:"source_rule_id" json:"source_rule_id"`
+	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	CategoryName  pgtype.Text        `db:"category_name" json:"category_name"`
+	CategoryColor pgtype.Text        `db:"category_color" json:"category_color"`
+	CategoryIcon  pgtype.Text        `db:"category_icon" json:"category_icon"`
+}
+
+// The caller's expenses among the given ids; ids that don't exist or
+// belong to someone else are simply absent.
+func (q *Queries) ListExpensesByIDs(ctx context.Context, arg ListExpensesByIDsParams) ([]ListExpensesByIDsRow, error) {
+	rows, err := q.db.Query(ctx, listExpensesByIDs, arg.UserID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListExpensesByIDsRow{}
+	for rows.Next() {
+		var i ListExpensesByIDsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.CategoryID,
+			&i.Amount,
+			&i.Currency,
+			&i.Description,
+			&i.Notes,
+			&i.ExpenseDate,
+			&i.RecurringType,
+			&i.Priority,
+			&i.Status,
+			&i.IsDebt,
+			&i.StartDate,
+			&i.EndDate,
+			&i.SourceRuleID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CategoryName,
+			&i.CategoryColor,
+			&i.CategoryIcon,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const searchExpenses = `-- name: SearchExpenses :many
 SELECT e.id, e.user_id, e.category_id, e.amount, e.currency, e.description, e.notes, e.expense_date, e.recurring_type, e.priority, e.status, e.is_debt, e.start_date, e.end_date, e.source_rule_id, e.created_at, e.updated_at, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
 FROM expenses e

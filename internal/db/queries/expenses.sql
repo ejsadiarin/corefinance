@@ -88,3 +88,12 @@ WHERE user_id = $1
 SELECT * FROM expenses
 WHERE user_id = $1
 ORDER BY expense_date DESC, created_at DESC;
+
+-- name: ListExpensesByIDs :many
+-- The caller's expenses among the given ids; ids that don't exist or
+-- belong to someone else are simply absent.
+SELECT e.*, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
+FROM expenses e
+LEFT JOIN expense_categories ec ON e.category_id = ec.id
+WHERE e.user_id = @user_id AND e.id = ANY(@ids::uuid[])
+ORDER BY e.expense_date DESC, e.created_at DESC;
