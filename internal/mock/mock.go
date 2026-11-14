@@ -54,8 +54,11 @@ type MockQuerier struct {
 	ListRuleEntriesFn                     func(ctx context.Context, arg db.ListRuleEntriesParams) ([]db.ListRuleEntriesRow, error)
 	GetFeedHorizonFn                      func(ctx context.Context) (uint64, error)
 	ListRuleEntriesFeedFn                 func(ctx context.Context, arg db.ListRuleEntriesFeedParams) ([]db.ListRuleEntriesFeedRow, error)
+	LockUserMaterializeFn                 func(ctx context.Context, userID uuid.UUID) error
+	ListUserRulesBehindFn                 func(ctx context.Context, arg db.ListUserRulesBehindParams) ([]db.Rule, error)
+	ListUsersWithRulesBehindFn            func(ctx context.Context, horizon pgtype.Date) ([]uuid.UUID, error)
+	AdvanceRuleWatermarkFn                func(ctx context.Context, arg db.AdvanceRuleWatermarkParams) error
 	GetUserSettingsFn                     func(ctx context.Context, userID uuid.UUID) (db.UserSetting, error)
-	ListUserTimezonesFn                   func(ctx context.Context) ([]db.ListUserTimezonesRow, error)
 	PutUserSettingsFn                     func(ctx context.Context, arg db.PutUserSettingsParams) (db.UserSetting, error)
 	GetIncomeCategoryFn                   func(ctx context.Context, arg db.GetIncomeCategoryParams) (db.IncomeCategory, error)
 	GetIncomeOccurrencesFn                func(ctx context.Context, arg db.GetIncomeOccurrencesParams) ([]db.Income, error)
@@ -72,8 +75,6 @@ type MockQuerier struct {
 	GetTotalIncomesByDateRangeFn          func(ctx context.Context, arg db.GetTotalIncomesByDateRangeParams) (decimal.Decimal, error)
 	GetTrendsFn                           func(ctx context.Context, arg db.GetTrendsParams) ([]db.GetTrendsRow, error)
 	GetUpcomingRecurringExpensesFn        func(ctx context.Context, userID uuid.UUID) ([]db.GetUpcomingRecurringExpensesRow, error)
-	ListExpenseRulesBehindFn              func(ctx context.Context, today pgtype.Date) ([]db.RecurringExpenseRule, error)
-	ListIncomeRulesBehindFn               func(ctx context.Context, today pgtype.Date) ([]db.RecurringIncomeRule, error)
 	AdvanceExpenseRuleWatermarkFn         func(ctx context.Context, arg db.AdvanceExpenseRuleWatermarkParams) error
 	AdvanceIncomeRuleWatermarkFn          func(ctx context.Context, arg db.AdvanceIncomeRuleWatermarkParams) error
 	ListActiveExpenseRulesFn              func(ctx context.Context, startDate pgtype.Date) ([]db.RecurringExpenseRule, error)
@@ -319,14 +320,6 @@ func (m *MockQuerier) GetUpcomingRecurringExpenses(ctx context.Context, userID u
 	return m.GetUpcomingRecurringExpensesFn(ctx, userID)
 }
 
-func (m *MockQuerier) ListExpenseRulesBehind(ctx context.Context, today pgtype.Date) ([]db.RecurringExpenseRule, error) {
-	return m.ListExpenseRulesBehindFn(ctx, today)
-}
-
-func (m *MockQuerier) ListIncomeRulesBehind(ctx context.Context, today pgtype.Date) ([]db.RecurringIncomeRule, error) {
-	return m.ListIncomeRulesBehindFn(ctx, today)
-}
-
 func (m *MockQuerier) AdvanceExpenseRuleWatermark(ctx context.Context, arg db.AdvanceExpenseRuleWatermarkParams) error {
 	return m.AdvanceExpenseRuleWatermarkFn(ctx, arg)
 }
@@ -484,10 +477,6 @@ func (m *MockQuerier) GetUserSettings(ctx context.Context, userID uuid.UUID) (db
 	return m.GetUserSettingsFn(ctx, userID)
 }
 
-func (m *MockQuerier) ListUserTimezones(ctx context.Context) ([]db.ListUserTimezonesRow, error) {
-	return m.ListUserTimezonesFn(ctx)
-}
-
 func (m *MockQuerier) PutUserSettings(ctx context.Context, arg db.PutUserSettingsParams) (db.UserSetting, error) {
 	return m.PutUserSettingsFn(ctx, arg)
 }
@@ -546,4 +535,36 @@ func (m *MockQuerier) ListRuleEntriesFeed(ctx context.Context, arg db.ListRuleEn
 		return nil, nil
 	}
 	return m.ListRuleEntriesFeedFn(ctx, arg)
+}
+
+// LockUserMaterialize defaults to taking the lock.
+func (m *MockQuerier) LockUserMaterialize(ctx context.Context, userID uuid.UUID) error {
+	if m.LockUserMaterializeFn == nil {
+		return nil
+	}
+	return m.LockUserMaterializeFn(ctx, userID)
+}
+
+// ListUserRulesBehind defaults to no rules behind.
+func (m *MockQuerier) ListUserRulesBehind(ctx context.Context, arg db.ListUserRulesBehindParams) ([]db.Rule, error) {
+	if m.ListUserRulesBehindFn == nil {
+		return nil, nil
+	}
+	return m.ListUserRulesBehindFn(ctx, arg)
+}
+
+// ListUsersWithRulesBehind defaults to nobody.
+func (m *MockQuerier) ListUsersWithRulesBehind(ctx context.Context, horizon pgtype.Date) ([]uuid.UUID, error) {
+	if m.ListUsersWithRulesBehindFn == nil {
+		return nil, nil
+	}
+	return m.ListUsersWithRulesBehindFn(ctx, horizon)
+}
+
+// AdvanceRuleWatermark defaults to succeeding.
+func (m *MockQuerier) AdvanceRuleWatermark(ctx context.Context, arg db.AdvanceRuleWatermarkParams) error {
+	if m.AdvanceRuleWatermarkFn == nil {
+		return nil
+	}
+	return m.AdvanceRuleWatermarkFn(ctx, arg)
 }

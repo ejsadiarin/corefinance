@@ -18,6 +18,7 @@ type Querier interface {
 	// The watermark only moves forward: GREATEST ignores a NULL current value.
 	AdvanceExpenseRuleWatermark(ctx context.Context, arg AdvanceExpenseRuleWatermarkParams) error
 	AdvanceIncomeRuleWatermark(ctx context.Context, arg AdvanceIncomeRuleWatermarkParams) error
+	AdvanceRuleWatermark(ctx context.Context, arg AdvanceRuleWatermarkParams) error
 	CheckSkippedExpense(ctx context.Context, arg CheckSkippedExpenseParams) (bool, error)
 	CheckSkippedIncome(ctx context.Context, arg CheckSkippedIncomeParams) (bool, error)
 	CountLegacyExpenses(ctx context.Context) (int64, error)
@@ -86,19 +87,12 @@ type Querier interface {
 	// Ending a rule in the past (#5): the rule's entries dated after the new end
 	// date and up to the old one (NULL: no old end), not already skipped.
 	ListExpenseRuleEntriesAfterEnd(ctx context.Context, arg ListExpenseRuleEntriesAfterEndParams) ([]ListExpenseRuleEntriesAfterEndRow, error)
-	// Catch-up pass (#7): rules with due dates the worker hasn't filled yet.
-	// A rule is behind when its watermark (materialized_through, or the day before
-	// start_date when nothing has been filled) is earlier than min(end_date, today).
-	// Rules that ended while the worker was down are still included. Paused rules
-	// are not.
-	ListExpenseRulesBehind(ctx context.Context, today pgtype.Date) ([]RecurringExpenseRule, error)
 	ListExpenses(ctx context.Context, arg ListExpensesParams) ([]ListExpensesRow, error)
 	// The caller's expenses among the given ids; ids that don't exist or
 	// belong to someone else are simply absent.
 	ListExpensesByIDs(ctx context.Context, arg ListExpensesByIDsParams) ([]ListExpensesByIDsRow, error)
 	ListIncomeCategories(ctx context.Context, userID uuid.UUID) ([]IncomeCategory, error)
 	ListIncomeRuleEntriesAfterEnd(ctx context.Context, arg ListIncomeRuleEntriesAfterEndParams) ([]ListIncomeRuleEntriesAfterEndRow, error)
-	ListIncomeRulesBehind(ctx context.Context, today pgtype.Date) ([]RecurringIncomeRule, error)
 	ListIncomes(ctx context.Context, arg ListIncomesParams) ([]ListIncomesRow, error)
 	// The caller's incomes among the given ids; ids that don't exist or
 	// belong to someone else are simply absent.
@@ -121,7 +115,19 @@ type Querier interface {
 	ListRuleEntries(ctx context.Context, arg ListRuleEntriesParams) ([]ListRuleEntriesRow, error)
 	ListRuleEntriesFeed(ctx context.Context, arg ListRuleEntriesFeedParams) ([]ListRuleEntriesFeedRow, error)
 	ListTags(ctx context.Context, userID uuid.UUID) ([]Tag, error)
-	ListUserTimezones(ctx context.Context) ([]ListUserTimezonesRow, error)
+	ListUserRulesBehind(ctx context.Context, arg ListUserRulesBehindParams) ([]Rule, error)
+	// Users with any rule behind as of `horizon`, the latest date anywhere; each
+	// user's own date is applied by ListUserRulesBehind.
+	ListUsersWithRulesBehind(ctx context.Context, horizon pgtype.Date) ([]uuid.UUID, error)
+	// Catch-up pass (#7), one user at a time under a per-user lock (#14,
+	// ADR-0001). A rule is behind when its watermark (materialized_through, or
+	// the day before start_date when nothing has been filled) is earlier than
+	// min(end_date, today). Rules that ended while the worker was down are still
+	// included. Paused rules are not.
+	// Serializes every writer of one user's rule entries (the worker and rule
+	// saves) for the rest of the transaction. Take it before touching any rule
+	// row, so writers always lock in the same order.
+	LockUserMaterialize(ctx context.Context, userID uuid.UUID) error
 	PutUserSettings(ctx context.Context, arg PutUserSettingsParams) (UserSetting, error)
 	RemoveTagFromExpense(ctx context.Context, arg RemoveTagFromExpenseParams) error
 	RemoveTagFromIncome(ctx context.Context, arg RemoveTagFromIncomeParams) error

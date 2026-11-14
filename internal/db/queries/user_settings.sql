@@ -8,6 +8,3 @@ INSERT INTO user_settings (user_id, timezone)
 VALUES ($1, $2)
 ON CONFLICT (user_id) DO UPDATE SET timezone = EXCLUDED.timezone, updated_at = now()
 RETURNING *;
-
--- name: ListUserTimezones :many
-SELECT user_id, timezone FROM user_settings;

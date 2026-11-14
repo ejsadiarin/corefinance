@@ -85,27 +85,40 @@ WHERE user_id = $1 AND recurring_type != 'one-time' AND source_rule_id IS NULL;
 SELECT COUNT(*)::bigint AS legacy_count FROM incomes
 WHERE user_id = $1 AND recurring_type != 'one-time' AND source_rule_id IS NULL;
 
--- Catch-up pass (#7): rules with due dates the worker hasn't filled yet.
--- A rule is behind when its watermark (materialized_through, or the day before
--- start_date when nothing has been filled) is earlier than min(end_date, today).
--- Rules that ended while the worker was down are still included. Paused rules
--- are not.
+-- Catch-up pass (#7), one user at a time under a per-user lock (#14,
+-- ADR-0001). A rule is behind when its watermark (materialized_through, or
+-- the day before start_date when nothing has been filled) is earlier than
+-- min(end_date, today). Rules that ended while the worker was down are still
+-- included. Paused rules are not.
 
--- name: ListExpenseRulesBehind :many
-SELECT * FROM recurring_expense_rules
+-- Serializes every writer of one user's rule entries (the worker and rule
+-- saves) for the rest of the transaction. Take it before touching any rule
+-- row, so writers always lock in the same order.
+-- name: LockUserMaterialize :exec
+SELECT pg_advisory_xact_lock(hashtext('corefinance-materialize'), hashtext(sqlc.arg(user_id)::uuid::text));
+
+-- Users with any rule behind as of `horizon`, the latest date anywhere; each
+-- user's own date is applied by ListUserRulesBehind.
+-- name: ListUsersWithRulesBehind :many
+SELECT DISTINCT user_id FROM rules
 WHERE is_active = true
+  AND start_date <= sqlc.arg(horizon)::date
+  AND COALESCE(materialized_through, start_date - 1)
+      < LEAST(COALESCE(end_date, sqlc.arg(horizon)::date), sqlc.arg(horizon)::date);
+
+-- name: ListUserRulesBehind :many
+SELECT * FROM rules
+WHERE user_id = sqlc.arg(user_id)
+  AND is_active = true
   AND start_date <= sqlc.arg(today)::date
   AND COALESCE(materialized_through, start_date - 1)
       < LEAST(COALESCE(end_date, sqlc.arg(today)::date), sqlc.arg(today)::date)
 ORDER BY start_date ASC, id ASC;
 
--- name: ListIncomeRulesBehind :many
-SELECT * FROM recurring_income_rules
-WHERE is_active = true
-  AND start_date <= sqlc.arg(today)::date
-  AND COALESCE(materialized_through, start_date - 1)
-      < LEAST(COALESCE(end_date, sqlc.arg(today)::date), sqlc.arg(today)::date)
-ORDER BY start_date ASC, id ASC;
+-- name: AdvanceRuleWatermark :exec
+UPDATE rules
+SET materialized_through = GREATEST(materialized_through, sqlc.arg(through)::date)
+WHERE id = sqlc.arg(id);
 
 -- The watermark only moves forward: GREATEST ignores a NULL current value.
 -- name: AdvanceExpenseRuleWatermark :exec

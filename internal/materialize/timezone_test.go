@@ -48,32 +48,6 @@ func TestCatchUp_UserWithoutTimezoneKeepsServerDate_Integration(t *testing.T) {
 	assert.Empty(t, ruleExpenseDates(t, ctx, pool, rule.ID))
 }
 
-// The API's same-day entry: a Manila user who creates a weekly-Tuesday rule
-// at Tuesday 00:30 Manila gets Tuesday's entry right away.
-func TestMaterializeExpenseRuleToday_UsesUserDate_Integration(t *testing.T) {
-	_, q := newMaterializeTest(t)
-	ctx := context.Background()
-	manila := uuid.New()
-	setTimezone(t, ctx, q, manila, "Asia/Manila")
-	rule := seedExpenseRule(t, ctx, q, manila, "weekly", "2026-11-10", nil)
-
-	n, err := MaterializeExpenseRuleToday(ctx, q, rule, mondayEveningUTC)
-	require.NoError(t, err)
-	assert.Equal(t, int64(1), n)
-}
-
-func TestMaterializeIncomeRuleToday_UsesUserDate_Integration(t *testing.T) {
-	_, q := newMaterializeTest(t)
-	ctx := context.Background()
-	manila := uuid.New()
-	setTimezone(t, ctx, q, manila, "Asia/Manila")
-	rule := seedIncomeRule(t, ctx, q, manila, "weekly", "2026-11-10")
-
-	n, err := MaterializeIncomeRuleToday(ctx, q, rule, mondayEveningUTC)
-	require.NoError(t, err)
-	assert.Equal(t, int64(1), n)
-}
-
 // Resuming a paused rule: the watermark is the day before the user's date,
 // so the catch-up pass fills the user's today onward.
 func TestResumeThrough_UsesUserDate_Integration(t *testing.T) {

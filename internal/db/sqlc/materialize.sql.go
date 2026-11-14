@@ -46,6 +46,22 @@ func (q *Queries) AdvanceIncomeRuleWatermark(ctx context.Context, arg AdvanceInc
 	return err
 }
 
+const advanceRuleWatermark = `-- name: AdvanceRuleWatermark :exec
+UPDATE rules
+SET materialized_through = GREATEST(materialized_through, $1::date)
+WHERE id = $2
+`
+
+type AdvanceRuleWatermarkParams struct {
+	Through pgtype.Date `db:"through" json:"through"`
+	ID      uuid.UUID   `db:"id" json:"id"`
+}
+
+func (q *Queries) AdvanceRuleWatermark(ctx context.Context, arg AdvanceRuleWatermarkParams) error {
+	_, err := q.db.Exec(ctx, advanceRuleWatermark, arg.Through, arg.ID)
+	return err
+}
+
 const countLegacyExpenses = `-- name: CountLegacyExpenses :one
 SELECT COUNT(*)::bigint AS legacy_count FROM expenses
 WHERE recurring_type != 'one-time' AND source_rule_id IS NULL
@@ -433,58 +449,6 @@ func (q *Queries) ListExpenseRuleEntriesAfterEnd(ctx context.Context, arg ListEx
 	return items, nil
 }
 
-const listExpenseRulesBehind = `-- name: ListExpenseRulesBehind :many
-
-SELECT id, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, created_at, updated_at, materialized_through, kind FROM recurring_expense_rules
-WHERE is_active = true
-  AND start_date <= $1::date
-  AND COALESCE(materialized_through, start_date - 1)
-      < LEAST(COALESCE(end_date, $1::date), $1::date)
-ORDER BY start_date ASC, id ASC
-`
-
-// Catch-up pass (#7): rules with due dates the worker hasn't filled yet.
-// A rule is behind when its watermark (materialized_through, or the day before
-// start_date when nothing has been filled) is earlier than min(end_date, today).
-// Rules that ended while the worker was down are still included. Paused rules
-// are not.
-func (q *Queries) ListExpenseRulesBehind(ctx context.Context, today pgtype.Date) ([]RecurringExpenseRule, error) {
-	rows, err := q.db.Query(ctx, listExpenseRulesBehind, today)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []RecurringExpenseRule{}
-	for rows.Next() {
-		var i RecurringExpenseRule
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.Description,
-			&i.Amount,
-			&i.Currency,
-			&i.CategoryID,
-			&i.Notes,
-			&i.RecurringType,
-			&i.StartDate,
-			&i.EndDate,
-			&i.Priority,
-			&i.IsActive,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.MaterializedThrough,
-			&i.Kind,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listIncomeRuleEntriesAfterEnd = `-- name: ListIncomeRuleEntriesAfterEnd :many
 SELECT id, date, status FROM incomes
 WHERE user_id = $1 AND source_rule_id = $2
@@ -522,52 +486,6 @@ func (q *Queries) ListIncomeRuleEntriesAfterEnd(ctx context.Context, arg ListInc
 	for rows.Next() {
 		var i ListIncomeRuleEntriesAfterEndRow
 		if err := rows.Scan(&i.ID, &i.Date, &i.Status); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listIncomeRulesBehind = `-- name: ListIncomeRulesBehind :many
-SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority, materialized_through, kind FROM recurring_income_rules
-WHERE is_active = true
-  AND start_date <= $1::date
-  AND COALESCE(materialized_through, start_date - 1)
-      < LEAST(COALESCE(end_date, $1::date), $1::date)
-ORDER BY start_date ASC, id ASC
-`
-
-func (q *Queries) ListIncomeRulesBehind(ctx context.Context, today pgtype.Date) ([]RecurringIncomeRule, error) {
-	rows, err := q.db.Query(ctx, listIncomeRulesBehind, today)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []RecurringIncomeRule{}
-	for rows.Next() {
-		var i RecurringIncomeRule
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.Amount,
-			&i.Currency,
-			&i.Description,
-			&i.RecurringType,
-			&i.StartDate,
-			&i.EndDate,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.IsActive,
-			&i.CategoryID,
-			&i.Notes,
-			&i.Priority,
-			&i.MaterializedThrough,
-			&i.Kind,
-		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -758,6 +676,106 @@ func (q *Queries) ListLegacyIncomesByUser(ctx context.Context, userID uuid.UUID)
 		return nil, err
 	}
 	return items, nil
+}
+
+const listUserRulesBehind = `-- name: ListUserRulesBehind :many
+SELECT id, kind, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, materialized_through, created_at, updated_at FROM rules
+WHERE user_id = $1
+  AND is_active = true
+  AND start_date <= $2::date
+  AND COALESCE(materialized_through, start_date - 1)
+      < LEAST(COALESCE(end_date, $2::date), $2::date)
+ORDER BY start_date ASC, id ASC
+`
+
+type ListUserRulesBehindParams struct {
+	UserID uuid.UUID   `db:"user_id" json:"user_id"`
+	Today  pgtype.Date `db:"today" json:"today"`
+}
+
+func (q *Queries) ListUserRulesBehind(ctx context.Context, arg ListUserRulesBehindParams) ([]Rule, error) {
+	rows, err := q.db.Query(ctx, listUserRulesBehind, arg.UserID, arg.Today)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Rule{}
+	for rows.Next() {
+		var i Rule
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.UserID,
+			&i.Description,
+			&i.Amount,
+			&i.Currency,
+			&i.CategoryID,
+			&i.Notes,
+			&i.RecurringType,
+			&i.StartDate,
+			&i.EndDate,
+			&i.Priority,
+			&i.IsActive,
+			&i.MaterializedThrough,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUsersWithRulesBehind = `-- name: ListUsersWithRulesBehind :many
+SELECT DISTINCT user_id FROM rules
+WHERE is_active = true
+  AND start_date <= $1::date
+  AND COALESCE(materialized_through, start_date - 1)
+      < LEAST(COALESCE(end_date, $1::date), $1::date)
+`
+
+// Users with any rule behind as of `horizon`, the latest date anywhere; each
+// user's own date is applied by ListUserRulesBehind.
+func (q *Queries) ListUsersWithRulesBehind(ctx context.Context, horizon pgtype.Date) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listUsersWithRulesBehind, horizon)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var user_id uuid.UUID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockUserMaterialize = `-- name: LockUserMaterialize :exec
+
+SELECT pg_advisory_xact_lock(hashtext('corefinance-materialize'), hashtext($1::uuid::text))
+`
+
+// Catch-up pass (#7), one user at a time under a per-user lock (#14,
+// ADR-0001). A rule is behind when its watermark (materialized_through, or
+// the day before start_date when nothing has been filled) is earlier than
+// min(end_date, today). Rules that ended while the worker was down are still
+// included. Paused rules are not.
+// Serializes every writer of one user's rule entries (the worker and rule
+// saves) for the rest of the transaction. Take it before touching any rule
+// row, so writers always lock in the same order.
+func (q *Queries) LockUserMaterialize(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, lockUserMaterialize, userID)
+	return err
 }
 
 const skipExpenseRuleEntriesAfterEnd = `-- name: SkipExpenseRuleEntriesAfterEnd :many

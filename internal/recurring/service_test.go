@@ -609,3 +609,5 @@ func TestRecurringService_ListExpenseRules(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func ptrBool(b bool) *bool { return &b }

@@ -24,35 +24,6 @@ func (q *Queries) GetUserSettings(ctx context.Context, userID uuid.UUID) (UserSe
 	return i, err
 }
 
-const listUserTimezones = `-- name: ListUserTimezones :many
-SELECT user_id, timezone FROM user_settings
-`
-
-type ListUserTimezonesRow struct {
-	UserID   uuid.UUID `db:"user_id" json:"user_id"`
-	Timezone string    `db:"timezone" json:"timezone"`
-}
-
-func (q *Queries) ListUserTimezones(ctx context.Context) ([]ListUserTimezonesRow, error) {
-	rows, err := q.db.Query(ctx, listUserTimezones)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListUserTimezonesRow{}
-	for rows.Next() {
-		var i ListUserTimezonesRow
-		if err := rows.Scan(&i.UserID, &i.Timezone); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const putUserSettings = `-- name: PutUserSettings :one
 INSERT INTO user_settings (user_id, timezone)
 VALUES ($1, $2)

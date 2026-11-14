@@ -42,16 +42,3 @@ func UserToday(ctx context.Context, q db.Querier, userID uuid.UUID, now time.Tim
 	}
 	return userDate(now, s.Timezone), nil
 }
-
-// userTimezones maps every user who saved a timezone to it.
-func userTimezones(ctx context.Context, q db.Querier) (map[uuid.UUID]string, error) {
-	rows, err := q.ListUserTimezones(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("list user timezones: %w", err)
-	}
-	out := make(map[uuid.UUID]string, len(rows))
-	for _, r := range rows {
-		out[r.UserID] = r.Timezone
-	}
-	return out, nil
-}

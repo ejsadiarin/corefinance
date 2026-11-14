@@ -16,7 +16,6 @@ import (
 
 	"github.com/ejsadiarin/corefinance/internal/auth"
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
-	"github.com/ejsadiarin/corefinance/internal/materialize"
 	"github.com/ejsadiarin/corefinance/internal/mock"
 	"github.com/ejsadiarin/corefinance/internal/testutil"
 )
@@ -33,6 +32,12 @@ func day(s string) time.Time {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// rel is the server's date n days from today. Saving a rule fills it up to
+// today (#14), so the #5 scenario (entries on the 3rd, 10th and 17th, end set
+// to the 8th) is laid out relative to today: entries 14, 7 and 0 days ago,
+// end moved to 10 days ago.
+func rel(n int) string { return time.Now().AddDate(0, 0, n).Format(time.DateOnly) }
 
 func entryDates(entries []RuleEntry) []string {
 	out := []string{}
@@ -55,11 +60,9 @@ func weeklyExpenseRule(t *testing.T, ctx context.Context, pool *pgxpool.Pool, s 
 	t.Helper()
 	req := CreateExpenseRuleRequest{
 		Amount: 50, Currency: "PHP", Description: "groceries", RecurringType: "weekly",
-		StartDate: "2026-08-03", Priority: "need",
+		StartDate: rel(-14), Priority: "need",
 	}
 	rule, err := s.CreateExpenseRule(ctx, user, req)
-	require.NoError(t, err)
-	_, err = materialize.MaterializeDue(ctx, pool, db.New(pool), day("2026-08-17"))
 	require.NoError(t, err)
 	return rule, UpdateExpenseRuleRequest{
 		Amount: req.Amount, Currency: req.Currency, Description: req.Description,
@@ -82,11 +85,11 @@ func TestEndExpenseRuleInPast_SkipsLaterEntriesByDefault_Integration(t *testing.
 	user := uuid.New()
 	rule, upd := weeklyExpenseRule(t, ctx, pool, s, user)
 
-	upd.EndDate = ptr("2026-08-08")
+	upd.EndDate = ptr(rel(-10))
 	got, err := s.UpdateExpenseRule(ctx, rule.ID, user, upd)
 	require.NoError(t, err)
 
-	assert.Equal(t, []string{"2026-08-10", "2026-08-17"}, entryDates(got.EntriesAfterEnd))
+	assert.Equal(t, []string{rel(-7), rel(0)}, entryDates(got.EntriesAfterEnd))
 	assert.Equal(t, []string{"skipped", "skipped"}, entryStatuses(got.EntriesAfterEnd))
 	for _, e := range got.EntriesAfterEnd {
 		assert.Equal(t, "skipped", expenseStatus(t, ctx, q, user, e.ID))
@@ -101,12 +104,12 @@ func TestEndExpenseRuleInPast_KeepLeavesEntriesPosted_Integration(t *testing.T) 
 	user := uuid.New()
 	rule, upd := weeklyExpenseRule(t, ctx, pool, s, user)
 
-	upd.EndDate = ptr("2026-08-08")
+	upd.EndDate = ptr(rel(-10))
 	upd.EntriesAfterEnd = EntriesAfterEndKeep
 	got, err := s.UpdateExpenseRule(ctx, rule.ID, user, upd)
 	require.NoError(t, err)
 
-	assert.Equal(t, []string{"2026-08-10", "2026-08-17"}, entryDates(got.EntriesAfterEnd))
+	assert.Equal(t, []string{rel(-7), rel(0)}, entryDates(got.EntriesAfterEnd))
 	assert.Equal(t, []string{"posted", "posted"}, entryStatuses(got.EntriesAfterEnd))
 	for _, e := range got.EntriesAfterEnd {
 		assert.Equal(t, "posted", expenseStatus(t, ctx, q, user, e.ID))
@@ -145,19 +148,17 @@ func TestEndIncomeRuleInPast_SkipsLaterEntriesByDefault_Integration(t *testing.T
 	s := NewServiceWithPool(q, pool)
 	user := uuid.New()
 	req := CreateIncomeRuleRequest{
-		Amount: 500, Currency: "PHP", Description: "allowance", RecurringType: "weekly", StartDate: "2026-08-03",
+		Amount: 500, Currency: "PHP", Description: "allowance", RecurringType: "weekly", StartDate: rel(-14),
 	}
 	rule, err := s.CreateIncomeRule(ctx, user, req)
-	require.NoError(t, err)
-	_, err = materialize.MaterializeDue(ctx, pool, q, day("2026-08-17"))
 	require.NoError(t, err)
 
 	got, err := s.UpdateIncomeRule(ctx, rule.ID, user, UpdateIncomeRuleRequest{
 		Amount: req.Amount, Currency: req.Currency, Description: req.Description,
-		RecurringType: req.RecurringType, StartDate: req.StartDate, EndDate: ptr("2026-08-08"),
+		RecurringType: req.RecurringType, StartDate: req.StartDate, EndDate: ptr(rel(-10)),
 	})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"2026-08-10", "2026-08-17"}, entryDates(got.EntriesAfterEnd))
+	assert.Equal(t, []string{rel(-7), rel(0)}, entryDates(got.EntriesAfterEnd))
 	assert.Equal(t, []string{"skipped", "skipped"}, entryStatuses(got.EntriesAfterEnd))
 }
 

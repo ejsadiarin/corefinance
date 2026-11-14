@@ -49,52 +49,58 @@ func (s *Service) inTx(ctx context.Context, fn func(q db.Querier) error) error {
 	return tx.Commit(ctx)
 }
 
-// syncExpenseInstance materializes today's instance for a single expense rule
-// right after a rule write. Fail-open by design: errors are logged and the
-// rule write stays authoritative — the next worker pass converges.
-func (s *Service) syncExpenseInstance(ctx context.Context, rule db.RecurringExpenseRule) {
-	n, err := materialize.MaterializeExpenseRuleToday(ctx, s.queries, rule, time.Now())
+// fill runs the owner's materialize pass in q's transaction (#14, ADR-0001):
+// the one writer of rule entries, the same code the worker runs. Rule saves
+// call lockOwner first, so they take the owner's lock before any rule row,
+// in the same order the worker does.
+func fill(ctx context.Context, q db.Querier, userID uuid.UUID) error {
+	n, err := materialize.MaterializeUser(ctx, q, userID, time.Now())
 	if err != nil {
-		slog.Error("recurring.Service sync expense instance failed", "rule_id", rule.ID, "error", err)
-		return
+		return fmt.Errorf("fill rule entries: %w", err)
 	}
 	if n > 0 {
-		slog.Info("recurring.Service synced today's expense instance", "rule_id", rule.ID)
+		slog.Info("recurring.Service filled rule entries", "user_id", userID, "inserted", n)
 	}
+	return nil
 }
 
-// syncIncomeInstance is the income-rule counterpart of syncExpenseInstance.
-func (s *Service) syncIncomeInstance(ctx context.Context, rule db.RecurringIncomeRule) {
-	n, err := materialize.MaterializeIncomeRuleToday(ctx, s.queries, rule, time.Now())
-	if err != nil {
-		slog.Error("recurring.Service sync income instance failed", "rule_id", rule.ID, "error", err)
-		return
+func lockOwner(ctx context.Context, q db.Querier, userID uuid.UUID) error {
+	if err := q.LockUserMaterialize(ctx, userID); err != nil {
+		return fmt.Errorf("lock rule owner: %w", err)
 	}
-	if n > 0 {
-		slog.Info("recurring.Service synced today's income instance", "rule_id", rule.ID)
-	}
+	return nil
 }
 
 // --- Income Rules ---
 
 func (s *Service) CreateIncomeRule(ctx context.Context, userID uuid.UUID, req CreateIncomeRuleRequest) (db.RecurringIncomeRule, error) {
 	slog.Debug("recurring.Service.CreateIncomeRule", "user_id", userID)
-	rule, err := s.queries.CreateRecurringIncomeRule(ctx, db.CreateRecurringIncomeRuleParams{
-		UserID:        userID,
-		Amount:        decimal.NewFromFloat(req.Amount),
-		Currency:      req.Currency,
-		Description:   req.Description,
-		RecurringType: req.RecurringType,
-		StartDate:     helper.ToPgDate(req.StartDate),
-		EndDate:       helper.ToPgDatePtr(req.EndDate),
-		CategoryID:    helper.ToPgUUID(req.CategoryID),
-		Notes:         helper.ToPgText(req.Notes),
-		Priority:      optionalPriority(req.Priority),
+	var rule db.RecurringIncomeRule
+	err := s.inTx(ctx, func(q db.Querier) error {
+		if err := lockOwner(ctx, q, userID); err != nil {
+			return err
+		}
+		r, err := q.CreateRecurringIncomeRule(ctx, db.CreateRecurringIncomeRuleParams{
+			UserID:        userID,
+			Amount:        decimal.NewFromFloat(req.Amount),
+			Currency:      req.Currency,
+			Description:   req.Description,
+			RecurringType: req.RecurringType,
+			StartDate:     helper.ToPgDate(req.StartDate),
+			EndDate:       helper.ToPgDatePtr(req.EndDate),
+			CategoryID:    helper.ToPgUUID(req.CategoryID),
+			Notes:         helper.ToPgText(req.Notes),
+			Priority:      optionalPriority(req.Priority),
+		})
+		if err != nil {
+			return err
+		}
+		rule = r
+		return fill(ctx, q, userID)
 	})
 	if err != nil {
 		return db.RecurringIncomeRule{}, err
 	}
-	s.syncIncomeInstance(ctx, rule)
 	return rule, nil
 }
 
@@ -128,6 +134,9 @@ func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 	// The rule and its entries change together: if skipping fails, the end
 	// date isn't saved either, so a retry still sees it move (#5).
 	err := s.inTx(ctx, func(q db.Querier) error {
+		if err := lockOwner(ctx, q, userID); err != nil {
+			return err
+		}
 		old, err := q.GetRecurringIncomeRule(ctx, db.GetRecurringIncomeRuleParams{ID: id, UserID: userID})
 		if err != nil {
 			return err
@@ -159,12 +168,11 @@ func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 			return err
 		}
 		out = IncomeRuleUpdate{RecurringIncomeRule: rule, EntriesAfterEnd: entries}
-		return nil
+		return fill(ctx, q, userID)
 	})
 	if err != nil {
 		return IncomeRuleUpdate{}, err
 	}
-	s.syncIncomeInstance(ctx, out.RecurringIncomeRule)
 	return out, nil
 }
 
@@ -180,22 +188,32 @@ func (s *Service) DeleteIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 
 func (s *Service) CreateExpenseRule(ctx context.Context, userID uuid.UUID, req CreateExpenseRuleRequest) (db.RecurringExpenseRule, error) {
 	slog.Debug("recurring.Service.CreateExpenseRule", "user_id", userID)
-	rule, err := s.queries.CreateRecurringExpenseRule(ctx, db.CreateRecurringExpenseRuleParams{
-		UserID:        userID,
-		Description:   req.Description,
-		Amount:        decimal.NewFromFloat(req.Amount),
-		Currency:      req.Currency,
-		CategoryID:    helper.ToPgUUID(req.CategoryID),
-		Notes:         helper.ToPgText(req.Notes),
-		RecurringType: req.RecurringType,
-		StartDate:     helper.ToPgDate(req.StartDate),
-		EndDate:       helper.ToPgDatePtr(req.EndDate),
-		Priority:      req.Priority,
+	var rule db.RecurringExpenseRule
+	err := s.inTx(ctx, func(q db.Querier) error {
+		if err := lockOwner(ctx, q, userID); err != nil {
+			return err
+		}
+		r, err := q.CreateRecurringExpenseRule(ctx, db.CreateRecurringExpenseRuleParams{
+			UserID:        userID,
+			Description:   req.Description,
+			Amount:        decimal.NewFromFloat(req.Amount),
+			Currency:      req.Currency,
+			CategoryID:    helper.ToPgUUID(req.CategoryID),
+			Notes:         helper.ToPgText(req.Notes),
+			RecurringType: req.RecurringType,
+			StartDate:     helper.ToPgDate(req.StartDate),
+			EndDate:       helper.ToPgDatePtr(req.EndDate),
+			Priority:      req.Priority,
+		})
+		if err != nil {
+			return err
+		}
+		rule = r
+		return fill(ctx, q, userID)
 	})
 	if err != nil {
 		return db.RecurringExpenseRule{}, err
 	}
-	s.syncExpenseInstance(ctx, rule)
 	return rule, nil
 }
 
@@ -219,6 +237,9 @@ func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uu
 	// The rule and its entries change together: if skipping fails, the end
 	// date isn't saved either, so a retry still sees it move (#5).
 	err := s.inTx(ctx, func(q db.Querier) error {
+		if err := lockOwner(ctx, q, userID); err != nil {
+			return err
+		}
 		old, err := q.GetRecurringExpenseRule(ctx, db.GetRecurringExpenseRuleParams{ID: id, UserID: userID})
 		if err != nil {
 			return err
@@ -250,12 +271,11 @@ func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uu
 			return err
 		}
 		out = ExpenseRuleUpdate{RecurringExpenseRule: rule, EntriesAfterEnd: entries}
-		return nil
+		return fill(ctx, q, userID)
 	})
 	if err != nil {
 		return ExpenseRuleUpdate{}, err
 	}
-	s.syncExpenseInstance(ctx, out.RecurringExpenseRule)
 	return out, nil
 }
 

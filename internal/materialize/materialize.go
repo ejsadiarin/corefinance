@@ -5,6 +5,7 @@ package materialize
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -195,82 +196,74 @@ func PendingDates(start time.Time, cadence string, watermark, end pgtype.Date, t
 	return dates, bound
 }
 
-// catchUp fills every active rule from its watermark (materialized_through)
-// to min(end_date, today) and moves the watermark forward. Missed days while
-// the worker was down are filled on the next pass; rules that ended in the
-// meantime still get their last entries. The watermark never moves backward,
-// so an entry the user deleted is not recreated, and inserts are
-// ON CONFLICT DO NOTHING, so entries the user edited or skipped are untouched.
+// MaterializeUser fills one user's rules (#14, ADR-0001): every active rule
+// gets its due dates after its watermark (materialized_through) up to
+// min(end_date, today), where today is the user's date at now, and the
+// watermark moves forward. Missed days while the worker was down are filled
+// on the next pass; rules that ended in the meantime still get their last
+// entries. The watermark never moves backward, so an entry the user deleted
+// is not recreated, and inserts are ON CONFLICT DO NOTHING, so entries the
+// user edited or skipped are untouched.
 //
-// "today" is each rule owner's date at now (#9): their saved timezone, or the
-// server clock's date when they haven't saved one. Rules are listed up to the
-// latest date anywhere and each is then bounded by its owner's date.
-func catchUp(ctx context.Context, q *db.Queries, now time.Time) (expenseN, incomeN int, err error) {
-	zones, err := userTimezones(ctx, q)
-	if err != nil {
-		return 0, 0, err
+// It is the only writer of rule entries: the worker runs it per user, and a
+// rule save runs it for the rule's owner. q must be inside a transaction; it
+// takes the user's lock for the rest of it. Returns the rows inserted.
+func MaterializeUser(ctx context.Context, q db.Querier, userID uuid.UUID, now time.Time) (int, error) {
+	if err := q.LockUserMaterialize(ctx, userID); err != nil {
+		return 0, fmt.Errorf("lock user materialize: %w", err)
 	}
-	horizon := pgDate(userDate(now.In(latestZone), ""))
-
-	expenseRules, err := q.ListExpenseRulesBehind(ctx, horizon)
+	today, err := UserToday(ctx, q, userID, now)
 	if err != nil {
-		return 0, 0, fmt.Errorf("list expense rules behind: %w", err)
+		return 0, err
 	}
-	for _, r := range expenseRules {
-		today := userDate(now, zones[r.UserID])
+	rules, err := q.ListUserRulesBehind(ctx, db.ListUserRulesBehindParams{UserID: userID, Today: pgDate(today)})
+	if err != nil {
+		return 0, fmt.Errorf("list rules behind: %w", err)
+	}
+	inserted := 0
+	for _, r := range rules {
 		dates, through := PendingDates(r.StartDate.Time, r.RecurringType, r.MaterializedThrough, r.EndDate, today, MaxDatesPerRulePass)
 		for _, d := range dates {
-			n, err := q.CreateExpenseInstance(ctx, db.CreateExpenseInstanceParams{
-				UserID:       r.UserID,
-				CategoryID:   r.CategoryID,
-				Amount:       r.Amount,
-				Currency:     r.Currency,
-				Description:  r.Description,
-				Notes:        r.Notes,
-				ExpenseDate:  pgDate(d),
-				Priority:     r.Priority,
-				IsDebt:       false,
-				SourceRuleID: pgtype.UUID{Bytes: r.ID, Valid: true},
-			})
+			n, err := insertRuleEntry(ctx, q, r, d)
 			if err != nil {
-				return expenseN, incomeN, fmt.Errorf("create expense instance: %w", err)
+				return inserted, err
 			}
-			expenseN += int(n)
+			inserted += int(n)
 		}
-		if err := q.AdvanceExpenseRuleWatermark(ctx, db.AdvanceExpenseRuleWatermarkParams{ID: r.ID, Through: pgDate(through)}); err != nil {
-			return expenseN, incomeN, fmt.Errorf("advance expense rule watermark: %w", err)
+		if err := q.AdvanceRuleWatermark(ctx, db.AdvanceRuleWatermarkParams{ID: r.ID, Through: pgDate(through)}); err != nil {
+			return inserted, fmt.Errorf("advance rule watermark: %w", err)
 		}
 	}
+	return inserted, nil
+}
 
-	incomeRules, err := q.ListIncomeRulesBehind(ctx, horizon)
-	if err != nil {
-		return expenseN, incomeN, fmt.Errorf("list income rules behind: %w", err)
-	}
-	for _, r := range incomeRules {
-		today := userDate(now, zones[r.UserID])
-		dates, through := PendingDates(r.StartDate.Time, r.RecurringType, r.MaterializedThrough, r.EndDate, today, MaxDatesPerRulePass)
-		for _, d := range dates {
-			n, err := q.CreateIncomeInstance(ctx, db.CreateIncomeInstanceParams{
-				UserID:       r.UserID,
-				CategoryID:   r.CategoryID,
-				Amount:       r.Amount,
-				Currency:     r.Currency,
-				Description:  r.Description,
-				Notes:        r.Notes,
-				Date:         pgDate(d),
-				Priority:     r.Priority,
-				SourceRuleID: pgtype.UUID{Bytes: r.ID, Valid: true},
-			})
-			if err != nil {
-				return expenseN, incomeN, fmt.Errorf("create income instance: %w", err)
-			}
-			incomeN += int(n)
+// insertRuleEntry creates the rule's entry for date d in the table for its
+// kind; an existing entry for that rule and date is left alone.
+func insertRuleEntry(ctx context.Context, q db.Querier, r db.Rule, d time.Time) (int64, error) {
+	source := pgtype.UUID{Bytes: r.ID, Valid: true}
+	switch r.Kind {
+	case "expense":
+		n, err := q.CreateExpenseInstance(ctx, db.CreateExpenseInstanceParams{
+			UserID: r.UserID, CategoryID: r.CategoryID, Amount: r.Amount, Currency: r.Currency,
+			Description: r.Description, Notes: r.Notes, ExpenseDate: pgDate(d), Priority: r.Priority,
+			IsDebt: false, SourceRuleID: source,
+		})
+		if err != nil {
+			return 0, fmt.Errorf("create expense instance: %w", err)
 		}
-		if err := q.AdvanceIncomeRuleWatermark(ctx, db.AdvanceIncomeRuleWatermarkParams{ID: r.ID, Through: pgDate(through)}); err != nil {
-			return expenseN, incomeN, fmt.Errorf("advance income rule watermark: %w", err)
+		return n, nil
+	case "income":
+		n, err := q.CreateIncomeInstance(ctx, db.CreateIncomeInstanceParams{
+			UserID: r.UserID, CategoryID: r.CategoryID, Amount: r.Amount, Currency: r.Currency,
+			Description: r.Description, Notes: r.Notes, Date: pgDate(d), Priority: r.Priority,
+			SourceRuleID: source,
+		})
+		if err != nil {
+			return 0, fmt.Errorf("create income instance: %w", err)
 		}
+		return n, nil
 	}
-	return expenseN, incomeN, nil
+	return 0, fmt.Errorf("rule %s has unknown kind %q", r.ID, r.Kind)
 }
 
 // materializeHistory inserts one instance row per due date bounded by
@@ -356,22 +349,43 @@ func withMaterializeLock(ctx context.Context, pool *pgxpool.Pool, queries *db.Qu
 	return nil
 }
 
-// MaterializeDue runs the catch-up pass: every active rule gets its due dates
-// after its watermark up to min(end_date, today), so entries missed while the
-// worker was down are created on the next pass. "today" is each rule owner's
-// date at now. Instance rows use recurring_type='one-time', NULL start/end,
-// source_rule_id set, status='posted'. Returns the number of rows inserted.
+// MaterializeDue runs MaterializeUser for every user with a rule behind, each
+// in its own short transaction, so one user's pass never waits on another's
+// and a failure for one user doesn't stop the rest. Instance rows use
+// recurring_type='one-time', NULL start/end, source_rule_id set,
+// status='posted'. Returns the rows inserted, and every user's error joined.
 func MaterializeDue(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, now time.Time) (int, error) {
+	// No user's date is later than now's date in the furthest-ahead zone.
+	users, err := queries.ListUsersWithRulesBehind(ctx, pgDate(userDate(now.In(latestZone), "")))
+	if err != nil {
+		return 0, fmt.Errorf("list users with rules behind: %w", err)
+	}
 	inserted := 0
-	err := withMaterializeLock(ctx, pool, queries, func(q *db.Queries) error {
-		e, i, err := catchUp(ctx, q, now)
+	var errs []error
+	for _, user := range users {
+		n, err := materializeUserTx(ctx, pool, queries, user, now)
+		inserted += n
 		if err != nil {
-			return err
+			errs = append(errs, fmt.Errorf("user %s: %w", user, err))
 		}
-		inserted = e + i
-		return nil
-	})
-	return inserted, err
+	}
+	return inserted, errors.Join(errs...)
+}
+
+func materializeUserTx(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, user uuid.UUID, now time.Time) (int, error) {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	n, err := MaterializeUser(ctx, queries.WithTx(tx), user, now)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("commit: %w", err)
+	}
+	return n, nil
 }
 
 // CountLegacyRows returns the number of rows still matching the legacy inline
