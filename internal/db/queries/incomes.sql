@@ -27,7 +27,7 @@ UPDATE incomes
 SET category_id = $3, amount = $4, currency = $5, description = $6, notes = $7,
     date = $8, recurring_type = $9, priority = $10, status = $11,
     start_date = $12, end_date = $13, source_rule_id = $14,
-    updated_at = now()
+    updated_at = now(), user_edited_at = now()
 WHERE id = $1 AND user_id = $2
 RETURNING *;
 
@@ -37,7 +37,7 @@ WHERE id = $1 AND user_id = $2;
 
 -- name: SkipIncome :exec
 UPDATE incomes
-SET status = 'skipped', updated_at = now()
+SET status = 'skipped', updated_at = now(), user_edited_at = now()
 WHERE id = $1 AND user_id = $2;
 
 -- name: CheckSkippedIncome :one

@@ -15,10 +15,10 @@ import (
 
 const listRuleEntries = `-- name: ListRuleEntries :many
 
-SELECT kind, id, rule_id, date, amount, currency, description, notes, category_id, category_name, priority, status, created_at, updated_at FROM (
+SELECT kind, id, rule_id, date, amount, currency, description, notes, category_id, category_name, priority, status, created_at, updated_at, user_edited_at FROM (
     SELECT 'expense'::text AS kind, e.id, e.source_rule_id::uuid AS rule_id, e.expense_date AS date,
            e.amount, e.currency, e.description, e.notes, e.category_id, ec.name AS category_name,
-           e.priority, e.status, e.created_at, e.updated_at
+           e.priority, e.status, e.created_at, e.updated_at, e.user_edited_at
     FROM expenses e
     LEFT JOIN expense_categories ec ON ec.id = e.category_id
     WHERE e.user_id = $1
@@ -30,7 +30,7 @@ SELECT kind, id, rule_id, date, amount, currency, description, notes, category_i
     UNION ALL
     SELECT 'income'::text AS kind, i.id, i.source_rule_id::uuid AS rule_id, i.date,
            i.amount, i.currency, i.description, i.notes, i.category_id, ic.name AS category_name,
-           i.priority, i.status, i.created_at, i.updated_at
+           i.priority, i.status, i.created_at, i.updated_at, i.user_edited_at
     FROM incomes i
     LEFT JOIN income_categories ic ON ic.id = i.category_id
     WHERE i.user_id = $1
@@ -69,6 +69,7 @@ type ListRuleEntriesRow struct {
 	Status       string             `db:"status" json:"status"`
 	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	UserEditedAt pgtype.Timestamptz `db:"user_edited_at" json:"user_edited_at"`
 }
 
 // Rule-created entries for review (#8): the expenses and incomes the worker
@@ -107,6 +108,7 @@ func (q *Queries) ListRuleEntries(ctx context.Context, arg ListRuleEntriesParams
 			&i.Status,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.UserEditedAt,
 		); err != nil {
 			return nil, err
 		}

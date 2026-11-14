@@ -7,7 +7,7 @@
 SELECT * FROM (
     SELECT 'expense'::text AS kind, e.id, e.source_rule_id::uuid AS rule_id, e.expense_date AS date,
            e.amount, e.currency, e.description, e.notes, e.category_id, ec.name AS category_name,
-           e.priority, e.status, e.created_at, e.updated_at
+           e.priority, e.status, e.created_at, e.updated_at, e.user_edited_at
     FROM expenses e
     LEFT JOIN expense_categories ec ON ec.id = e.category_id
     WHERE e.user_id = sqlc.arg(user_id)
@@ -19,7 +19,7 @@ SELECT * FROM (
     UNION ALL
     SELECT 'income'::text AS kind, i.id, i.source_rule_id::uuid AS rule_id, i.date,
            i.amount, i.currency, i.description, i.notes, i.category_id, ic.name AS category_name,
-           i.priority, i.status, i.created_at, i.updated_at
+           i.priority, i.status, i.created_at, i.updated_at, i.user_edited_at
     FROM incomes i
     LEFT JOIN income_categories ic ON ic.id = i.category_id
     WHERE i.user_id = sqlc.arg(user_id)

@@ -28,6 +28,7 @@ type Expense struct {
 	SourceRuleID  pgtype.UUID        `db:"source_rule_id" json:"source_rule_id"`
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	UserEditedAt  pgtype.Timestamptz `db:"user_edited_at" json:"user_edited_at"`
 }
 
 type ExpenseCategory struct {
@@ -63,6 +64,7 @@ type Income struct {
 	SourceRuleID  pgtype.UUID        `db:"source_rule_id" json:"source_rule_id"`
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	UserEditedAt  pgtype.Timestamptz `db:"user_edited_at" json:"user_edited_at"`
 }
 
 type IncomeCategory struct {
