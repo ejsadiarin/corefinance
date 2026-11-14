@@ -2,6 +2,7 @@ package recurring
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -101,6 +102,10 @@ func (h *Handler) UpdateIncomeRule(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Debug("recurring.UpdateIncomeRule: request received", "id", id, "user_id", userID)
 	rule, err := h.service.UpdateIncomeRule(r.Context(), id, userID, req)
+	if errors.Is(err, ErrInvalidEntriesAfterEnd) {
+		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err != nil {
 		slog.Error("recurring.UpdateIncomeRule: failed", "error", err, "id", id, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
@@ -210,6 +215,10 @@ func (h *Handler) UpdateExpenseRule(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Debug("recurring.UpdateExpenseRule: request received", "id", id, "user_id", userID)
 	rule, err := h.service.UpdateExpenseRule(r.Context(), id, userID, req)
+	if errors.Is(err, ErrInvalidEntriesAfterEnd) {
+		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err != nil {
 		slog.Error("recurring.UpdateExpenseRule: failed", "error", err, "id", id, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())

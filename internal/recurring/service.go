@@ -2,11 +2,13 @@ package recurring
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
@@ -16,10 +18,35 @@ import (
 
 type Service struct {
 	queries db.Querier
+	// pool, when set, runs a rule update and what it does to the rule's
+	// entries in one transaction (#5). Without it (unit tests on a mock) the
+	// same steps run on queries directly.
+	pool *pgxpool.Pool
 }
 
 func NewService(queries db.Querier) *Service {
 	return &Service{queries: queries}
+}
+
+// NewServiceWithPool is NewService with transactions for rule updates.
+func NewServiceWithPool(queries db.Querier, pool *pgxpool.Pool) *Service {
+	return &Service{queries: queries, pool: pool}
+}
+
+// inTx runs fn in one transaction when the service has a pool.
+func (s *Service) inTx(ctx context.Context, fn func(q db.Querier) error) error {
+	if s.pool == nil {
+		return fn(s.queries)
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin rule update: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	if err := fn(db.New(tx)); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // syncExpenseInstance materializes today's instance for a single expense rule
@@ -89,32 +116,56 @@ func (s *Service) GetIncomeRule(ctx context.Context, id uuid.UUID, userID uuid.U
 	})
 }
 
-func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateIncomeRuleRequest) (db.RecurringIncomeRule, error) {
+// UpdateIncomeRule updates the rule and, when its end date moves earlier,
+// reports the entries it created after the new end date and skips them unless
+// req.EntriesAfterEnd is "keep" (#5).
+func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateIncomeRuleRequest) (IncomeRuleUpdate, error) {
 	slog.Debug("recurring.Service.UpdateIncomeRule", "id", id, "user_id", userID)
-	resumeThrough, err := materialize.ResumeThrough(ctx, s.queries, userID, time.Now())
-	if err != nil {
-		return db.RecurringIncomeRule{}, err
+	if err := validEntriesAfterEnd(req.EntriesAfterEnd); err != nil {
+		return IncomeRuleUpdate{}, err
 	}
-	rule, err := s.queries.UpdateRecurringIncomeRule(ctx, db.UpdateRecurringIncomeRuleParams{
-		ID:            id,
-		UserID:        userID,
-		Amount:        decimal.NewFromFloat(req.Amount),
-		Currency:      req.Currency,
-		Description:   req.Description,
-		RecurringType: req.RecurringType,
-		StartDate:     helper.ToPgDate(req.StartDate),
-		EndDate:       helper.ToPgDatePtr(req.EndDate),
-		CategoryID:    helper.ToPgUUID(req.CategoryID),
-		Notes:         helper.ToPgText(req.Notes),
-		Priority:      optionalPriority(req.Priority),
-		IsActive:      helper.ToPgBool(req.IsActive),
-		ResumeThrough: resumeThrough,
+	var out IncomeRuleUpdate
+	// The rule and its entries change together: if skipping fails, the end
+	// date isn't saved either, so a retry still sees it move (#5).
+	err := s.inTx(ctx, func(q db.Querier) error {
+		old, err := q.GetRecurringIncomeRule(ctx, db.GetRecurringIncomeRuleParams{ID: id, UserID: userID})
+		if err != nil {
+			return err
+		}
+		resumeThrough, err := materialize.ResumeThrough(ctx, q, userID, time.Now())
+		if err != nil {
+			return err
+		}
+		rule, err := q.UpdateRecurringIncomeRule(ctx, db.UpdateRecurringIncomeRuleParams{
+			ID:            id,
+			UserID:        userID,
+			Amount:        decimal.NewFromFloat(req.Amount),
+			Currency:      req.Currency,
+			Description:   req.Description,
+			RecurringType: req.RecurringType,
+			StartDate:     helper.ToPgDate(req.StartDate),
+			EndDate:       helper.ToPgDatePtr(req.EndDate),
+			CategoryID:    helper.ToPgUUID(req.CategoryID),
+			Notes:         helper.ToPgText(req.Notes),
+			Priority:      optionalPriority(req.Priority),
+			IsActive:      helper.ToPgBool(req.IsActive),
+			ResumeThrough: resumeThrough,
+		})
+		if err != nil {
+			return err
+		}
+		entries, err := incomeEntriesAfterEnd(ctx, q, rule, old.EndDate, req.EntriesAfterEnd)
+		if err != nil {
+			return err
+		}
+		out = IncomeRuleUpdate{RecurringIncomeRule: rule, EntriesAfterEnd: entries}
+		return nil
 	})
 	if err != nil {
-		return db.RecurringIncomeRule{}, err
+		return IncomeRuleUpdate{}, err
 	}
-	s.syncIncomeInstance(ctx, rule)
-	return rule, nil
+	s.syncIncomeInstance(ctx, out.RecurringIncomeRule)
+	return out, nil
 }
 
 func (s *Service) DeleteIncomeRule(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
@@ -156,32 +207,56 @@ func (s *Service) GetExpenseRule(ctx context.Context, id uuid.UUID, userID uuid.
 	})
 }
 
-func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateExpenseRuleRequest) (db.RecurringExpenseRule, error) {
+// UpdateExpenseRule updates the rule and, when its end date moves earlier,
+// reports the entries it created after the new end date and skips them unless
+// req.EntriesAfterEnd is "keep" (#5).
+func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateExpenseRuleRequest) (ExpenseRuleUpdate, error) {
 	slog.Debug("recurring.Service.UpdateExpenseRule", "id", id, "user_id", userID)
-	resumeThrough, err := materialize.ResumeThrough(ctx, s.queries, userID, time.Now())
-	if err != nil {
-		return db.RecurringExpenseRule{}, err
+	if err := validEntriesAfterEnd(req.EntriesAfterEnd); err != nil {
+		return ExpenseRuleUpdate{}, err
 	}
-	rule, err := s.queries.UpdateRecurringExpenseRule(ctx, db.UpdateRecurringExpenseRuleParams{
-		ID:            id,
-		UserID:        userID,
-		Description:   req.Description,
-		Amount:        decimal.NewFromFloat(req.Amount),
-		Currency:      req.Currency,
-		CategoryID:    helper.ToPgUUID(req.CategoryID),
-		Notes:         helper.ToPgText(req.Notes),
-		RecurringType: req.RecurringType,
-		StartDate:     helper.ToPgDate(req.StartDate),
-		EndDate:       helper.ToPgDatePtr(req.EndDate),
-		Priority:      req.Priority,
-		IsActive:      helper.ToPgBool(req.IsActive),
-		ResumeThrough: resumeThrough,
+	var out ExpenseRuleUpdate
+	// The rule and its entries change together: if skipping fails, the end
+	// date isn't saved either, so a retry still sees it move (#5).
+	err := s.inTx(ctx, func(q db.Querier) error {
+		old, err := q.GetRecurringExpenseRule(ctx, db.GetRecurringExpenseRuleParams{ID: id, UserID: userID})
+		if err != nil {
+			return err
+		}
+		resumeThrough, err := materialize.ResumeThrough(ctx, q, userID, time.Now())
+		if err != nil {
+			return err
+		}
+		rule, err := q.UpdateRecurringExpenseRule(ctx, db.UpdateRecurringExpenseRuleParams{
+			ID:            id,
+			UserID:        userID,
+			Description:   req.Description,
+			Amount:        decimal.NewFromFloat(req.Amount),
+			Currency:      req.Currency,
+			CategoryID:    helper.ToPgUUID(req.CategoryID),
+			Notes:         helper.ToPgText(req.Notes),
+			RecurringType: req.RecurringType,
+			StartDate:     helper.ToPgDate(req.StartDate),
+			EndDate:       helper.ToPgDatePtr(req.EndDate),
+			Priority:      req.Priority,
+			IsActive:      helper.ToPgBool(req.IsActive),
+			ResumeThrough: resumeThrough,
+		})
+		if err != nil {
+			return err
+		}
+		entries, err := expenseEntriesAfterEnd(ctx, q, rule, old.EndDate, req.EntriesAfterEnd)
+		if err != nil {
+			return err
+		}
+		out = ExpenseRuleUpdate{RecurringExpenseRule: rule, EntriesAfterEnd: entries}
+		return nil
 	})
 	if err != nil {
-		return db.RecurringExpenseRule{}, err
+		return ExpenseRuleUpdate{}, err
 	}
-	s.syncExpenseInstance(ctx, rule)
-	return rule, nil
+	s.syncExpenseInstance(ctx, out.RecurringExpenseRule)
+	return out, nil
 }
 
 func (s *Service) DeleteExpenseRule(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {

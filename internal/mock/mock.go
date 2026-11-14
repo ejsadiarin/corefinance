@@ -47,6 +47,10 @@ type MockQuerier struct {
 	GetExpenseStatsByCategoryFn           func(ctx context.Context, arg db.GetExpenseStatsByCategoryParams) ([]db.GetExpenseStatsByCategoryRow, error)
 	GetFiftyThirtyTwentyFn                func(ctx context.Context, arg db.GetFiftyThirtyTwentyParams) (db.GetFiftyThirtyTwentyRow, error)
 	GetIncomeFn                           func(ctx context.Context, arg db.GetIncomeParams) (db.GetIncomeRow, error)
+	ListExpenseRuleEntriesAfterEndFn      func(ctx context.Context, arg db.ListExpenseRuleEntriesAfterEndParams) ([]db.ListExpenseRuleEntriesAfterEndRow, error)
+	ListIncomeRuleEntriesAfterEndFn       func(ctx context.Context, arg db.ListIncomeRuleEntriesAfterEndParams) ([]db.ListIncomeRuleEntriesAfterEndRow, error)
+	SkipExpenseRuleEntriesAfterEndFn      func(ctx context.Context, arg db.SkipExpenseRuleEntriesAfterEndParams) ([]db.SkipExpenseRuleEntriesAfterEndRow, error)
+	SkipIncomeRuleEntriesAfterEndFn       func(ctx context.Context, arg db.SkipIncomeRuleEntriesAfterEndParams) ([]db.SkipIncomeRuleEntriesAfterEndRow, error)
 	GetUserSettingsFn                     func(ctx context.Context, userID uuid.UUID) (db.UserSetting, error)
 	ListUserTimezonesFn                   func(ctx context.Context) ([]db.ListUserTimezonesRow, error)
 	PutUserSettingsFn                     func(ctx context.Context, arg db.PutUserSettingsParams) (db.UserSetting, error)
@@ -254,11 +258,21 @@ func (m *MockQuerier) GetMonthOverMonthTrends(ctx context.Context, arg db.GetMon
 	return m.GetMonthOverMonthTrendsFn(ctx, arg)
 }
 
+// GetRecurringExpenseRule defaults to an open-ended rule, which a rule
+// update reads to compare end dates (#5).
 func (m *MockQuerier) GetRecurringExpenseRule(ctx context.Context, arg db.GetRecurringExpenseRuleParams) (db.GetRecurringExpenseRuleRow, error) {
+	if m.GetRecurringExpenseRuleFn == nil {
+		return db.GetRecurringExpenseRuleRow{ID: arg.ID, UserID: arg.UserID}, nil
+	}
 	return m.GetRecurringExpenseRuleFn(ctx, arg)
 }
 
+// GetRecurringIncomeRule defaults to an open-ended rule (see
+// GetRecurringExpenseRule).
 func (m *MockQuerier) GetRecurringIncomeRule(ctx context.Context, arg db.GetRecurringIncomeRuleParams) (db.RecurringIncomeRule, error) {
+	if m.GetRecurringIncomeRuleFn == nil {
+		return db.RecurringIncomeRule{ID: arg.ID, UserID: arg.UserID}, nil
+	}
 	return m.GetRecurringIncomeRuleFn(ctx, arg)
 }
 
@@ -473,4 +487,36 @@ func (m *MockQuerier) ListUserTimezones(ctx context.Context) ([]db.ListUserTimez
 
 func (m *MockQuerier) PutUserSettings(ctx context.Context, arg db.PutUserSettingsParams) (db.UserSetting, error) {
 	return m.PutUserSettingsFn(ctx, arg)
+}
+
+// ListExpenseRuleEntriesAfterEnd defaults to no entries.
+func (m *MockQuerier) ListExpenseRuleEntriesAfterEnd(ctx context.Context, arg db.ListExpenseRuleEntriesAfterEndParams) ([]db.ListExpenseRuleEntriesAfterEndRow, error) {
+	if m.ListExpenseRuleEntriesAfterEndFn == nil {
+		return nil, nil
+	}
+	return m.ListExpenseRuleEntriesAfterEndFn(ctx, arg)
+}
+
+// ListIncomeRuleEntriesAfterEnd defaults to no entries.
+func (m *MockQuerier) ListIncomeRuleEntriesAfterEnd(ctx context.Context, arg db.ListIncomeRuleEntriesAfterEndParams) ([]db.ListIncomeRuleEntriesAfterEndRow, error) {
+	if m.ListIncomeRuleEntriesAfterEndFn == nil {
+		return nil, nil
+	}
+	return m.ListIncomeRuleEntriesAfterEndFn(ctx, arg)
+}
+
+// SkipExpenseRuleEntriesAfterEnd defaults to no entries.
+func (m *MockQuerier) SkipExpenseRuleEntriesAfterEnd(ctx context.Context, arg db.SkipExpenseRuleEntriesAfterEndParams) ([]db.SkipExpenseRuleEntriesAfterEndRow, error) {
+	if m.SkipExpenseRuleEntriesAfterEndFn == nil {
+		return nil, nil
+	}
+	return m.SkipExpenseRuleEntriesAfterEndFn(ctx, arg)
+}
+
+// SkipIncomeRuleEntriesAfterEnd defaults to no entries.
+func (m *MockQuerier) SkipIncomeRuleEntriesAfterEnd(ctx context.Context, arg db.SkipIncomeRuleEntriesAfterEndParams) ([]db.SkipIncomeRuleEntriesAfterEndRow, error) {
+	if m.SkipIncomeRuleEntriesAfterEndFn == nil {
+		return nil, nil
+	}
+	return m.SkipIncomeRuleEntriesAfterEndFn(ctx, arg)
 }

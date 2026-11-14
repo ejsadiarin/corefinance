@@ -54,7 +54,7 @@ func New(port int, pool *pgxpool.Pool, queries *db.Queries, verifier *auth.Verif
 	s.CategoryHandler = category.NewHandler(category.NewService(queries))
 	s.TagHandler = tag.NewHandler(tag.NewService(queries))
 	s.StatsHandler = stats.NewHandler(stats.NewService(queries))
-	s.RecurringHandler = recurring.NewHandler(recurring.NewService(queries))
+	s.RecurringHandler = recurring.NewHandler(recurring.NewServiceWithPool(queries, pool))
 	s.BudgetHandler = budget.NewHandler(budget.NewService(queries, pool))
 	s.AdminHandler = budget.NewAdminHandler(pool, queries)
 	s.SettingsHandler = settings.NewHandler(queries)

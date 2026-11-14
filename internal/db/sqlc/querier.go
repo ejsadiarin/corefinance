@@ -79,6 +79,9 @@ type Querier interface {
 	ListAllIncomeTagsByUser(ctx context.Context, userID uuid.UUID) ([]IncomeTag, error)
 	ListAllIncomesByUser(ctx context.Context, userID uuid.UUID) ([]Income, error)
 	ListExpenseCategories(ctx context.Context, userID uuid.UUID) ([]ExpenseCategory, error)
+	// Ending a rule in the past (#5): the rule's entries dated after the new end
+	// date and up to the old one (NULL: no old end), not already skipped.
+	ListExpenseRuleEntriesAfterEnd(ctx context.Context, arg ListExpenseRuleEntriesAfterEndParams) ([]ListExpenseRuleEntriesAfterEndRow, error)
 	// Catch-up pass (#7): rules with due dates the worker hasn't filled yet.
 	// A rule is behind when its watermark (materialized_through, or the day before
 	// start_date when nothing has been filled) is earlier than min(end_date, today).
@@ -90,6 +93,7 @@ type Querier interface {
 	// belong to someone else are simply absent.
 	ListExpensesByIDs(ctx context.Context, arg ListExpensesByIDsParams) ([]ListExpensesByIDsRow, error)
 	ListIncomeCategories(ctx context.Context, userID uuid.UUID) ([]IncomeCategory, error)
+	ListIncomeRuleEntriesAfterEnd(ctx context.Context, arg ListIncomeRuleEntriesAfterEndParams) ([]ListIncomeRuleEntriesAfterEndRow, error)
 	ListIncomeRulesBehind(ctx context.Context, today pgtype.Date) ([]RecurringIncomeRule, error)
 	ListIncomes(ctx context.Context, arg ListIncomesParams) ([]ListIncomesRow, error)
 	// The caller's incomes among the given ids; ids that don't exist or
@@ -113,7 +117,9 @@ type Querier interface {
 	RemoveTagFromIncome(ctx context.Context, arg RemoveTagFromIncomeParams) error
 	SearchExpenses(ctx context.Context, arg SearchExpensesParams) ([]SearchExpensesRow, error)
 	SkipExpense(ctx context.Context, arg SkipExpenseParams) error
+	SkipExpenseRuleEntriesAfterEnd(ctx context.Context, arg SkipExpenseRuleEntriesAfterEndParams) ([]SkipExpenseRuleEntriesAfterEndRow, error)
 	SkipIncome(ctx context.Context, arg SkipIncomeParams) error
+	SkipIncomeRuleEntriesAfterEnd(ctx context.Context, arg SkipIncomeRuleEntriesAfterEndParams) ([]SkipIncomeRuleEntriesAfterEndRow, error)
 	UpdateExpense(ctx context.Context, arg UpdateExpenseParams) (Expense, error)
 	UpdateExpenseCategory(ctx context.Context, arg UpdateExpenseCategoryParams) (ExpenseCategory, error)
 	UpdateIncome(ctx context.Context, arg UpdateIncomeParams) (Income, error)

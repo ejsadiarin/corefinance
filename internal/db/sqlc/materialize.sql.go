@@ -379,6 +379,56 @@ func (q *Queries) ListActiveIncomeRulesByUser(ctx context.Context, arg ListActiv
 	return items, nil
 }
 
+const listExpenseRuleEntriesAfterEnd = `-- name: ListExpenseRuleEntriesAfterEnd :many
+
+SELECT id, expense_date AS date, status FROM expenses
+WHERE user_id = $1 AND source_rule_id = $2
+  AND expense_date > $3::date
+  AND ($4::date IS NULL OR expense_date <= $4::date)
+  AND status != 'skipped'
+ORDER BY expense_date
+`
+
+type ListExpenseRuleEntriesAfterEndParams struct {
+	UserID   uuid.UUID   `db:"user_id" json:"user_id"`
+	RuleID   pgtype.UUID `db:"rule_id" json:"rule_id"`
+	AfterEnd pgtype.Date `db:"after_end" json:"after_end"`
+	OldEnd   pgtype.Date `db:"old_end" json:"old_end"`
+}
+
+type ListExpenseRuleEntriesAfterEndRow struct {
+	ID     uuid.UUID   `db:"id" json:"id"`
+	Date   pgtype.Date `db:"date" json:"date"`
+	Status string      `db:"status" json:"status"`
+}
+
+// Ending a rule in the past (#5): the rule's entries dated after the new end
+// date and up to the old one (NULL: no old end), not already skipped.
+func (q *Queries) ListExpenseRuleEntriesAfterEnd(ctx context.Context, arg ListExpenseRuleEntriesAfterEndParams) ([]ListExpenseRuleEntriesAfterEndRow, error) {
+	rows, err := q.db.Query(ctx, listExpenseRuleEntriesAfterEnd,
+		arg.UserID,
+		arg.RuleID,
+		arg.AfterEnd,
+		arg.OldEnd,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListExpenseRuleEntriesAfterEndRow{}
+	for rows.Next() {
+		var i ListExpenseRuleEntriesAfterEndRow
+		if err := rows.Scan(&i.ID, &i.Date, &i.Status); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listExpenseRulesBehind = `-- name: ListExpenseRulesBehind :many
 
 SELECT id, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, created_at, updated_at, materialized_through FROM recurring_expense_rules
@@ -420,6 +470,53 @@ func (q *Queries) ListExpenseRulesBehind(ctx context.Context, today pgtype.Date)
 			&i.UpdatedAt,
 			&i.MaterializedThrough,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIncomeRuleEntriesAfterEnd = `-- name: ListIncomeRuleEntriesAfterEnd :many
+SELECT id, date, status FROM incomes
+WHERE user_id = $1 AND source_rule_id = $2
+  AND date > $3::date
+  AND ($4::date IS NULL OR date <= $4::date)
+  AND status != 'skipped'
+ORDER BY date
+`
+
+type ListIncomeRuleEntriesAfterEndParams struct {
+	UserID   uuid.UUID   `db:"user_id" json:"user_id"`
+	RuleID   pgtype.UUID `db:"rule_id" json:"rule_id"`
+	AfterEnd pgtype.Date `db:"after_end" json:"after_end"`
+	OldEnd   pgtype.Date `db:"old_end" json:"old_end"`
+}
+
+type ListIncomeRuleEntriesAfterEndRow struct {
+	ID     uuid.UUID   `db:"id" json:"id"`
+	Date   pgtype.Date `db:"date" json:"date"`
+	Status string      `db:"status" json:"status"`
+}
+
+func (q *Queries) ListIncomeRuleEntriesAfterEnd(ctx context.Context, arg ListIncomeRuleEntriesAfterEndParams) ([]ListIncomeRuleEntriesAfterEndRow, error) {
+	rows, err := q.db.Query(ctx, listIncomeRuleEntriesAfterEnd,
+		arg.UserID,
+		arg.RuleID,
+		arg.AfterEnd,
+		arg.OldEnd,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListIncomeRuleEntriesAfterEndRow{}
+	for rows.Next() {
+		var i ListIncomeRuleEntriesAfterEndRow
+		if err := rows.Scan(&i.ID, &i.Date, &i.Status); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -639,6 +736,100 @@ func (q *Queries) ListLegacyIncomesByUser(ctx context.Context, userID uuid.UUID)
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const skipExpenseRuleEntriesAfterEnd = `-- name: SkipExpenseRuleEntriesAfterEnd :many
+UPDATE expenses SET status = 'skipped', updated_at = now()
+WHERE user_id = $1 AND source_rule_id = $2
+  AND expense_date > $3::date
+  AND ($4::date IS NULL OR expense_date <= $4::date)
+  AND status != 'skipped'
+RETURNING id, expense_date AS date, status
+`
+
+type SkipExpenseRuleEntriesAfterEndParams struct {
+	UserID   uuid.UUID   `db:"user_id" json:"user_id"`
+	RuleID   pgtype.UUID `db:"rule_id" json:"rule_id"`
+	AfterEnd pgtype.Date `db:"after_end" json:"after_end"`
+	OldEnd   pgtype.Date `db:"old_end" json:"old_end"`
+}
+
+type SkipExpenseRuleEntriesAfterEndRow struct {
+	ID     uuid.UUID   `db:"id" json:"id"`
+	Date   pgtype.Date `db:"date" json:"date"`
+	Status string      `db:"status" json:"status"`
+}
+
+func (q *Queries) SkipExpenseRuleEntriesAfterEnd(ctx context.Context, arg SkipExpenseRuleEntriesAfterEndParams) ([]SkipExpenseRuleEntriesAfterEndRow, error) {
+	rows, err := q.db.Query(ctx, skipExpenseRuleEntriesAfterEnd,
+		arg.UserID,
+		arg.RuleID,
+		arg.AfterEnd,
+		arg.OldEnd,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SkipExpenseRuleEntriesAfterEndRow{}
+	for rows.Next() {
+		var i SkipExpenseRuleEntriesAfterEndRow
+		if err := rows.Scan(&i.ID, &i.Date, &i.Status); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const skipIncomeRuleEntriesAfterEnd = `-- name: SkipIncomeRuleEntriesAfterEnd :many
+UPDATE incomes SET status = 'skipped', updated_at = now()
+WHERE user_id = $1 AND source_rule_id = $2
+  AND date > $3::date
+  AND ($4::date IS NULL OR date <= $4::date)
+  AND status != 'skipped'
+RETURNING id, date, status
+`
+
+type SkipIncomeRuleEntriesAfterEndParams struct {
+	UserID   uuid.UUID   `db:"user_id" json:"user_id"`
+	RuleID   pgtype.UUID `db:"rule_id" json:"rule_id"`
+	AfterEnd pgtype.Date `db:"after_end" json:"after_end"`
+	OldEnd   pgtype.Date `db:"old_end" json:"old_end"`
+}
+
+type SkipIncomeRuleEntriesAfterEndRow struct {
+	ID     uuid.UUID   `db:"id" json:"id"`
+	Date   pgtype.Date `db:"date" json:"date"`
+	Status string      `db:"status" json:"status"`
+}
+
+func (q *Queries) SkipIncomeRuleEntriesAfterEnd(ctx context.Context, arg SkipIncomeRuleEntriesAfterEndParams) ([]SkipIncomeRuleEntriesAfterEndRow, error) {
+	rows, err := q.db.Query(ctx, skipIncomeRuleEntriesAfterEnd,
+		arg.UserID,
+		arg.RuleID,
+		arg.AfterEnd,
+		arg.OldEnd,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SkipIncomeRuleEntriesAfterEndRow{}
+	for rows.Next() {
+		var i SkipIncomeRuleEntriesAfterEndRow
+		if err := rows.Scan(&i.ID, &i.Date, &i.Status); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

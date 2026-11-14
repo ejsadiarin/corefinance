@@ -29,6 +29,9 @@ type UpdateIncomeRuleRequest struct {
 	StartDate     string   `json:"start_date"`
 	EndDate       *string  `json:"end_date,omitempty"`
 	IsActive      *bool    `json:"is_active,omitempty"`
+	// EntriesAfterEnd is "skip" (default) or "keep": what happens to entries
+	// the rule created after an end date moved into the past (#5).
+	EntriesAfterEnd string `json:"entries_after_end,omitempty"`
 }
 
 type CreateExpenseRuleRequest struct {
@@ -54,6 +57,9 @@ type UpdateExpenseRuleRequest struct {
 	EndDate       *string  `json:"end_date,omitempty"`
 	Priority      string   `json:"priority"`
 	IsActive      *bool    `json:"is_active,omitempty"`
+	// EntriesAfterEnd is "skip" (default) or "keep": what happens to entries
+	// the rule created after an end date moved into the past (#5).
+	EntriesAfterEnd string `json:"entries_after_end,omitempty"`
 }
 
 type IncomeRuleResponse struct {

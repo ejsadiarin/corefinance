@@ -117,3 +117,38 @@ WHERE id = sqlc.arg(id);
 UPDATE recurring_income_rules
 SET materialized_through = GREATEST(materialized_through, sqlc.arg(through)::date)
 WHERE id = sqlc.arg(id);
+
+-- Ending a rule in the past (#5): the rule's entries dated after the new end
+-- date and up to the old one (NULL: no old end), not already skipped.
+
+-- name: ListExpenseRuleEntriesAfterEnd :many
+SELECT id, expense_date AS date, status FROM expenses
+WHERE user_id = sqlc.arg(user_id) AND source_rule_id = sqlc.arg(rule_id)
+  AND expense_date > sqlc.arg(after_end)::date
+  AND (sqlc.narg(old_end)::date IS NULL OR expense_date <= sqlc.narg(old_end)::date)
+  AND status != 'skipped'
+ORDER BY expense_date;
+
+-- name: SkipExpenseRuleEntriesAfterEnd :many
+UPDATE expenses SET status = 'skipped', updated_at = now()
+WHERE user_id = sqlc.arg(user_id) AND source_rule_id = sqlc.arg(rule_id)
+  AND expense_date > sqlc.arg(after_end)::date
+  AND (sqlc.narg(old_end)::date IS NULL OR expense_date <= sqlc.narg(old_end)::date)
+  AND status != 'skipped'
+RETURNING id, expense_date AS date, status;
+
+-- name: ListIncomeRuleEntriesAfterEnd :many
+SELECT id, date, status FROM incomes
+WHERE user_id = sqlc.arg(user_id) AND source_rule_id = sqlc.arg(rule_id)
+  AND date > sqlc.arg(after_end)::date
+  AND (sqlc.narg(old_end)::date IS NULL OR date <= sqlc.narg(old_end)::date)
+  AND status != 'skipped'
+ORDER BY date;
+
+-- name: SkipIncomeRuleEntriesAfterEnd :many
+UPDATE incomes SET status = 'skipped', updated_at = now()
+WHERE user_id = sqlc.arg(user_id) AND source_rule_id = sqlc.arg(rule_id)
+  AND date > sqlc.arg(after_end)::date
+  AND (sqlc.narg(old_end)::date IS NULL OR date <= sqlc.narg(old_end)::date)
+  AND status != 'skipped'
+RETURNING id, date, status;
