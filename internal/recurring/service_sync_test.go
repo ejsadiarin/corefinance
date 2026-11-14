@@ -54,7 +54,7 @@ func TestRecurringService_CreateExpenseRuleSyncsTodayInstance(t *testing.T) {
 				assert.Equal(t, userID, arg.UserID)
 				assert.Equal(t, ruleID, uuid.UUID(arg.SourceRuleID.Bytes))
 				assert.True(t, arg.ExpenseDate.Valid)
-				assert.True(t, arg.ExpenseDate.Time.Equal(today.Time))
+				assert.Equal(t, today.Time.Format(time.DateOnly), arg.ExpenseDate.Time.Format(time.DateOnly))
 				return 1, nil
 			},
 		}
@@ -199,7 +199,7 @@ func TestRecurringService_CreateIncomeRuleSyncsTodayInstance(t *testing.T) {
 				instanceCalled = true
 				assert.Equal(t, userID, arg.UserID)
 				assert.Equal(t, ruleID, uuid.UUID(arg.SourceRuleID.Bytes))
-				assert.True(t, arg.Date.Time.Equal(today.Time))
+				assert.Equal(t, today.Time.Format(time.DateOnly), arg.Date.Time.Format(time.DateOnly))
 				return 1, nil
 			},
 		}

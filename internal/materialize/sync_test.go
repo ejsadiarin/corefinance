@@ -172,6 +172,8 @@ func TestMaterializeDue_PausedIncomeRuleSkippedThenResumed(t *testing.T) {
 	assert.Equal(t, 0, n, "paused rule must produce no instances")
 	assert.Equal(t, 0, countRuleIncomes(t, ctx, pool, rule.ID))
 
+	through, err := ResumeThrough(ctx, q, rule.UserID, today)
+	require.NoError(t, err)
 	resumed, err := q.UpdateRecurringIncomeRule(ctx, db.UpdateRecurringIncomeRuleParams{
 		ID:            rule.ID,
 		UserID:        rule.UserID,
@@ -182,7 +184,7 @@ func TestMaterializeDue_PausedIncomeRuleSkippedThenResumed(t *testing.T) {
 		StartDate:     rule.StartDate,
 		EndDate:       rule.EndDate,
 		IsActive:      pgtype.Bool{Bool: true, Valid: true},
-		ResumeThrough: ResumeThrough(today),
+		ResumeThrough: through,
 	})
 	require.NoError(t, err)
 	require.True(t, resumed.IsActive)

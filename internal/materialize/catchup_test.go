@@ -175,12 +175,14 @@ func TestCatchUp_PausedRuleSkipsPausedStretch_Integration(t *testing.T) {
 	require.NoError(t, err)
 
 	update := func(active bool, today time.Time) {
-		_, err := q.UpdateRecurringExpenseRule(ctx, db.UpdateRecurringExpenseRuleParams{
+		through, err := ResumeThrough(ctx, q, rule.UserID, today)
+		require.NoError(t, err)
+		_, err = q.UpdateRecurringExpenseRule(ctx, db.UpdateRecurringExpenseRuleParams{
 			ID: rule.ID, UserID: rule.UserID, Description: rule.Description, Amount: rule.Amount,
 			Currency: rule.Currency, RecurringType: rule.RecurringType, StartDate: rule.StartDate,
 			EndDate: rule.EndDate, Priority: rule.Priority,
 			IsActive:      pgtype.Bool{Bool: active, Valid: true},
-			ResumeThrough: ResumeThrough(today),
+			ResumeThrough: through,
 		})
 		require.NoError(t, err)
 	}

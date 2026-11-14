@@ -66,6 +66,8 @@ type Querier interface {
 	GetTotalIncomesByDateRange(ctx context.Context, arg GetTotalIncomesByDateRangeParams) (decimal.Decimal, error)
 	GetTrends(ctx context.Context, arg GetTrendsParams) ([]GetTrendsRow, error)
 	GetUpcomingRecurringExpenses(ctx context.Context, userID uuid.UUID) ([]GetUpcomingRecurringExpensesRow, error)
+	// Per-user settings (#9).
+	GetUserSettings(ctx context.Context, userID uuid.UUID) (UserSetting, error)
 	// Worker materialization queries (D3/D4/D5): active-rule selection, idempotent
 	// instance inserts, and legacy inline-rule backfill support.
 	ListActiveExpenseRules(ctx context.Context, startDate pgtype.Date) ([]RecurringExpenseRule, error)
@@ -105,6 +107,8 @@ type Querier interface {
 	// ListRecurringIncomeRulesWithPaused lists every rule, paused ones too.
 	ListRecurringIncomeRulesWithPaused(ctx context.Context, userID uuid.UUID) ([]RecurringIncomeRule, error)
 	ListTags(ctx context.Context, userID uuid.UUID) ([]Tag, error)
+	ListUserTimezones(ctx context.Context) ([]ListUserTimezonesRow, error)
+	PutUserSettings(ctx context.Context, arg PutUserSettingsParams) (UserSetting, error)
 	RemoveTagFromExpense(ctx context.Context, arg RemoveTagFromExpenseParams) error
 	RemoveTagFromIncome(ctx context.Context, arg RemoveTagFromIncomeParams) error
 	SearchExpenses(ctx context.Context, arg SearchExpensesParams) ([]SearchExpensesRow, error)

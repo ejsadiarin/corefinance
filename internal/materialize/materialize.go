@@ -201,14 +201,23 @@ func PendingDates(start time.Time, cadence string, watermark, end pgtype.Date, t
 // meantime still get their last entries. The watermark never moves backward,
 // so an entry the user deleted is not recreated, and inserts are
 // ON CONFLICT DO NOTHING, so entries the user edited or skipped are untouched.
-func catchUp(ctx context.Context, q *db.Queries, today time.Time) (expenseN, incomeN int, err error) {
-	todayPg := pgDate(today)
+//
+// "today" is each rule owner's date at now (#9): their saved timezone, or the
+// server clock's date when they haven't saved one. Rules are listed up to the
+// latest date anywhere and each is then bounded by its owner's date.
+func catchUp(ctx context.Context, q *db.Queries, now time.Time) (expenseN, incomeN int, err error) {
+	zones, err := userTimezones(ctx, q)
+	if err != nil {
+		return 0, 0, err
+	}
+	horizon := pgDate(userDate(now.In(latestZone), ""))
 
-	expenseRules, err := q.ListExpenseRulesBehind(ctx, todayPg)
+	expenseRules, err := q.ListExpenseRulesBehind(ctx, horizon)
 	if err != nil {
 		return 0, 0, fmt.Errorf("list expense rules behind: %w", err)
 	}
 	for _, r := range expenseRules {
+		today := userDate(now, zones[r.UserID])
 		dates, through := PendingDates(r.StartDate.Time, r.RecurringType, r.MaterializedThrough, r.EndDate, today, MaxDatesPerRulePass)
 		for _, d := range dates {
 			n, err := q.CreateExpenseInstance(ctx, db.CreateExpenseInstanceParams{
@@ -233,11 +242,12 @@ func catchUp(ctx context.Context, q *db.Queries, today time.Time) (expenseN, inc
 		}
 	}
 
-	incomeRules, err := q.ListIncomeRulesBehind(ctx, todayPg)
+	incomeRules, err := q.ListIncomeRulesBehind(ctx, horizon)
 	if err != nil {
 		return expenseN, incomeN, fmt.Errorf("list income rules behind: %w", err)
 	}
 	for _, r := range incomeRules {
+		today := userDate(now, zones[r.UserID])
 		dates, through := PendingDates(r.StartDate.Time, r.RecurringType, r.MaterializedThrough, r.EndDate, today, MaxDatesPerRulePass)
 		for _, d := range dates {
 			n, err := q.CreateIncomeInstance(ctx, db.CreateIncomeInstanceParams{
@@ -348,13 +358,13 @@ func withMaterializeLock(ctx context.Context, pool *pgxpool.Pool, queries *db.Qu
 
 // MaterializeDue runs the catch-up pass: every active rule gets its due dates
 // after its watermark up to min(end_date, today), so entries missed while the
-// worker was down are created on the next pass. Instance rows use
-// recurring_type='one-time', NULL start/end, source_rule_id set,
-// status='posted'. Returns the number of rows inserted.
-func MaterializeDue(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, today time.Time) (int, error) {
+// worker was down are created on the next pass. "today" is each rule owner's
+// date at now. Instance rows use recurring_type='one-time', NULL start/end,
+// source_rule_id set, status='posted'. Returns the number of rows inserted.
+func MaterializeDue(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, now time.Time) (int, error) {
 	inserted := 0
 	err := withMaterializeLock(ctx, pool, queries, func(q *db.Queries) error {
-		e, i, err := catchUp(ctx, q, today)
+		e, i, err := catchUp(ctx, q, now)
 		if err != nil {
 			return err
 		}

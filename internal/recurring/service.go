@@ -91,6 +91,10 @@ func (s *Service) GetIncomeRule(ctx context.Context, id uuid.UUID, userID uuid.U
 
 func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateIncomeRuleRequest) (db.RecurringIncomeRule, error) {
 	slog.Debug("recurring.Service.UpdateIncomeRule", "id", id, "user_id", userID)
+	resumeThrough, err := materialize.ResumeThrough(ctx, s.queries, userID, time.Now())
+	if err != nil {
+		return db.RecurringIncomeRule{}, err
+	}
 	rule, err := s.queries.UpdateRecurringIncomeRule(ctx, db.UpdateRecurringIncomeRuleParams{
 		ID:            id,
 		UserID:        userID,
@@ -104,7 +108,7 @@ func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 		Notes:         helper.ToPgText(req.Notes),
 		Priority:      optionalPriority(req.Priority),
 		IsActive:      helper.ToPgBool(req.IsActive),
-		ResumeThrough: materialize.ResumeThrough(time.Now()),
+		ResumeThrough: resumeThrough,
 	})
 	if err != nil {
 		return db.RecurringIncomeRule{}, err
@@ -154,6 +158,10 @@ func (s *Service) GetExpenseRule(ctx context.Context, id uuid.UUID, userID uuid.
 
 func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateExpenseRuleRequest) (db.RecurringExpenseRule, error) {
 	slog.Debug("recurring.Service.UpdateExpenseRule", "id", id, "user_id", userID)
+	resumeThrough, err := materialize.ResumeThrough(ctx, s.queries, userID, time.Now())
+	if err != nil {
+		return db.RecurringExpenseRule{}, err
+	}
 	rule, err := s.queries.UpdateRecurringExpenseRule(ctx, db.UpdateRecurringExpenseRuleParams{
 		ID:            id,
 		UserID:        userID,
@@ -167,7 +175,7 @@ func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uu
 		EndDate:       helper.ToPgDatePtr(req.EndDate),
 		Priority:      req.Priority,
 		IsActive:      helper.ToPgBool(req.IsActive),
-		ResumeThrough: materialize.ResumeThrough(time.Now()),
+		ResumeThrough: resumeThrough,
 	})
 	if err != nil {
 		return db.RecurringExpenseRule{}, err

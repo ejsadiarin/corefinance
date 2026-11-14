@@ -37,6 +37,10 @@ func (s *Server) RegisterRoutes() http.Handler {
 		// priority groups (reference data)
 		r.Get("/priority-groups", s.BudgetHandler.PriorityGroups)
 
+		// Per-user settings (#9): the timezone rule entries are dated in.
+		r.Get("/settings", s.SettingsHandler.Get)
+		r.Put("/settings", s.SettingsHandler.Put)
+
 		// expense categories
 		r.Route("/expense-categories", func(r chi.Router) {
 			r.Post("/", s.CategoryHandler.CreateExpense)

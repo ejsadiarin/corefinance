@@ -441,6 +441,28 @@ Authorization: Bearer {{jwt}}
 
 
 ### ============================================
+### Settings
+### ============================================
+
+
+### Get Settings (saved=false means the UTC default)
+
+GET {{baseUrl}}/api/budget/settings HTTP/1.1
+Authorization: Bearer {{jwt}}
+
+
+### Save Timezone (rule entries are dated in it)
+
+PUT {{baseUrl}}/api/budget/settings HTTP/1.1
+Authorization: Bearer {{jwt}}
+Content-Type: application/json
+
+{
+  "timezone": "Asia/Manila"
+}
+
+
+### ============================================
 
 
 ### Budget Overview

@@ -60,6 +60,7 @@ All routes are prefixed with `/budget`.
 | | `/current-total-money` | Total income minus total expenses |
 | | `/trends/month-over-month` | Month-over-month comparison |
 | | `/priority-groups` | Reference data (need/want/savings) |
+| | `/settings` | `GET`/`PUT` the user's timezone (IANA, e.g. `Asia/Manila`); rule entries are dated in it, unset keeps UTC |
 | | `/remaining` | Current month budget remaining |
 | | `/export` | Export all budget data as JSON |
 | | `/import` | Import budget data (with ID remapping) |

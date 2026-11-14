@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 
@@ -46,6 +47,9 @@ type MockQuerier struct {
 	GetExpenseStatsByCategoryFn           func(ctx context.Context, arg db.GetExpenseStatsByCategoryParams) ([]db.GetExpenseStatsByCategoryRow, error)
 	GetFiftyThirtyTwentyFn                func(ctx context.Context, arg db.GetFiftyThirtyTwentyParams) (db.GetFiftyThirtyTwentyRow, error)
 	GetIncomeFn                           func(ctx context.Context, arg db.GetIncomeParams) (db.GetIncomeRow, error)
+	GetUserSettingsFn                     func(ctx context.Context, userID uuid.UUID) (db.UserSetting, error)
+	ListUserTimezonesFn                   func(ctx context.Context) ([]db.ListUserTimezonesRow, error)
+	PutUserSettingsFn                     func(ctx context.Context, arg db.PutUserSettingsParams) (db.UserSetting, error)
 	GetIncomeCategoryFn                   func(ctx context.Context, arg db.GetIncomeCategoryParams) (db.IncomeCategory, error)
 	GetIncomeOccurrencesFn                func(ctx context.Context, arg db.GetIncomeOccurrencesParams) ([]db.Income, error)
 	GetMonthOverMonthTrendsFn             func(ctx context.Context, arg db.GetMonthOverMonthTrendsParams) ([]db.GetMonthOverMonthTrendsRow, error)
@@ -452,4 +456,21 @@ func (m *MockQuerier) UpdateRecurringIncomeRule(ctx context.Context, arg db.Upda
 
 func (m *MockQuerier) UpdateTag(ctx context.Context, arg db.UpdateTagParams) (db.Tag, error) {
 	return m.UpdateTagFn(ctx, arg)
+}
+
+// GetUserSettings defaults to "no settings saved" so tests that don't care
+// about the user's timezone needn't stub it.
+func (m *MockQuerier) GetUserSettings(ctx context.Context, userID uuid.UUID) (db.UserSetting, error) {
+	if m.GetUserSettingsFn == nil {
+		return db.UserSetting{}, pgx.ErrNoRows
+	}
+	return m.GetUserSettingsFn(ctx, userID)
+}
+
+func (m *MockQuerier) ListUserTimezones(ctx context.Context) ([]db.ListUserTimezonesRow, error) {
+	return m.ListUserTimezonesFn(ctx)
+}
+
+func (m *MockQuerier) PutUserSettings(ctx context.Context, arg db.PutUserSettingsParams) (db.UserSetting, error) {
+	return m.PutUserSettingsFn(ctx, arg)
 }
