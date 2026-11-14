@@ -34,3 +34,11 @@ sql:
             go_struct_tag: 'json:"-"'
           - column: "recurring_income_rules.kind"
             go_struct_tag: 'json:"-"'
+          # Inserting transaction id (#13): pgx scans xid8 as uint64. Not part of
+          # the entries' JSON; the review feed turns it into an opaque cursor.
+          - db_type: "xid8"
+            go_type: "uint64"
+          - column: "expenses.txid"
+            go_struct_tag: 'json:"-"'
+          - column: "incomes.txid"
+            go_struct_tag: 'json:"-"'

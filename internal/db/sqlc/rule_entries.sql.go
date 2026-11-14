@@ -13,6 +13,21 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const getFeedHorizon = `-- name: GetFeedHorizon :one
+
+SELECT pg_snapshot_xmin(pg_current_snapshot())::xid8 AS horizon
+`
+
+// Review feed (#13): every transaction before the horizon has finished, so
+// the feed never returns a cursor that a later commit could land behind.
+// Read the horizon once per page and pass it to ListRuleEntriesFeed.
+func (q *Queries) GetFeedHorizon(ctx context.Context) (uint64, error) {
+	row := q.db.QueryRow(ctx, getFeedHorizon)
+	var horizon uint64
+	err := row.Scan(&horizon)
+	return horizon, err
+}
+
 const listRuleEntries = `-- name: ListRuleEntries :many
 
 SELECT kind, id, rule_id, date, amount, currency, description, notes, category_id, category_name, priority, status, created_at, updated_at, user_edited_at FROM (
@@ -109,6 +124,114 @@ func (q *Queries) ListRuleEntries(ctx context.Context, arg ListRuleEntriesParams
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.UserEditedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRuleEntriesFeed = `-- name: ListRuleEntriesFeed :many
+SELECT kind, id, rule_id, date, amount, currency, description, notes, category_id, category_name, priority, status, created_at, updated_at, user_edited_at, txid FROM (
+    SELECT 'expense'::text AS kind, e.id, e.source_rule_id::uuid AS rule_id, e.expense_date AS date,
+           e.amount, e.currency, e.description, e.notes, e.category_id, ec.name AS category_name,
+           e.priority, e.status, e.created_at, e.updated_at, e.user_edited_at, e.txid
+    FROM expenses e
+    LEFT JOIN expense_categories ec ON ec.id = e.category_id
+    WHERE e.user_id = $1
+      AND e.source_rule_id IS NOT NULL
+      AND (e.txid, e.id) > ($2::xid8, $3::uuid)
+      AND e.txid < $4::xid8
+      AND ($5::uuid IS NULL OR e.source_rule_id = $5::uuid)
+      AND ($6::date IS NULL OR e.expense_date >= $6::date)
+      AND ($7::date IS NULL OR e.expense_date <= $7::date)
+    UNION ALL
+    SELECT 'income'::text AS kind, i.id, i.source_rule_id::uuid AS rule_id, i.date,
+           i.amount, i.currency, i.description, i.notes, i.category_id, ic.name AS category_name,
+           i.priority, i.status, i.created_at, i.updated_at, i.user_edited_at, i.txid
+    FROM incomes i
+    LEFT JOIN income_categories ic ON ic.id = i.category_id
+    WHERE i.user_id = $1
+      AND i.source_rule_id IS NOT NULL
+      AND (i.txid, i.id) > ($2::xid8, $3::uuid)
+      AND i.txid < $4::xid8
+      AND ($5::uuid IS NULL OR i.source_rule_id = $5::uuid)
+      AND ($6::date IS NULL OR i.date >= $6::date)
+      AND ($7::date IS NULL OR i.date <= $7::date)
+) entries
+ORDER BY txid, id
+LIMIT $8
+`
+
+type ListRuleEntriesFeedParams struct {
+	UserID    uuid.UUID   `db:"user_id" json:"user_id"`
+	AfterTxid uint64      `db:"after_txid" json:"after_txid"`
+	AfterID   uuid.UUID   `db:"after_id" json:"after_id"`
+	Horizon   uint64      `db:"horizon" json:"horizon"`
+	RuleID    pgtype.UUID `db:"rule_id" json:"rule_id"`
+	StartDate pgtype.Date `db:"start_date" json:"start_date"`
+	EndDate   pgtype.Date `db:"end_date" json:"end_date"`
+	PageLimit int32       `db:"page_limit" json:"page_limit"`
+}
+
+type ListRuleEntriesFeedRow struct {
+	Kind         string             `db:"kind" json:"kind"`
+	ID           uuid.UUID          `db:"id" json:"id"`
+	RuleID       uuid.UUID          `db:"rule_id" json:"rule_id"`
+	Date         pgtype.Date        `db:"date" json:"date"`
+	Amount       decimal.Decimal    `db:"amount" json:"amount"`
+	Currency     string             `db:"currency" json:"currency"`
+	Description  string             `db:"description" json:"description"`
+	Notes        pgtype.Text        `db:"notes" json:"notes"`
+	CategoryID   pgtype.UUID        `db:"category_id" json:"category_id"`
+	CategoryName pgtype.Text        `db:"category_name" json:"category_name"`
+	Priority     string             `db:"priority" json:"priority"`
+	Status       string             `db:"status" json:"status"`
+	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	UserEditedAt pgtype.Timestamptz `db:"user_edited_at" json:"user_edited_at"`
+	Txid         uint64             `db:"txid" json:"-"`
+}
+
+func (q *Queries) ListRuleEntriesFeed(ctx context.Context, arg ListRuleEntriesFeedParams) ([]ListRuleEntriesFeedRow, error) {
+	rows, err := q.db.Query(ctx, listRuleEntriesFeed,
+		arg.UserID,
+		arg.AfterTxid,
+		arg.AfterID,
+		arg.Horizon,
+		arg.RuleID,
+		arg.StartDate,
+		arg.EndDate,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRuleEntriesFeedRow{}
+	for rows.Next() {
+		var i ListRuleEntriesFeedRow
+		if err := rows.Scan(
+			&i.Kind,
+			&i.ID,
+			&i.RuleID,
+			&i.Date,
+			&i.Amount,
+			&i.Currency,
+			&i.Description,
+			&i.Notes,
+			&i.CategoryID,
+			&i.CategoryName,
+			&i.Priority,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.UserEditedAt,
+			&i.Txid,
 		); err != nil {
 			return nil, err
 		}

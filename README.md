@@ -61,6 +61,7 @@ All routes are prefixed with `/budget`.
 | | `/trends/month-over-month` | Month-over-month comparison |
 | | `/priority-groups` | Reference data (need/want/savings) |
 | | `/rule-entries` | Entries recurring rules created (expenses and incomes), newest-inserted first; filters `rule_id`, `start_date`/`end_date`, `created_since` (RFC 3339), paged with `page`/`page_size` |
+| | `/rule-entries/feed` | "What's new" feed of rule entries: `{entries, next}`; pass `next` back as `after`. Never skips an entry from a pass that commits late (prefer it over `created_since`) |
 | | `/settings` | `GET`/`PUT` the user's timezone (IANA, e.g. `Asia/Manila`); rule entries are dated in it, unset keeps UTC |
 | | `/remaining` | Current month budget remaining |
 | | `/export` | Export all budget data as JSON |

@@ -579,7 +579,7 @@ func (q *Queries) ListIncomeRulesBehind(ctx context.Context, today pgtype.Date) 
 }
 
 const listLegacyExpenses = `-- name: ListLegacyExpenses :many
-SELECT id, user_id, category_id, amount, currency, description, notes, expense_date, recurring_type, priority, status, is_debt, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at FROM expenses
+SELECT id, user_id, category_id, amount, currency, description, notes, expense_date, recurring_type, priority, status, is_debt, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at, txid FROM expenses
 WHERE recurring_type != 'one-time' AND source_rule_id IS NULL
 ORDER BY start_date ASC NULLS LAST, expense_date ASC
 `
@@ -612,6 +612,7 @@ func (q *Queries) ListLegacyExpenses(ctx context.Context) ([]Expense, error) {
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.UserEditedAt,
+			&i.Txid,
 		); err != nil {
 			return nil, err
 		}
@@ -624,7 +625,7 @@ func (q *Queries) ListLegacyExpenses(ctx context.Context) ([]Expense, error) {
 }
 
 const listLegacyExpensesByUser = `-- name: ListLegacyExpensesByUser :many
-SELECT id, user_id, category_id, amount, currency, description, notes, expense_date, recurring_type, priority, status, is_debt, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at FROM expenses
+SELECT id, user_id, category_id, amount, currency, description, notes, expense_date, recurring_type, priority, status, is_debt, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at, txid FROM expenses
 WHERE user_id = $1 AND recurring_type != 'one-time' AND source_rule_id IS NULL
 ORDER BY start_date ASC NULLS LAST, expense_date ASC
 `
@@ -657,6 +658,7 @@ func (q *Queries) ListLegacyExpensesByUser(ctx context.Context, userID uuid.UUID
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.UserEditedAt,
+			&i.Txid,
 		); err != nil {
 			return nil, err
 		}
@@ -669,7 +671,7 @@ func (q *Queries) ListLegacyExpensesByUser(ctx context.Context, userID uuid.UUID
 }
 
 const listLegacyIncomes = `-- name: ListLegacyIncomes :many
-SELECT id, user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at FROM incomes
+SELECT id, user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at, txid FROM incomes
 WHERE recurring_type != 'one-time' AND source_rule_id IS NULL
 ORDER BY start_date ASC NULLS LAST, date ASC
 `
@@ -701,6 +703,7 @@ func (q *Queries) ListLegacyIncomes(ctx context.Context) ([]Income, error) {
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.UserEditedAt,
+			&i.Txid,
 		); err != nil {
 			return nil, err
 		}
@@ -713,7 +716,7 @@ func (q *Queries) ListLegacyIncomes(ctx context.Context) ([]Income, error) {
 }
 
 const listLegacyIncomesByUser = `-- name: ListLegacyIncomesByUser :many
-SELECT id, user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at FROM incomes
+SELECT id, user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at, txid FROM incomes
 WHERE user_id = $1 AND recurring_type != 'one-time' AND source_rule_id IS NULL
 ORDER BY start_date ASC NULLS LAST, date ASC
 `
@@ -745,6 +748,7 @@ func (q *Queries) ListLegacyIncomesByUser(ctx context.Context, userID uuid.UUID)
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.UserEditedAt,
+			&i.Txid,
 		); err != nil {
 			return nil, err
 		}

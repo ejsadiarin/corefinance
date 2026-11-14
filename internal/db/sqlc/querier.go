@@ -47,6 +47,10 @@ type Querier interface {
 	GetExpense(ctx context.Context, arg GetExpenseParams) (GetExpenseRow, error)
 	GetExpenseCategory(ctx context.Context, arg GetExpenseCategoryParams) (ExpenseCategory, error)
 	GetExpenseStatsByCategory(ctx context.Context, arg GetExpenseStatsByCategoryParams) ([]GetExpenseStatsByCategoryRow, error)
+	// Review feed (#13): every transaction before the horizon has finished, so
+	// the feed never returns a cursor that a later commit could land behind.
+	// Read the horizon once per page and pass it to ListRuleEntriesFeed.
+	GetFeedHorizon(ctx context.Context) (uint64, error)
 	GetFiftyThirtyTwenty(ctx context.Context, arg GetFiftyThirtyTwentyParams) (GetFiftyThirtyTwentyRow, error)
 	GetIncome(ctx context.Context, arg GetIncomeParams) (GetIncomeRow, error)
 	GetIncomeCategory(ctx context.Context, arg GetIncomeCategoryParams) (IncomeCategory, error)
@@ -115,6 +119,7 @@ type Querier interface {
 	// created_since compares the insert time, so entries back-filled with older
 	// dates still show up as new.
 	ListRuleEntries(ctx context.Context, arg ListRuleEntriesParams) ([]ListRuleEntriesRow, error)
+	ListRuleEntriesFeed(ctx context.Context, arg ListRuleEntriesFeedParams) ([]ListRuleEntriesFeedRow, error)
 	ListTags(ctx context.Context, userID uuid.UUID) ([]Tag, error)
 	ListUserTimezones(ctx context.Context) ([]ListUserTimezonesRow, error)
 	PutUserSettings(ctx context.Context, arg PutUserSettingsParams) (UserSetting, error)

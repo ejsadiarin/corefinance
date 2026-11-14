@@ -52,6 +52,8 @@ type MockQuerier struct {
 	SkipExpenseRuleEntriesAfterEndFn      func(ctx context.Context, arg db.SkipExpenseRuleEntriesAfterEndParams) ([]db.SkipExpenseRuleEntriesAfterEndRow, error)
 	SkipIncomeRuleEntriesAfterEndFn       func(ctx context.Context, arg db.SkipIncomeRuleEntriesAfterEndParams) ([]db.SkipIncomeRuleEntriesAfterEndRow, error)
 	ListRuleEntriesFn                     func(ctx context.Context, arg db.ListRuleEntriesParams) ([]db.ListRuleEntriesRow, error)
+	GetFeedHorizonFn                      func(ctx context.Context) (uint64, error)
+	ListRuleEntriesFeedFn                 func(ctx context.Context, arg db.ListRuleEntriesFeedParams) ([]db.ListRuleEntriesFeedRow, error)
 	GetUserSettingsFn                     func(ctx context.Context, userID uuid.UUID) (db.UserSetting, error)
 	ListUserTimezonesFn                   func(ctx context.Context) ([]db.ListUserTimezonesRow, error)
 	PutUserSettingsFn                     func(ctx context.Context, arg db.PutUserSettingsParams) (db.UserSetting, error)
@@ -528,4 +530,20 @@ func (m *MockQuerier) ListRuleEntries(ctx context.Context, arg db.ListRuleEntrie
 		return nil, nil
 	}
 	return m.ListRuleEntriesFn(ctx, arg)
+}
+
+// GetFeedHorizon defaults to 0: nothing is past the horizon.
+func (m *MockQuerier) GetFeedHorizon(ctx context.Context) (uint64, error) {
+	if m.GetFeedHorizonFn == nil {
+		return 0, nil
+	}
+	return m.GetFeedHorizonFn(ctx)
+}
+
+// ListRuleEntriesFeed defaults to no entries.
+func (m *MockQuerier) ListRuleEntriesFeed(ctx context.Context, arg db.ListRuleEntriesFeedParams) ([]db.ListRuleEntriesFeedRow, error) {
+	if m.ListRuleEntriesFeedFn == nil {
+		return nil, nil
+	}
+	return m.ListRuleEntriesFeedFn(ctx, arg)
 }

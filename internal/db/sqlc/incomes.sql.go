@@ -39,7 +39,7 @@ func (q *Queries) CheckSkippedIncome(ctx context.Context, arg CheckSkippedIncome
 const createIncome = `-- name: CreateIncome :one
 INSERT INTO incomes (user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-RETURNING id, user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at
+RETURNING id, user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at, txid
 `
 
 type CreateIncomeParams struct {
@@ -93,6 +93,7 @@ func (q *Queries) CreateIncome(ctx context.Context, arg CreateIncomeParams) (Inc
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.UserEditedAt,
+		&i.Txid,
 	)
 	return i, err
 }
@@ -113,7 +114,7 @@ func (q *Queries) DeleteIncome(ctx context.Context, arg DeleteIncomeParams) erro
 }
 
 const getIncome = `-- name: GetIncome :one
-SELECT i.id, i.user_id, i.category_id, i.amount, i.currency, i.description, i.notes, i.date, i.recurring_type, i.priority, i.status, i.start_date, i.end_date, i.source_rule_id, i.created_at, i.updated_at, i.user_edited_at, ic.name AS category_name, ic.color AS category_color, ic.icon AS category_icon
+SELECT i.id, i.user_id, i.category_id, i.amount, i.currency, i.description, i.notes, i.date, i.recurring_type, i.priority, i.status, i.start_date, i.end_date, i.source_rule_id, i.created_at, i.updated_at, i.user_edited_at, i.txid, ic.name AS category_name, ic.color AS category_color, ic.icon AS category_icon
 FROM incomes i
 LEFT JOIN income_categories ic ON i.category_id = ic.id
 WHERE i.id = $1 AND i.user_id = $2
@@ -142,6 +143,7 @@ type GetIncomeRow struct {
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	UserEditedAt  pgtype.Timestamptz `db:"user_edited_at" json:"user_edited_at"`
+	Txid          uint64             `db:"txid" json:"-"`
 	CategoryName  pgtype.Text        `db:"category_name" json:"category_name"`
 	CategoryColor pgtype.Text        `db:"category_color" json:"category_color"`
 	CategoryIcon  pgtype.Text        `db:"category_icon" json:"category_icon"`
@@ -168,6 +170,7 @@ func (q *Queries) GetIncome(ctx context.Context, arg GetIncomeParams) (GetIncome
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.UserEditedAt,
+		&i.Txid,
 		&i.CategoryName,
 		&i.CategoryColor,
 		&i.CategoryIcon,
@@ -176,7 +179,7 @@ func (q *Queries) GetIncome(ctx context.Context, arg GetIncomeParams) (GetIncome
 }
 
 const getIncomeOccurrences = `-- name: GetIncomeOccurrences :many
-SELECT id, user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at FROM incomes
+SELECT id, user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at, txid FROM incomes
 WHERE user_id = $1
   AND source_rule_id IS NOT NULL
   AND ($2::date IS NULL OR date >= $2)
@@ -219,6 +222,7 @@ func (q *Queries) GetIncomeOccurrences(ctx context.Context, arg GetIncomeOccurre
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.UserEditedAt,
+			&i.Txid,
 		); err != nil {
 			return nil, err
 		}
@@ -253,7 +257,7 @@ func (q *Queries) GetTotalIncomesByDateRange(ctx context.Context, arg GetTotalIn
 }
 
 const listAllIncomesByUser = `-- name: ListAllIncomesByUser :many
-SELECT id, user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at FROM incomes
+SELECT id, user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at, txid FROM incomes
 WHERE user_id = $1
 ORDER BY date DESC, created_at DESC
 `
@@ -285,6 +289,7 @@ func (q *Queries) ListAllIncomesByUser(ctx context.Context, userID uuid.UUID) ([
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.UserEditedAt,
+			&i.Txid,
 		); err != nil {
 			return nil, err
 		}
@@ -297,7 +302,7 @@ func (q *Queries) ListAllIncomesByUser(ctx context.Context, userID uuid.UUID) ([
 }
 
 const listIncomes = `-- name: ListIncomes :many
-SELECT i.id, i.user_id, i.category_id, i.amount, i.currency, i.description, i.notes, i.date, i.recurring_type, i.priority, i.status, i.start_date, i.end_date, i.source_rule_id, i.created_at, i.updated_at, i.user_edited_at, ic.name AS category_name, ic.color AS category_color, ic.icon AS category_icon
+SELECT i.id, i.user_id, i.category_id, i.amount, i.currency, i.description, i.notes, i.date, i.recurring_type, i.priority, i.status, i.start_date, i.end_date, i.source_rule_id, i.created_at, i.updated_at, i.user_edited_at, i.txid, ic.name AS category_name, ic.color AS category_color, ic.icon AS category_icon
 FROM incomes i
 LEFT JOIN income_categories ic ON i.category_id = ic.id
 WHERE i.user_id = $1
@@ -339,6 +344,7 @@ type ListIncomesRow struct {
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	UserEditedAt  pgtype.Timestamptz `db:"user_edited_at" json:"user_edited_at"`
+	Txid          uint64             `db:"txid" json:"-"`
 	CategoryName  pgtype.Text        `db:"category_name" json:"category_name"`
 	CategoryColor pgtype.Text        `db:"category_color" json:"category_color"`
 	CategoryIcon  pgtype.Text        `db:"category_icon" json:"category_icon"`
@@ -380,6 +386,7 @@ func (q *Queries) ListIncomes(ctx context.Context, arg ListIncomesParams) ([]Lis
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.UserEditedAt,
+			&i.Txid,
 			&i.CategoryName,
 			&i.CategoryColor,
 			&i.CategoryIcon,
@@ -395,7 +402,7 @@ func (q *Queries) ListIncomes(ctx context.Context, arg ListIncomesParams) ([]Lis
 }
 
 const listIncomesByIDs = `-- name: ListIncomesByIDs :many
-SELECT i.id, i.user_id, i.category_id, i.amount, i.currency, i.description, i.notes, i.date, i.recurring_type, i.priority, i.status, i.start_date, i.end_date, i.source_rule_id, i.created_at, i.updated_at, i.user_edited_at, ic.name AS category_name, ic.color AS category_color, ic.icon AS category_icon
+SELECT i.id, i.user_id, i.category_id, i.amount, i.currency, i.description, i.notes, i.date, i.recurring_type, i.priority, i.status, i.start_date, i.end_date, i.source_rule_id, i.created_at, i.updated_at, i.user_edited_at, i.txid, ic.name AS category_name, ic.color AS category_color, ic.icon AS category_icon
 FROM incomes i
 LEFT JOIN income_categories ic ON i.category_id = ic.id
 WHERE i.user_id = $1 AND i.id = ANY($2::uuid[])
@@ -425,6 +432,7 @@ type ListIncomesByIDsRow struct {
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	UserEditedAt  pgtype.Timestamptz `db:"user_edited_at" json:"user_edited_at"`
+	Txid          uint64             `db:"txid" json:"-"`
 	CategoryName  pgtype.Text        `db:"category_name" json:"category_name"`
 	CategoryColor pgtype.Text        `db:"category_color" json:"category_color"`
 	CategoryIcon  pgtype.Text        `db:"category_icon" json:"category_icon"`
@@ -459,6 +467,7 @@ func (q *Queries) ListIncomesByIDs(ctx context.Context, arg ListIncomesByIDsPara
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.UserEditedAt,
+			&i.Txid,
 			&i.CategoryName,
 			&i.CategoryColor,
 			&i.CategoryIcon,
@@ -496,7 +505,7 @@ SET category_id = $3, amount = $4, currency = $5, description = $6, notes = $7,
     start_date = $12, end_date = $13, source_rule_id = $14,
     updated_at = now(), user_edited_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at
+RETURNING id, user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at, txid
 `
 
 type UpdateIncomeParams struct {
@@ -552,6 +561,7 @@ func (q *Queries) UpdateIncome(ctx context.Context, arg UpdateIncomeParams) (Inc
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.UserEditedAt,
+		&i.Txid,
 	)
 	return i, err
 }

@@ -453,6 +453,14 @@ GET {{baseUrl}}/api/budget/rule-entries?created_since=2026-11-01T00:00:00Z&page_
 Authorization: Bearer {{jwt}}
 
 
+### "What's new" feed of rule entries
+# Returns {entries, next}. Pass next back as after; the first call omits it.
+# Unlike created_since, it never skips an entry from a pass that commits late.
+
+GET {{baseUrl}}/api/budget/rule-entries/feed?after=&page_size=50 HTTP/1.1
+Authorization: Bearer {{jwt}}
+
+
 ### ============================================
 ### Settings
 ### ============================================

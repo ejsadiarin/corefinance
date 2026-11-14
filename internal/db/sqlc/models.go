@@ -29,6 +29,7 @@ type Expense struct {
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	UserEditedAt  pgtype.Timestamptz `db:"user_edited_at" json:"user_edited_at"`
+	Txid          uint64             `db:"txid" json:"-"`
 }
 
 type ExpenseCategory struct {
@@ -65,6 +66,7 @@ type Income struct {
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	UserEditedAt  pgtype.Timestamptz `db:"user_edited_at" json:"user_edited_at"`
+	Txid          uint64             `db:"txid" json:"-"`
 }
 
 type IncomeCategory struct {

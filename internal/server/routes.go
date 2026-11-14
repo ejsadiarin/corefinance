@@ -43,6 +43,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 		// Rule-created entries for review (#8).
 		r.Get("/rule-entries", s.RuleEntryHandler.List)
+		r.Get("/rule-entries/feed", s.RuleEntryHandler.Feed)
 
 		// expense categories
 		r.Route("/expense-categories", func(r chi.Router) {
