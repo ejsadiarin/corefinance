@@ -14,6 +14,7 @@ import (
 	"github.com/ejsadiarin/corefinance/internal/expense"
 	"github.com/ejsadiarin/corefinance/internal/income"
 	"github.com/ejsadiarin/corefinance/internal/recurring"
+	"github.com/ejsadiarin/corefinance/internal/ruleentry"
 	"github.com/ejsadiarin/corefinance/internal/settings"
 	"github.com/ejsadiarin/corefinance/internal/stats"
 	"github.com/ejsadiarin/corefinance/internal/tag"
@@ -31,6 +32,7 @@ type Server struct {
 	BudgetHandler    *budget.Handler
 	AdminHandler     *budget.AdminHandler
 	SettingsHandler  *settings.Handler
+	RuleEntryHandler *ruleentry.Handler
 	Verifier         *auth.Verifier
 	Queries          *db.Queries
 	Pool             *pgxpool.Pool
@@ -58,6 +60,7 @@ func New(port int, pool *pgxpool.Pool, queries *db.Queries, verifier *auth.Verif
 	s.BudgetHandler = budget.NewHandler(budget.NewService(queries, pool))
 	s.AdminHandler = budget.NewAdminHandler(pool, queries)
 	s.SettingsHandler = settings.NewHandler(queries)
+	s.RuleEntryHandler = ruleentry.NewHandler(queries)
 
 	return &http.Server{
 		Addr:         fmt.Sprintf(":%d", port),

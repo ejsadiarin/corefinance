@@ -441,6 +441,19 @@ Authorization: Bearer {{jwt}}
 
 
 ### ============================================
+### Rule Entries (review)
+### ============================================
+
+
+### List entries rules created since a timestamp
+# Filters are optional: rule_id, start_date, end_date, created_since.
+# created_since is the insert time, so back-filled older dates show up too.
+
+GET {{baseUrl}}/api/budget/rule-entries?created_since=2026-11-01T00:00:00Z&page_size=50 HTTP/1.1
+Authorization: Bearer {{jwt}}
+
+
+### ============================================
 ### Settings
 ### ============================================
 

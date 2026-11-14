@@ -51,6 +51,7 @@ type MockQuerier struct {
 	ListIncomeRuleEntriesAfterEndFn       func(ctx context.Context, arg db.ListIncomeRuleEntriesAfterEndParams) ([]db.ListIncomeRuleEntriesAfterEndRow, error)
 	SkipExpenseRuleEntriesAfterEndFn      func(ctx context.Context, arg db.SkipExpenseRuleEntriesAfterEndParams) ([]db.SkipExpenseRuleEntriesAfterEndRow, error)
 	SkipIncomeRuleEntriesAfterEndFn       func(ctx context.Context, arg db.SkipIncomeRuleEntriesAfterEndParams) ([]db.SkipIncomeRuleEntriesAfterEndRow, error)
+	ListRuleEntriesFn                     func(ctx context.Context, arg db.ListRuleEntriesParams) ([]db.ListRuleEntriesRow, error)
 	GetUserSettingsFn                     func(ctx context.Context, userID uuid.UUID) (db.UserSetting, error)
 	ListUserTimezonesFn                   func(ctx context.Context) ([]db.ListUserTimezonesRow, error)
 	PutUserSettingsFn                     func(ctx context.Context, arg db.PutUserSettingsParams) (db.UserSetting, error)
@@ -519,4 +520,12 @@ func (m *MockQuerier) SkipIncomeRuleEntriesAfterEnd(ctx context.Context, arg db.
 		return nil, nil
 	}
 	return m.SkipIncomeRuleEntriesAfterEndFn(ctx, arg)
+}
+
+// ListRuleEntries defaults to no entries.
+func (m *MockQuerier) ListRuleEntries(ctx context.Context, arg db.ListRuleEntriesParams) ([]db.ListRuleEntriesRow, error) {
+	if m.ListRuleEntriesFn == nil {
+		return nil, nil
+	}
+	return m.ListRuleEntriesFn(ctx, arg)
 }

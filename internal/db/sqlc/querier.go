@@ -110,6 +110,11 @@ type Querier interface {
 	ListRecurringIncomeRules(ctx context.Context, userID uuid.UUID) ([]RecurringIncomeRule, error)
 	// ListRecurringIncomeRulesWithPaused lists every rule, paused ones too.
 	ListRecurringIncomeRulesWithPaused(ctx context.Context, userID uuid.UUID) ([]RecurringIncomeRule, error)
+	// Rule-created entries for review (#8): the expenses and incomes the worker
+	// (or a rule write) created, newest-inserted first. Every filter is optional.
+	// created_since compares the insert time, so entries back-filled with older
+	// dates still show up as new.
+	ListRuleEntries(ctx context.Context, arg ListRuleEntriesParams) ([]ListRuleEntriesRow, error)
 	ListTags(ctx context.Context, userID uuid.UUID) ([]Tag, error)
 	ListUserTimezones(ctx context.Context) ([]ListUserTimezonesRow, error)
 	PutUserSettings(ctx context.Context, arg PutUserSettingsParams) (UserSetting, error)

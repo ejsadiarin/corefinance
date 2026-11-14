@@ -41,6 +41,9 @@ func (s *Server) RegisterRoutes() http.Handler {
 		r.Get("/settings", s.SettingsHandler.Get)
 		r.Put("/settings", s.SettingsHandler.Put)
 
+		// Rule-created entries for review (#8).
+		r.Get("/rule-entries", s.RuleEntryHandler.List)
+
 		// expense categories
 		r.Route("/expense-categories", func(r chi.Router) {
 			r.Post("/", s.CategoryHandler.CreateExpense)
