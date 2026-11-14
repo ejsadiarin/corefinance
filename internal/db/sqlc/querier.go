@@ -84,15 +84,11 @@ type Querier interface {
 	ListAllIncomeTagsByUser(ctx context.Context, userID uuid.UUID) ([]IncomeTag, error)
 	ListAllIncomesByUser(ctx context.Context, userID uuid.UUID) ([]Income, error)
 	ListExpenseCategories(ctx context.Context, userID uuid.UUID) ([]ExpenseCategory, error)
-	// Ending a rule in the past (#5): the rule's entries dated after the new end
-	// date and up to the old one (NULL: no old end), not already skipped.
-	ListExpenseRuleEntriesAfterEnd(ctx context.Context, arg ListExpenseRuleEntriesAfterEndParams) ([]ListExpenseRuleEntriesAfterEndRow, error)
 	ListExpenses(ctx context.Context, arg ListExpensesParams) ([]ListExpensesRow, error)
 	// The caller's expenses among the given ids; ids that don't exist or
 	// belong to someone else are simply absent.
 	ListExpensesByIDs(ctx context.Context, arg ListExpensesByIDsParams) ([]ListExpensesByIDsRow, error)
 	ListIncomeCategories(ctx context.Context, userID uuid.UUID) ([]IncomeCategory, error)
-	ListIncomeRuleEntriesAfterEnd(ctx context.Context, arg ListIncomeRuleEntriesAfterEndParams) ([]ListIncomeRuleEntriesAfterEndRow, error)
 	ListIncomes(ctx context.Context, arg ListIncomesParams) ([]ListIncomesRow, error)
 	// The caller's incomes among the given ids; ids that don't exist or
 	// belong to someone else are simply absent.
@@ -114,6 +110,9 @@ type Querier interface {
 	// dates still show up as new.
 	ListRuleEntries(ctx context.Context, arg ListRuleEntriesParams) ([]ListRuleEntriesRow, error)
 	ListRuleEntriesFeed(ctx context.Context, arg ListRuleEntriesFeedParams) ([]ListRuleEntriesFeedRow, error)
+	// Reconciling a rule's entries after a schedule change (#15, ADR-0001): the
+	// rule's entries that aren't skipped, with whether the user edited them.
+	ListRuleEntriesToReconcile(ctx context.Context, arg ListRuleEntriesToReconcileParams) ([]ListRuleEntriesToReconcileRow, error)
 	ListTags(ctx context.Context, userID uuid.UUID) ([]Tag, error)
 	ListUserRulesBehind(ctx context.Context, arg ListUserRulesBehindParams) ([]Rule, error)
 	// Users with any rule behind as of `horizon`, the latest date anywhere; each
@@ -128,14 +127,20 @@ type Querier interface {
 	// saves) for the rest of the transaction. Take it before touching any rule
 	// row, so writers always lock in the same order.
 	LockUserMaterialize(ctx context.Context, userID uuid.UUID) error
+	// Keeping a stale entry is the user's decision, so it counts as an edit:
+	// a later schedule change reports it for review instead of skipping it.
+	MarkExpenseEntriesKept(ctx context.Context, arg MarkExpenseEntriesKeptParams) error
+	MarkIncomeEntriesKept(ctx context.Context, arg MarkIncomeEntriesKeptParams) error
 	PutUserSettings(ctx context.Context, arg PutUserSettingsParams) (UserSetting, error)
 	RemoveTagFromExpense(ctx context.Context, arg RemoveTagFromExpenseParams) error
 	RemoveTagFromIncome(ctx context.Context, arg RemoveTagFromIncomeParams) error
 	SearchExpenses(ctx context.Context, arg SearchExpensesParams) ([]SearchExpensesRow, error)
 	SkipExpense(ctx context.Context, arg SkipExpenseParams) error
-	SkipExpenseRuleEntriesAfterEnd(ctx context.Context, arg SkipExpenseRuleEntriesAfterEndParams) ([]SkipExpenseRuleEntriesAfterEndRow, error)
+	// A rule's ids live in one of the two tables; each statement touches only
+	// its own. Skipping keeps user_edited_at: the rule skipped it, not the user.
+	SkipExpenseEntries(ctx context.Context, arg SkipExpenseEntriesParams) error
 	SkipIncome(ctx context.Context, arg SkipIncomeParams) error
-	SkipIncomeRuleEntriesAfterEnd(ctx context.Context, arg SkipIncomeRuleEntriesAfterEndParams) ([]SkipIncomeRuleEntriesAfterEndRow, error)
+	SkipIncomeEntries(ctx context.Context, arg SkipIncomeEntriesParams) error
 	UpdateExpense(ctx context.Context, arg UpdateExpenseParams) (Expense, error)
 	UpdateExpenseCategory(ctx context.Context, arg UpdateExpenseCategoryParams) (ExpenseCategory, error)
 	UpdateIncome(ctx context.Context, arg UpdateIncomeParams) (Income, error)

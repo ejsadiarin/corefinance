@@ -122,12 +122,14 @@ func (s *Service) GetIncomeRule(ctx context.Context, id uuid.UUID, userID uuid.U
 	})
 }
 
-// UpdateIncomeRule updates the rule and, when its end date moves earlier,
-// reports the entries it created after the new end date and skips them unless
-// req.EntriesAfterEnd is "keep" (#5).
+// UpdateIncomeRule updates the rule and, when its schedule changes,
+// reconciles the entries it created against the new schedule (#15): stale
+// untouched entries are skipped unless req says "keep", edited ones are
+// reported for review.
 func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateIncomeRuleRequest) (IncomeRuleUpdate, error) {
 	slog.Debug("recurring.Service.UpdateIncomeRule", "id", id, "user_id", userID)
-	if err := validEntriesAfterEnd(req.EntriesAfterEnd); err != nil {
+	choice := staleChoice(req.StaleEntries, req.EntriesAfterEnd)
+	if err := validStaleChoice(choice); err != nil {
 		return IncomeRuleUpdate{}, err
 	}
 	var out IncomeRuleUpdate
@@ -163,11 +165,14 @@ func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 		if err != nil {
 			return err
 		}
-		entries, err := incomeEntriesAfterEnd(ctx, q, rule, old.EndDate, req.EntriesAfterEnd)
+		stale, err := reconcile(ctx, q, userID, rule.ID,
+			schedule{start: old.StartDate, cadence: old.RecurringType, end: old.EndDate},
+			schedule{start: rule.StartDate, cadence: rule.RecurringType, end: rule.EndDate},
+			choice)
 		if err != nil {
 			return err
 		}
-		out = IncomeRuleUpdate{RecurringIncomeRule: rule, EntriesAfterEnd: entries}
+		out = IncomeRuleUpdate{RecurringIncomeRule: rule, StaleEntries: stale}
 		return fill(ctx, q, userID)
 	})
 	if err != nil {
@@ -225,12 +230,14 @@ func (s *Service) GetExpenseRule(ctx context.Context, id uuid.UUID, userID uuid.
 	})
 }
 
-// UpdateExpenseRule updates the rule and, when its end date moves earlier,
-// reports the entries it created after the new end date and skips them unless
-// req.EntriesAfterEnd is "keep" (#5).
+// UpdateExpenseRule updates the rule and, when its schedule changes,
+// reconciles the entries it created against the new schedule (#15): stale
+// untouched entries are skipped unless req says "keep", edited ones are
+// reported for review.
 func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateExpenseRuleRequest) (ExpenseRuleUpdate, error) {
 	slog.Debug("recurring.Service.UpdateExpenseRule", "id", id, "user_id", userID)
-	if err := validEntriesAfterEnd(req.EntriesAfterEnd); err != nil {
+	choice := staleChoice(req.StaleEntries, req.EntriesAfterEnd)
+	if err := validStaleChoice(choice); err != nil {
 		return ExpenseRuleUpdate{}, err
 	}
 	var out ExpenseRuleUpdate
@@ -266,11 +273,14 @@ func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uu
 		if err != nil {
 			return err
 		}
-		entries, err := expenseEntriesAfterEnd(ctx, q, rule, old.EndDate, req.EntriesAfterEnd)
+		stale, err := reconcile(ctx, q, userID, rule.ID,
+			schedule{start: old.StartDate, cadence: old.RecurringType, end: old.EndDate},
+			schedule{start: rule.StartDate, cadence: rule.RecurringType, end: rule.EndDate},
+			choice)
 		if err != nil {
 			return err
 		}
-		out = ExpenseRuleUpdate{RecurringExpenseRule: rule, EntriesAfterEnd: entries}
+		out = ExpenseRuleUpdate{RecurringExpenseRule: rule, StaleEntries: stale}
 		return fill(ctx, q, userID)
 	})
 	if err != nil {

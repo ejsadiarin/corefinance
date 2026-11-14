@@ -47,10 +47,6 @@ type MockQuerier struct {
 	GetExpenseStatsByCategoryFn           func(ctx context.Context, arg db.GetExpenseStatsByCategoryParams) ([]db.GetExpenseStatsByCategoryRow, error)
 	GetFiftyThirtyTwentyFn                func(ctx context.Context, arg db.GetFiftyThirtyTwentyParams) (db.GetFiftyThirtyTwentyRow, error)
 	GetIncomeFn                           func(ctx context.Context, arg db.GetIncomeParams) (db.GetIncomeRow, error)
-	ListExpenseRuleEntriesAfterEndFn      func(ctx context.Context, arg db.ListExpenseRuleEntriesAfterEndParams) ([]db.ListExpenseRuleEntriesAfterEndRow, error)
-	ListIncomeRuleEntriesAfterEndFn       func(ctx context.Context, arg db.ListIncomeRuleEntriesAfterEndParams) ([]db.ListIncomeRuleEntriesAfterEndRow, error)
-	SkipExpenseRuleEntriesAfterEndFn      func(ctx context.Context, arg db.SkipExpenseRuleEntriesAfterEndParams) ([]db.SkipExpenseRuleEntriesAfterEndRow, error)
-	SkipIncomeRuleEntriesAfterEndFn       func(ctx context.Context, arg db.SkipIncomeRuleEntriesAfterEndParams) ([]db.SkipIncomeRuleEntriesAfterEndRow, error)
 	ListRuleEntriesFn                     func(ctx context.Context, arg db.ListRuleEntriesParams) ([]db.ListRuleEntriesRow, error)
 	GetFeedHorizonFn                      func(ctx context.Context) (uint64, error)
 	ListRuleEntriesFeedFn                 func(ctx context.Context, arg db.ListRuleEntriesFeedParams) ([]db.ListRuleEntriesFeedRow, error)
@@ -58,6 +54,7 @@ type MockQuerier struct {
 	ListUserRulesBehindFn                 func(ctx context.Context, arg db.ListUserRulesBehindParams) ([]db.Rule, error)
 	ListUsersWithRulesBehindFn            func(ctx context.Context, horizon pgtype.Date) ([]uuid.UUID, error)
 	AdvanceRuleWatermarkFn                func(ctx context.Context, arg db.AdvanceRuleWatermarkParams) error
+	ListRuleEntriesToReconcileFn func(ctx context.Context, arg db.ListRuleEntriesToReconcileParams) ([]db.ListRuleEntriesToReconcileRow, error)
 	GetUserSettingsFn                     func(ctx context.Context, userID uuid.UUID) (db.UserSetting, error)
 	PutUserSettingsFn                     func(ctx context.Context, arg db.PutUserSettingsParams) (db.UserSetting, error)
 	GetIncomeCategoryFn                   func(ctx context.Context, arg db.GetIncomeCategoryParams) (db.IncomeCategory, error)
@@ -481,37 +478,9 @@ func (m *MockQuerier) PutUserSettings(ctx context.Context, arg db.PutUserSetting
 	return m.PutUserSettingsFn(ctx, arg)
 }
 
-// ListExpenseRuleEntriesAfterEnd defaults to no entries.
-func (m *MockQuerier) ListExpenseRuleEntriesAfterEnd(ctx context.Context, arg db.ListExpenseRuleEntriesAfterEndParams) ([]db.ListExpenseRuleEntriesAfterEndRow, error) {
-	if m.ListExpenseRuleEntriesAfterEndFn == nil {
-		return nil, nil
-	}
-	return m.ListExpenseRuleEntriesAfterEndFn(ctx, arg)
-}
 
-// ListIncomeRuleEntriesAfterEnd defaults to no entries.
-func (m *MockQuerier) ListIncomeRuleEntriesAfterEnd(ctx context.Context, arg db.ListIncomeRuleEntriesAfterEndParams) ([]db.ListIncomeRuleEntriesAfterEndRow, error) {
-	if m.ListIncomeRuleEntriesAfterEndFn == nil {
-		return nil, nil
-	}
-	return m.ListIncomeRuleEntriesAfterEndFn(ctx, arg)
-}
 
-// SkipExpenseRuleEntriesAfterEnd defaults to no entries.
-func (m *MockQuerier) SkipExpenseRuleEntriesAfterEnd(ctx context.Context, arg db.SkipExpenseRuleEntriesAfterEndParams) ([]db.SkipExpenseRuleEntriesAfterEndRow, error) {
-	if m.SkipExpenseRuleEntriesAfterEndFn == nil {
-		return nil, nil
-	}
-	return m.SkipExpenseRuleEntriesAfterEndFn(ctx, arg)
-}
 
-// SkipIncomeRuleEntriesAfterEnd defaults to no entries.
-func (m *MockQuerier) SkipIncomeRuleEntriesAfterEnd(ctx context.Context, arg db.SkipIncomeRuleEntriesAfterEndParams) ([]db.SkipIncomeRuleEntriesAfterEndRow, error) {
-	if m.SkipIncomeRuleEntriesAfterEndFn == nil {
-		return nil, nil
-	}
-	return m.SkipIncomeRuleEntriesAfterEndFn(ctx, arg)
-}
 
 // ListRuleEntries defaults to no entries.
 func (m *MockQuerier) ListRuleEntries(ctx context.Context, arg db.ListRuleEntriesParams) ([]db.ListRuleEntriesRow, error) {
@@ -567,4 +536,28 @@ func (m *MockQuerier) AdvanceRuleWatermark(ctx context.Context, arg db.AdvanceRu
 		return nil
 	}
 	return m.AdvanceRuleWatermarkFn(ctx, arg)
+}
+
+// ListRuleEntriesToReconcile defaults to no entries.
+func (m *MockQuerier) ListRuleEntriesToReconcile(ctx context.Context, arg db.ListRuleEntriesToReconcileParams) ([]db.ListRuleEntriesToReconcileRow, error) {
+	if m.ListRuleEntriesToReconcileFn == nil {
+		return nil, nil
+	}
+	return m.ListRuleEntriesToReconcileFn(ctx, arg)
+}
+
+func (m *MockQuerier) SkipExpenseEntries(ctx context.Context, arg db.SkipExpenseEntriesParams) error {
+	return nil
+}
+
+func (m *MockQuerier) SkipIncomeEntries(ctx context.Context, arg db.SkipIncomeEntriesParams) error {
+	return nil
+}
+
+func (m *MockQuerier) MarkExpenseEntriesKept(ctx context.Context, arg db.MarkExpenseEntriesKeptParams) error {
+	return nil
+}
+
+func (m *MockQuerier) MarkIncomeEntriesKept(ctx context.Context, arg db.MarkIncomeEntriesKeptParams) error {
+	return nil
 }

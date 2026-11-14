@@ -131,37 +131,34 @@ UPDATE recurring_income_rules
 SET materialized_through = GREATEST(materialized_through, sqlc.arg(through)::date)
 WHERE id = sqlc.arg(id);
 
--- Ending a rule in the past (#5): the rule's entries dated after the new end
--- date and up to the old one (NULL: no old end), not already skipped.
-
--- name: ListExpenseRuleEntriesAfterEnd :many
-SELECT id, expense_date AS date, status FROM expenses
-WHERE user_id = sqlc.arg(user_id) AND source_rule_id = sqlc.arg(rule_id)
-  AND expense_date > sqlc.arg(after_end)::date
-  AND (sqlc.narg(old_end)::date IS NULL OR expense_date <= sqlc.narg(old_end)::date)
-  AND status != 'skipped'
-ORDER BY expense_date;
-
--- name: SkipExpenseRuleEntriesAfterEnd :many
-UPDATE expenses SET status = 'skipped', updated_at = now()
-WHERE user_id = sqlc.arg(user_id) AND source_rule_id = sqlc.arg(rule_id)
-  AND expense_date > sqlc.arg(after_end)::date
-  AND (sqlc.narg(old_end)::date IS NULL OR expense_date <= sqlc.narg(old_end)::date)
-  AND status != 'skipped'
-RETURNING id, expense_date AS date, status;
-
--- name: ListIncomeRuleEntriesAfterEnd :many
-SELECT id, date, status FROM incomes
-WHERE user_id = sqlc.arg(user_id) AND source_rule_id = sqlc.arg(rule_id)
-  AND date > sqlc.arg(after_end)::date
-  AND (sqlc.narg(old_end)::date IS NULL OR date <= sqlc.narg(old_end)::date)
-  AND status != 'skipped'
+-- Reconciling a rule's entries after a schedule change (#15, ADR-0001): the
+-- rule's entries that aren't skipped, with whether the user edited them.
+-- name: ListRuleEntriesToReconcile :many
+SELECT id, date, status, user_edited_at FROM (
+    SELECT id, expense_date AS date, status, user_edited_at FROM expenses
+    WHERE user_id = sqlc.arg(owner)::uuid AND source_rule_id = sqlc.arg(rule_id)::uuid AND status != 'skipped'
+    UNION ALL
+    SELECT id, date, status, user_edited_at FROM incomes
+    WHERE user_id = sqlc.arg(owner)::uuid AND source_rule_id = sqlc.arg(rule_id)::uuid AND status != 'skipped'
+) entries
 ORDER BY date;
 
--- name: SkipIncomeRuleEntriesAfterEnd :many
+-- A rule's ids live in one of the two tables; each statement touches only
+-- its own. Skipping keeps user_edited_at: the rule skipped it, not the user.
+-- name: SkipExpenseEntries :exec
+UPDATE expenses SET status = 'skipped', updated_at = now()
+WHERE user_id = sqlc.arg(user_id) AND id = ANY(sqlc.arg(ids)::uuid[]);
+
+-- name: SkipIncomeEntries :exec
 UPDATE incomes SET status = 'skipped', updated_at = now()
-WHERE user_id = sqlc.arg(user_id) AND source_rule_id = sqlc.arg(rule_id)
-  AND date > sqlc.arg(after_end)::date
-  AND (sqlc.narg(old_end)::date IS NULL OR date <= sqlc.narg(old_end)::date)
-  AND status != 'skipped'
-RETURNING id, date, status;
+WHERE user_id = sqlc.arg(user_id) AND id = ANY(sqlc.arg(ids)::uuid[]);
+
+-- Keeping a stale entry is the user's decision, so it counts as an edit:
+-- a later schedule change reports it for review instead of skipping it.
+-- name: MarkExpenseEntriesKept :exec
+UPDATE expenses SET user_edited_at = now(), updated_at = now()
+WHERE user_id = sqlc.arg(user_id) AND id = ANY(sqlc.arg(ids)::uuid[]);
+
+-- name: MarkIncomeEntriesKept :exec
+UPDATE incomes SET user_edited_at = now(), updated_at = now()
+WHERE user_id = sqlc.arg(user_id) AND id = ANY(sqlc.arg(ids)::uuid[]);

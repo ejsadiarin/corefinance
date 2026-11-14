@@ -102,7 +102,7 @@ func (h *Handler) UpdateIncomeRule(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Debug("recurring.UpdateIncomeRule: request received", "id", id, "user_id", userID)
 	rule, err := h.service.UpdateIncomeRule(r.Context(), id, userID, req)
-	if errors.Is(err, ErrInvalidEntriesAfterEnd) {
+	if errors.Is(err, ErrInvalidStaleEntries) {
 		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -215,7 +215,7 @@ func (h *Handler) UpdateExpenseRule(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Debug("recurring.UpdateExpenseRule: request received", "id", id, "user_id", userID)
 	rule, err := h.service.UpdateExpenseRule(r.Context(), id, userID, req)
-	if errors.Is(err, ErrInvalidEntriesAfterEnd) {
+	if errors.Is(err, ErrInvalidStaleEntries) {
 		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
