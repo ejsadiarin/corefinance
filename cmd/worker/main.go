@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -94,7 +95,12 @@ func runOnce(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, backf
 		slog.Error("materialize failed", "error", err)
 		return 1
 	}
-	slog.Info("materialize pass complete", "inserted", n)
+	// Passes run at least once a minute; only ones that did something are news.
+	if n > 0 {
+		slog.Info("materialize pass complete", "inserted", n)
+	} else {
+		slog.Debug("materialize pass complete", "inserted", n)
+	}
 	return 0
 }
 
@@ -116,29 +122,39 @@ func main() {
 		os.Exit(runOnce(context.Background(), pool, queries, false))
 	}
 
-	// Long-running mode: one pass at startup, then every hour on a stdlib ticker.
+	// Long-running mode (#16): a pass, then sleep until the earliest rule's
+	// next occurrence starts, checking at least once a minute so rules saved
+	// in the meantime (by the API, in another process) are never late by more.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if code := runOnce(ctx, pool, queries, false); code != 0 {
-		slog.Error("initial materialize pass failed, continuing with schedule")
-	}
-
-	ticker := time.NewTicker(time.Hour)
-	defer ticker.Stop()
-	slog.Info("worker started, hourly materialization scheduled")
+	slog.Info("worker started, filling rules as they fall due")
 	for {
+		if code := runOnce(ctx, pool, queries, false); code != 0 {
+			slog.Error("materialize pass failed, retrying at the next wake")
+		}
+		wait := untilNextWake(ctx, queries, time.Now())
 		select {
 		case <-ctx.Done():
 			slog.Info("worker shutting down")
 			return
-		case t := <-ticker.C:
-			n, err := materialize.MaterializeDue(ctx, pool, queries, t)
-			if err != nil {
-				slog.Error("scheduled materialize failed", "error", err)
-				continue
-			}
-			slog.Info("scheduled materialize pass complete", "inserted", n)
+		case <-time.After(wait):
 		}
 	}
+}
+
+// maxSleep caps how long the worker sleeps between passes.
+const maxSleep = time.Minute
+
+// untilNextWake is how long to sleep before the next pass: until the earliest
+// next occurrence, at least a second and at most maxSleep.
+func untilNextWake(ctx context.Context, queries *db.Queries, now time.Time) time.Duration {
+	wake, err := materialize.NextWake(ctx, queries, now)
+	if err != nil {
+		if !errors.Is(err, materialize.ErrNothingDue) {
+			slog.Error("next wake lookup failed", "error", err)
+		}
+		return maxSleep
+	}
+	return min(max(wake.Sub(now), time.Second), maxSleep)
 }

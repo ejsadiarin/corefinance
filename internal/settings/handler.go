@@ -13,6 +13,7 @@ import (
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/helper"
+	"github.com/ejsadiarin/corefinance/internal/materialize"
 )
 
 // DefaultTimezone is reported for users who haven't saved one. Their rule
@@ -86,6 +87,10 @@ func (h *Handler) Put(w http.ResponseWriter, r *http.Request) {
 		slog.Error("settings.Put: failed", "error", err, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusInternalServerError, "couldn't save settings")
 		return
+	}
+	// Each rule's next due time is midnight in this zone: recompute (#16).
+	if err := materialize.TimezoneChanged(r.Context(), h.queries, userID); err != nil {
+		slog.Error("settings.Put: next due reset failed", "error", err, "user_id", userID)
 	}
 	slog.Info("settings.Put: timezone saved", "user_id", userID, "timezone", row.Timezone)
 	helper.RespondJSON(w, http.StatusOK, Settings{Timezone: row.Timezone, Saved: true})

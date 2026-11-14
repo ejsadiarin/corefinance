@@ -97,23 +97,29 @@ WHERE user_id = $1 AND recurring_type != 'one-time' AND source_rule_id IS NULL;
 -- name: LockUserMaterialize :exec
 SELECT pg_advisory_xact_lock(hashtext('corefinance-materialize'), hashtext(sqlc.arg(user_id)::uuid::text));
 
--- Users with any rule behind as of `horizon`, the latest date anywhere; each
--- user's own date is applied by ListUserRulesBehind.
--- name: ListUsersWithRulesBehind :many
+-- Next-due scheduling (#16): users with an active rule whose next occurrence
+-- has started, or whose next_due_at hasn't been computed yet.
+-- name: ListUsersDue :many
 SELECT DISTINCT user_id FROM rules
 WHERE is_active = true
-  AND start_date <= sqlc.arg(horizon)::date
-  AND COALESCE(materialized_through, start_date - 1)
-      < LEAST(COALESCE(end_date, sqlc.arg(horizon)::date), sqlc.arg(horizon)::date);
+  AND (next_due_at IS NULL OR next_due_at <= sqlc.arg(now)::timestamptz);
 
--- name: ListUserRulesBehind :many
+-- name: ListUserActiveRules :many
 SELECT * FROM rules
-WHERE user_id = sqlc.arg(user_id)
-  AND is_active = true
-  AND start_date <= sqlc.arg(today)::date
-  AND COALESCE(materialized_through, start_date - 1)
-      < LEAST(COALESCE(end_date, sqlc.arg(today)::date), sqlc.arg(today)::date)
+WHERE user_id = sqlc.arg(user_id) AND is_active = true
 ORDER BY start_date ASC, id ASC;
+
+-- name: SetRuleNextDue :exec
+UPDATE rules SET next_due_at = sqlc.arg(next_due_at)::timestamptz WHERE id = sqlc.arg(id);
+
+-- The earliest next occurrence still to come, if any (NULL when none).
+-- name: GetNextWake :one
+SELECT min(next_due_at)::timestamptz AS next_wake FROM rules
+WHERE is_active = true AND next_due_at > sqlc.arg(now)::timestamptz AND next_due_at < 'infinity';
+
+-- A timezone change moves every next occurrence: the next pass recomputes.
+-- name: ClearUserNextDue :exec
+UPDATE rules SET next_due_at = NULL WHERE user_id = sqlc.arg(user_id);
 
 -- name: AdvanceRuleWatermark :exec
 UPDATE rules

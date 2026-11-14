@@ -140,6 +140,7 @@ type Rule struct {
 	MaterializedThrough pgtype.Date        `db:"materialized_through" json:"materialized_through"`
 	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	NextDueAt           pgtype.Timestamptz `db:"next_due_at" json:"next_due_at"`
 }
 
 type Tag struct {

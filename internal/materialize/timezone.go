@@ -12,11 +12,6 @@ import (
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 )
 
-// latestZone is the furthest-ahead UTC offset in use (Pacific/Kiritimati):
-// no user's date is later than now's date here, so it bounds which rules a
-// pass needs to look at before each user's own date is known.
-var latestZone = time.FixedZone("UTC+14", 14*60*60)
-
 // userDate is the calendar date at now in the IANA zone tz, as UTC midnight
 // (the form rule dates come back from Postgres in). An empty or unknown zone
 // keeps the server clock's date.
@@ -41,4 +36,21 @@ func UserToday(ctx context.Context, q db.Querier, userID uuid.UUID, now time.Tim
 		return time.Time{}, fmt.Errorf("get user settings: %w", err)
 	}
 	return userDate(now, s.Timezone), nil
+}
+
+// UserZone is the user's saved timezone, or now's own location (the server
+// clock's zone) when they haven't saved one or it doesn't load.
+func UserZone(ctx context.Context, q db.Querier, userID uuid.UUID, now time.Time) (*time.Location, error) {
+	s, err := q.GetUserSettings(ctx, userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return now.Location(), nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get user settings: %w", err)
+	}
+	loc, err := time.LoadLocation(s.Timezone)
+	if err != nil || s.Timezone == "" {
+		return now.Location(), nil
+	}
+	return loc, nil
 }

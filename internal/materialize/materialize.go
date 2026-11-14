@@ -161,6 +161,39 @@ func DueDates(start time.Time, cadence string, end *time.Time, today time.Time) 
 	return out
 }
 
+// NextDueDate is the rule's first occurrence after `after`, if it has one
+// before its end. It steps straight to the right occurrence instead of
+// listing every date since the start, since it runs for every rule a pass
+// touches.
+func NextDueDate(start time.Time, cadence string, end *time.Time, after time.Time) (time.Time, bool) {
+	start, after = truncateDate(start), truncateDate(after)
+	var d time.Time
+	switch {
+	case after.Before(start):
+		d = start
+	case cadence == "daily":
+		d = after.AddDate(0, 0, 1)
+	case cadence == "weekly":
+		d = start.AddDate(0, 0, (daysBetween(start, after)/7+1)*7)
+	case cadence == "monthly":
+		i := (after.Year()-start.Year())*12 + int(after.Month()-start.Month())
+		for d = addMonthsClamped(start, i); !d.After(after); d = addMonthsClamped(start, i) {
+			i++
+		}
+	case cadence == "yearly":
+		i := after.Year() - start.Year()
+		for d = addYearsClamped(start, i); !d.After(after); d = addYearsClamped(start, i) {
+			i++
+		}
+	default:
+		return time.Time{}, false
+	}
+	if end != nil && d.After(truncateDate(*end)) {
+		return time.Time{}, false
+	}
+	return d, true
+}
+
 // MaxDatesPerRulePass bounds how many dates one pass fills for a single rule.
 // A long outage (or a daily rule with a years-old start and no watermark)
 // fills in over several passes instead of one huge transaction; the
@@ -212,13 +245,14 @@ func MaterializeUser(ctx context.Context, q db.Querier, userID uuid.UUID, now ti
 	if err := q.LockUserMaterialize(ctx, userID); err != nil {
 		return 0, fmt.Errorf("lock user materialize: %w", err)
 	}
-	today, err := UserToday(ctx, q, userID, now)
+	loc, err := UserZone(ctx, q, userID, now)
 	if err != nil {
 		return 0, err
 	}
-	rules, err := q.ListUserRulesBehind(ctx, db.ListUserRulesBehindParams{UserID: userID, Today: pgDate(today)})
+	today := userDate(now.In(loc), "")
+	rules, err := q.ListUserActiveRules(ctx, userID)
 	if err != nil {
-		return 0, fmt.Errorf("list rules behind: %w", err)
+		return 0, fmt.Errorf("list active rules: %w", err)
 	}
 	inserted := 0
 	for _, r := range rules {
@@ -230,11 +264,59 @@ func MaterializeUser(ctx context.Context, q db.Querier, userID uuid.UUID, now ti
 			}
 			inserted += int(n)
 		}
-		if err := q.AdvanceRuleWatermark(ctx, db.AdvanceRuleWatermarkParams{ID: r.ID, Through: pgDate(through)}); err != nil {
-			return inserted, fmt.Errorf("advance rule watermark: %w", err)
+		filled := r.MaterializedThrough
+		if !filled.Valid || through.After(truncateDate(filled.Time)) {
+			if err := q.AdvanceRuleWatermark(ctx, db.AdvanceRuleWatermarkParams{ID: r.ID, Through: pgDate(through)}); err != nil {
+				return inserted, fmt.Errorf("advance rule watermark: %w", err)
+			}
+			filled = pgDate(through)
+		}
+		if err := q.SetRuleNextDue(ctx, db.SetRuleNextDueParams{ID: r.ID, NextDueAt: nextDueAt(r, filled, loc)}); err != nil {
+			return inserted, fmt.Errorf("set rule next due: %w", err)
 		}
 	}
 	return inserted, nil
+}
+
+// nextDueAt is when the rule's next unfilled occurrence starts in loc, or
+// infinity once the rule has no more occurrences.
+func nextDueAt(r db.Rule, filled pgtype.Date, loc *time.Location) pgtype.Timestamptz {
+	after := truncateDate(r.StartDate.Time).AddDate(0, 0, -1)
+	if filled.Valid && truncateDate(filled.Time).After(after) {
+		after = truncateDate(filled.Time)
+	}
+	d, ok := NextDueDate(r.StartDate.Time, r.RecurringType, pgTimeOrNil(r.EndDate), after)
+	if !ok {
+		return pgtype.Timestamptz{InfinityModifier: pgtype.Infinity, Valid: true}
+	}
+	y, m, day := d.Date()
+	return pgtype.Timestamptz{Time: time.Date(y, m, day, 0, 0, 0, 0, loc), Valid: true}
+}
+
+// ErrNothingDue is NextWake's answer when no active rule has an occurrence
+// still to come.
+var ErrNothingDue = errors.New("no rule is due")
+
+// NextWake is when the earliest active rule's next occurrence starts, after
+// now: the worker sleeps until then (#16).
+func NextWake(ctx context.Context, q db.Querier, now time.Time) (time.Time, error) {
+	t, err := q.GetNextWake(ctx, pgtype.Timestamptz{Time: now, Valid: true})
+	if err != nil {
+		return time.Time{}, fmt.Errorf("next wake: %w", err)
+	}
+	if !t.Valid {
+		return time.Time{}, ErrNothingDue
+	}
+	return t.Time, nil
+}
+
+// TimezoneChanged makes the next pass recompute the user's rules' next due
+// times, since each one is midnight in the user's timezone.
+func TimezoneChanged(ctx context.Context, q db.Querier, userID uuid.UUID) error {
+	if err := q.ClearUserNextDue(ctx, userID); err != nil {
+		return fmt.Errorf("clear next due: %w", err)
+	}
+	return nil
 }
 
 // insertRuleEntry creates the rule's entry for date d in the table for its
@@ -349,16 +431,16 @@ func withMaterializeLock(ctx context.Context, pool *pgxpool.Pool, queries *db.Qu
 	return nil
 }
 
-// MaterializeDue runs MaterializeUser for every user with a rule behind, each
+// MaterializeDue runs MaterializeUser for every user with a rule due by now
+// (its next_due_at has passed, or isn't computed yet), each
 // in its own short transaction, so one user's pass never waits on another's
 // and a failure for one user doesn't stop the rest. Instance rows use
 // recurring_type='one-time', NULL start/end, source_rule_id set,
 // status='posted'. Returns the rows inserted, and every user's error joined.
 func MaterializeDue(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, now time.Time) (int, error) {
-	// No user's date is later than now's date in the furthest-ahead zone.
-	users, err := queries.ListUsersWithRulesBehind(ctx, pgDate(userDate(now.In(latestZone), "")))
+	users, err := queries.ListUsersDue(ctx, pgtype.Timestamptz{Time: now, Valid: true})
 	if err != nil {
-		return 0, fmt.Errorf("list users with rules behind: %w", err)
+		return 0, fmt.Errorf("list users due: %w", err)
 	}
 	inserted := 0
 	var errs []error

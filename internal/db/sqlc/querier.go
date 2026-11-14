@@ -21,6 +21,8 @@ type Querier interface {
 	AdvanceRuleWatermark(ctx context.Context, arg AdvanceRuleWatermarkParams) error
 	CheckSkippedExpense(ctx context.Context, arg CheckSkippedExpenseParams) (bool, error)
 	CheckSkippedIncome(ctx context.Context, arg CheckSkippedIncomeParams) (bool, error)
+	// A timezone change moves every next occurrence: the next pass recomputes.
+	ClearUserNextDue(ctx context.Context, userID uuid.UUID) error
 	CountLegacyExpenses(ctx context.Context) (int64, error)
 	CountLegacyExpensesByUser(ctx context.Context, userID uuid.UUID) (int64, error)
 	CountLegacyIncomes(ctx context.Context) (int64, error)
@@ -59,6 +61,8 @@ type Querier interface {
 	// source_rule_id set, so the link, not the type, marks an occurrence.
 	GetIncomeOccurrences(ctx context.Context, arg GetIncomeOccurrencesParams) ([]Income, error)
 	GetMonthOverMonthTrends(ctx context.Context, arg GetMonthOverMonthTrendsParams) ([]GetMonthOverMonthTrendsRow, error)
+	// The earliest next occurrence still to come, if any (NULL when none).
+	GetNextWake(ctx context.Context, now pgtype.Timestamptz) (pgtype.Timestamptz, error)
 	GetRecurringExpenseRule(ctx context.Context, arg GetRecurringExpenseRuleParams) (GetRecurringExpenseRuleRow, error)
 	GetRecurringIncomeRule(ctx context.Context, arg GetRecurringIncomeRuleParams) (RecurringIncomeRule, error)
 	GetSavingsRate(ctx context.Context, arg GetSavingsRateParams) (GetSavingsRateRow, error)
@@ -114,10 +118,10 @@ type Querier interface {
 	// rule's entries that aren't skipped, with whether the user edited them.
 	ListRuleEntriesToReconcile(ctx context.Context, arg ListRuleEntriesToReconcileParams) ([]ListRuleEntriesToReconcileRow, error)
 	ListTags(ctx context.Context, userID uuid.UUID) ([]Tag, error)
-	ListUserRulesBehind(ctx context.Context, arg ListUserRulesBehindParams) ([]Rule, error)
-	// Users with any rule behind as of `horizon`, the latest date anywhere; each
-	// user's own date is applied by ListUserRulesBehind.
-	ListUsersWithRulesBehind(ctx context.Context, horizon pgtype.Date) ([]uuid.UUID, error)
+	ListUserActiveRules(ctx context.Context, userID uuid.UUID) ([]Rule, error)
+	// Next-due scheduling (#16): users with an active rule whose next occurrence
+	// has started, or whose next_due_at hasn't been computed yet.
+	ListUsersDue(ctx context.Context, now pgtype.Timestamptz) ([]uuid.UUID, error)
 	// Catch-up pass (#7), one user at a time under a per-user lock (#14,
 	// ADR-0001). A rule is behind when its watermark (materialized_through, or
 	// the day before start_date when nothing has been filled) is earlier than
@@ -135,6 +139,7 @@ type Querier interface {
 	RemoveTagFromExpense(ctx context.Context, arg RemoveTagFromExpenseParams) error
 	RemoveTagFromIncome(ctx context.Context, arg RemoveTagFromIncomeParams) error
 	SearchExpenses(ctx context.Context, arg SearchExpensesParams) ([]SearchExpensesRow, error)
+	SetRuleNextDue(ctx context.Context, arg SetRuleNextDueParams) error
 	SkipExpense(ctx context.Context, arg SkipExpenseParams) error
 	// A rule's ids live in one of the two tables; each statement touches only
 	// its own. Skipping keeps user_edited_at: the rule skipped it, not the user.

@@ -62,6 +62,16 @@ func (q *Queries) AdvanceRuleWatermark(ctx context.Context, arg AdvanceRuleWater
 	return err
 }
 
+const clearUserNextDue = `-- name: ClearUserNextDue :exec
+UPDATE rules SET next_due_at = NULL WHERE user_id = $1
+`
+
+// A timezone change moves every next occurrence: the next pass recomputes.
+func (q *Queries) ClearUserNextDue(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, clearUserNextDue, userID)
+	return err
+}
+
 const countLegacyExpenses = `-- name: CountLegacyExpenses :one
 SELECT COUNT(*)::bigint AS legacy_count FROM expenses
 WHERE recurring_type != 'one-time' AND source_rule_id IS NULL
@@ -202,6 +212,19 @@ WHERE id = $1
 func (q *Queries) FlipLegacyIncomeToOneTime(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, flipLegacyIncomeToOneTime, id)
 	return err
+}
+
+const getNextWake = `-- name: GetNextWake :one
+SELECT min(next_due_at)::timestamptz AS next_wake FROM rules
+WHERE is_active = true AND next_due_at > $1::timestamptz AND next_due_at < 'infinity'
+`
+
+// The earliest next occurrence still to come, if any (NULL when none).
+func (q *Queries) GetNextWake(ctx context.Context, now pgtype.Timestamptz) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, getNextWake, now)
+	var next_wake pgtype.Timestamptz
+	err := row.Scan(&next_wake)
+	return next_wake, err
 }
 
 const listActiveExpenseRules = `-- name: ListActiveExpenseRules :many
@@ -631,23 +654,14 @@ func (q *Queries) ListRuleEntriesToReconcile(ctx context.Context, arg ListRuleEn
 	return items, nil
 }
 
-const listUserRulesBehind = `-- name: ListUserRulesBehind :many
-SELECT id, kind, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, materialized_through, created_at, updated_at FROM rules
-WHERE user_id = $1
-  AND is_active = true
-  AND start_date <= $2::date
-  AND COALESCE(materialized_through, start_date - 1)
-      < LEAST(COALESCE(end_date, $2::date), $2::date)
+const listUserActiveRules = `-- name: ListUserActiveRules :many
+SELECT id, kind, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, materialized_through, created_at, updated_at, next_due_at FROM rules
+WHERE user_id = $1 AND is_active = true
 ORDER BY start_date ASC, id ASC
 `
 
-type ListUserRulesBehindParams struct {
-	UserID uuid.UUID   `db:"user_id" json:"user_id"`
-	Today  pgtype.Date `db:"today" json:"today"`
-}
-
-func (q *Queries) ListUserRulesBehind(ctx context.Context, arg ListUserRulesBehindParams) ([]Rule, error) {
-	rows, err := q.db.Query(ctx, listUserRulesBehind, arg.UserID, arg.Today)
+func (q *Queries) ListUserActiveRules(ctx context.Context, userID uuid.UUID) ([]Rule, error) {
+	rows, err := q.db.Query(ctx, listUserActiveRules, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -672,6 +686,7 @@ func (q *Queries) ListUserRulesBehind(ctx context.Context, arg ListUserRulesBehi
 			&i.MaterializedThrough,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.NextDueAt,
 		); err != nil {
 			return nil, err
 		}
@@ -683,18 +698,16 @@ func (q *Queries) ListUserRulesBehind(ctx context.Context, arg ListUserRulesBehi
 	return items, nil
 }
 
-const listUsersWithRulesBehind = `-- name: ListUsersWithRulesBehind :many
+const listUsersDue = `-- name: ListUsersDue :many
 SELECT DISTINCT user_id FROM rules
 WHERE is_active = true
-  AND start_date <= $1::date
-  AND COALESCE(materialized_through, start_date - 1)
-      < LEAST(COALESCE(end_date, $1::date), $1::date)
+  AND (next_due_at IS NULL OR next_due_at <= $1::timestamptz)
 `
 
-// Users with any rule behind as of `horizon`, the latest date anywhere; each
-// user's own date is applied by ListUserRulesBehind.
-func (q *Queries) ListUsersWithRulesBehind(ctx context.Context, horizon pgtype.Date) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, listUsersWithRulesBehind, horizon)
+// Next-due scheduling (#16): users with an active rule whose next occurrence
+// has started, or whose next_due_at hasn't been computed yet.
+func (q *Queries) ListUsersDue(ctx context.Context, now pgtype.Timestamptz) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listUsersDue, now)
 	if err != nil {
 		return nil, err
 	}
@@ -760,6 +773,20 @@ type MarkIncomeEntriesKeptParams struct {
 
 func (q *Queries) MarkIncomeEntriesKept(ctx context.Context, arg MarkIncomeEntriesKeptParams) error {
 	_, err := q.db.Exec(ctx, markIncomeEntriesKept, arg.UserID, arg.Ids)
+	return err
+}
+
+const setRuleNextDue = `-- name: SetRuleNextDue :exec
+UPDATE rules SET next_due_at = $1::timestamptz WHERE id = $2
+`
+
+type SetRuleNextDueParams struct {
+	NextDueAt pgtype.Timestamptz `db:"next_due_at" json:"next_due_at"`
+	ID        uuid.UUID          `db:"id" json:"id"`
+}
+
+func (q *Queries) SetRuleNextDue(ctx context.Context, arg SetRuleNextDueParams) error {
+	_, err := q.db.Exec(ctx, setRuleNextDue, arg.NextDueAt, arg.ID)
 	return err
 }
 
