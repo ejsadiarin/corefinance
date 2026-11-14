@@ -97,6 +97,7 @@ type RecurringExpenseRule struct {
 	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	MaterializedThrough pgtype.Date        `db:"materialized_through" json:"materialized_through"`
+	Kind                string             `db:"kind" json:"-"`
 }
 
 type RecurringIncomeRule struct {
@@ -115,6 +116,26 @@ type RecurringIncomeRule struct {
 	Notes               pgtype.Text        `db:"notes" json:"notes"`
 	Priority            string             `db:"priority" json:"priority"`
 	MaterializedThrough pgtype.Date        `db:"materialized_through" json:"materialized_through"`
+	Kind                string             `db:"kind" json:"-"`
+}
+
+type Rule struct {
+	ID                  uuid.UUID          `db:"id" json:"id"`
+	Kind                string             `db:"kind" json:"kind"`
+	UserID              uuid.UUID          `db:"user_id" json:"user_id"`
+	Description         string             `db:"description" json:"description"`
+	Amount              decimal.Decimal    `db:"amount" json:"amount"`
+	Currency            string             `db:"currency" json:"currency"`
+	CategoryID          pgtype.UUID        `db:"category_id" json:"category_id"`
+	Notes               pgtype.Text        `db:"notes" json:"notes"`
+	RecurringType       string             `db:"recurring_type" json:"recurring_type"`
+	StartDate           pgtype.Date        `db:"start_date" json:"start_date"`
+	EndDate             pgtype.Date        `db:"end_date" json:"end_date"`
+	Priority            string             `db:"priority" json:"priority"`
+	IsActive            bool               `db:"is_active" json:"is_active"`
+	MaterializedThrough pgtype.Date        `db:"materialized_through" json:"materialized_through"`
+	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type Tag struct {

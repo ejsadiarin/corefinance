@@ -29,3 +29,8 @@ sql:
               import: "github.com/shopspring/decimal"
               type: "Decimal"
               pointer: true
+          # The rule views carry kind for inserts (#11); their JSON stays as before.
+          - column: "recurring_expense_rules.kind"
+            go_struct_tag: 'json:"-"'
+          - column: "recurring_income_rules.kind"
+            go_struct_tag: 'json:"-"'

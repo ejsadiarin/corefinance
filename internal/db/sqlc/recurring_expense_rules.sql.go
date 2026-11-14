@@ -16,7 +16,7 @@ import (
 const createRecurringExpenseRule = `-- name: CreateRecurringExpenseRule :one
 INSERT INTO recurring_expense_rules (user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, created_at, updated_at, materialized_through
+RETURNING id, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, created_at, updated_at, materialized_through, kind
 `
 
 type CreateRecurringExpenseRuleParams struct {
@@ -62,6 +62,7 @@ func (q *Queries) CreateRecurringExpenseRule(ctx context.Context, arg CreateRecu
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.MaterializedThrough,
+		&i.Kind,
 	)
 	return i, err
 }
@@ -82,7 +83,7 @@ func (q *Queries) DeleteRecurringExpenseRule(ctx context.Context, arg DeleteRecu
 }
 
 const getRecurringExpenseRule = `-- name: GetRecurringExpenseRule :one
-SELECT r.id, r.user_id, r.description, r.amount, r.currency, r.category_id, r.notes, r.recurring_type, r.start_date, r.end_date, r.priority, r.is_active, r.created_at, r.updated_at, r.materialized_through, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
+SELECT r.id, r.user_id, r.description, r.amount, r.currency, r.category_id, r.notes, r.recurring_type, r.start_date, r.end_date, r.priority, r.is_active, r.created_at, r.updated_at, r.materialized_through, r.kind, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
 FROM recurring_expense_rules r
 LEFT JOIN expense_categories ec ON r.category_id = ec.id
 WHERE r.id = $1 AND r.user_id = $2
@@ -109,6 +110,7 @@ type GetRecurringExpenseRuleRow struct {
 	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	MaterializedThrough pgtype.Date        `db:"materialized_through" json:"materialized_through"`
+	Kind                string             `db:"kind" json:"-"`
 	CategoryName        pgtype.Text        `db:"category_name" json:"category_name"`
 	CategoryColor       pgtype.Text        `db:"category_color" json:"category_color"`
 	CategoryIcon        pgtype.Text        `db:"category_icon" json:"category_icon"`
@@ -133,6 +135,7 @@ func (q *Queries) GetRecurringExpenseRule(ctx context.Context, arg GetRecurringE
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.MaterializedThrough,
+		&i.Kind,
 		&i.CategoryName,
 		&i.CategoryColor,
 		&i.CategoryIcon,
@@ -141,7 +144,7 @@ func (q *Queries) GetRecurringExpenseRule(ctx context.Context, arg GetRecurringE
 }
 
 const listRecurringExpenseRules = `-- name: ListRecurringExpenseRules :many
-SELECT r.id, r.user_id, r.description, r.amount, r.currency, r.category_id, r.notes, r.recurring_type, r.start_date, r.end_date, r.priority, r.is_active, r.created_at, r.updated_at, r.materialized_through, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
+SELECT r.id, r.user_id, r.description, r.amount, r.currency, r.category_id, r.notes, r.recurring_type, r.start_date, r.end_date, r.priority, r.is_active, r.created_at, r.updated_at, r.materialized_through, r.kind, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
 FROM recurring_expense_rules r
 LEFT JOIN expense_categories ec ON r.category_id = ec.id
 WHERE r.user_id = $1 AND r.is_active = true
@@ -164,6 +167,7 @@ type ListRecurringExpenseRulesRow struct {
 	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	MaterializedThrough pgtype.Date        `db:"materialized_through" json:"materialized_through"`
+	Kind                string             `db:"kind" json:"-"`
 	CategoryName        pgtype.Text        `db:"category_name" json:"category_name"`
 	CategoryColor       pgtype.Text        `db:"category_color" json:"category_color"`
 	CategoryIcon        pgtype.Text        `db:"category_icon" json:"category_icon"`
@@ -194,6 +198,7 @@ func (q *Queries) ListRecurringExpenseRules(ctx context.Context, userID uuid.UUI
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.MaterializedThrough,
+			&i.Kind,
 			&i.CategoryName,
 			&i.CategoryColor,
 			&i.CategoryIcon,
@@ -209,7 +214,7 @@ func (q *Queries) ListRecurringExpenseRules(ctx context.Context, userID uuid.UUI
 }
 
 const listRecurringExpenseRulesWithPaused = `-- name: ListRecurringExpenseRulesWithPaused :many
-SELECT r.id, r.user_id, r.description, r.amount, r.currency, r.category_id, r.notes, r.recurring_type, r.start_date, r.end_date, r.priority, r.is_active, r.created_at, r.updated_at, r.materialized_through, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
+SELECT r.id, r.user_id, r.description, r.amount, r.currency, r.category_id, r.notes, r.recurring_type, r.start_date, r.end_date, r.priority, r.is_active, r.created_at, r.updated_at, r.materialized_through, r.kind, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
 FROM recurring_expense_rules r
 LEFT JOIN expense_categories ec ON r.category_id = ec.id
 WHERE r.user_id = $1
@@ -232,6 +237,7 @@ type ListRecurringExpenseRulesWithPausedRow struct {
 	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	MaterializedThrough pgtype.Date        `db:"materialized_through" json:"materialized_through"`
+	Kind                string             `db:"kind" json:"-"`
 	CategoryName        pgtype.Text        `db:"category_name" json:"category_name"`
 	CategoryColor       pgtype.Text        `db:"category_color" json:"category_color"`
 	CategoryIcon        pgtype.Text        `db:"category_icon" json:"category_icon"`
@@ -264,6 +270,7 @@ func (q *Queries) ListRecurringExpenseRulesWithPaused(ctx context.Context, userI
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.MaterializedThrough,
+			&i.Kind,
 			&i.CategoryName,
 			&i.CategoryColor,
 			&i.CategoryIcon,
@@ -292,7 +299,7 @@ SET description = $3, amount = $4, currency = $5, category_id = $6, notes = $7,
     is_active = COALESCE($12, is_active),
     updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, created_at, updated_at, materialized_through
+RETURNING id, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, created_at, updated_at, materialized_through, kind
 `
 
 type UpdateRecurringExpenseRuleParams struct {
@@ -344,6 +351,7 @@ func (q *Queries) UpdateRecurringExpenseRule(ctx context.Context, arg UpdateRecu
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.MaterializedThrough,
+		&i.Kind,
 	)
 	return i, err
 }
