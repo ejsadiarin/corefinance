@@ -18,6 +18,13 @@ SET amount = $3, currency = $4, description = $5, recurring_type = $6,
     start_date = $7, end_date = $8,
     category_id = sqlc.narg(category_id), notes = sqlc.narg(notes),
     priority = COALESCE(sqlc.narg(priority), priority),
+    -- Resuming a paused rule (#7): skip the paused stretch so the catch-up
+    -- pass doesn't fill it. RHS columns are the pre-update values.
+    materialized_through = CASE
+        WHEN NOT is_active AND sqlc.narg(is_active)::bool
+        THEN GREATEST(COALESCE(materialized_through, start_date - 1), sqlc.narg(resume_through)::date)
+        ELSE materialized_through
+    END,
     is_active = COALESCE(sqlc.narg(is_active), is_active),
     updated_at = now()
 WHERE id = $1 AND user_id = $2

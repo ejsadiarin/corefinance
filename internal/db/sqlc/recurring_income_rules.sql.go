@@ -16,7 +16,7 @@ import (
 const createRecurringIncomeRule = `-- name: CreateRecurringIncomeRule :one
 INSERT INTO recurring_income_rules (user_id, amount, currency, description, recurring_type, start_date, end_date, category_id, notes, priority)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, 'want'))
-RETURNING id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority
+RETURNING id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority, materialized_through
 `
 
 type CreateRecurringIncomeRuleParams struct {
@@ -61,6 +61,7 @@ func (q *Queries) CreateRecurringIncomeRule(ctx context.Context, arg CreateRecur
 		&i.CategoryID,
 		&i.Notes,
 		&i.Priority,
+		&i.MaterializedThrough,
 	)
 	return i, err
 }
@@ -81,7 +82,7 @@ func (q *Queries) DeleteRecurringIncomeRule(ctx context.Context, arg DeleteRecur
 }
 
 const getRecurringIncomeRule = `-- name: GetRecurringIncomeRule :one
-SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority FROM recurring_income_rules
+SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority, materialized_through FROM recurring_income_rules
 WHERE id = $1 AND user_id = $2
 `
 
@@ -108,12 +109,13 @@ func (q *Queries) GetRecurringIncomeRule(ctx context.Context, arg GetRecurringIn
 		&i.CategoryID,
 		&i.Notes,
 		&i.Priority,
+		&i.MaterializedThrough,
 	)
 	return i, err
 }
 
 const listRecurringIncomeRules = `-- name: ListRecurringIncomeRules :many
-SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority FROM recurring_income_rules
+SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority, materialized_through FROM recurring_income_rules
 WHERE user_id = $1 AND is_active = true
 ORDER BY created_at DESC
 `
@@ -142,6 +144,7 @@ func (q *Queries) ListRecurringIncomeRules(ctx context.Context, userID uuid.UUID
 			&i.CategoryID,
 			&i.Notes,
 			&i.Priority,
+			&i.MaterializedThrough,
 		); err != nil {
 			return nil, err
 		}
@@ -154,7 +157,7 @@ func (q *Queries) ListRecurringIncomeRules(ctx context.Context, userID uuid.UUID
 }
 
 const listRecurringIncomeRulesWithPaused = `-- name: ListRecurringIncomeRulesWithPaused :many
-SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority FROM recurring_income_rules
+SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority, materialized_through FROM recurring_income_rules
 WHERE user_id = $1
 ORDER BY created_at DESC
 `
@@ -184,6 +187,7 @@ func (q *Queries) ListRecurringIncomeRulesWithPaused(ctx context.Context, userID
 			&i.CategoryID,
 			&i.Notes,
 			&i.Priority,
+			&i.MaterializedThrough,
 		); err != nil {
 			return nil, err
 		}
@@ -201,10 +205,17 @@ SET amount = $3, currency = $4, description = $5, recurring_type = $6,
     start_date = $7, end_date = $8,
     category_id = $9, notes = $10,
     priority = COALESCE($11, priority),
+    -- Resuming a paused rule (#7): skip the paused stretch so the catch-up
+    -- pass doesn't fill it. RHS columns are the pre-update values.
+    materialized_through = CASE
+        WHEN NOT is_active AND $12::bool
+        THEN GREATEST(COALESCE(materialized_through, start_date - 1), $13::date)
+        ELSE materialized_through
+    END,
     is_active = COALESCE($12, is_active),
     updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority
+RETURNING id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority, materialized_through
 `
 
 type UpdateRecurringIncomeRuleParams struct {
@@ -220,6 +231,7 @@ type UpdateRecurringIncomeRuleParams struct {
 	Notes         pgtype.Text     `db:"notes" json:"notes"`
 	Priority      pgtype.Text     `db:"priority" json:"priority"`
 	IsActive      pgtype.Bool     `db:"is_active" json:"is_active"`
+	ResumeThrough pgtype.Date     `db:"resume_through" json:"resume_through"`
 }
 
 func (q *Queries) UpdateRecurringIncomeRule(ctx context.Context, arg UpdateRecurringIncomeRuleParams) (RecurringIncomeRule, error) {
@@ -236,6 +248,7 @@ func (q *Queries) UpdateRecurringIncomeRule(ctx context.Context, arg UpdateRecur
 		arg.Notes,
 		arg.Priority,
 		arg.IsActive,
+		arg.ResumeThrough,
 	)
 	var i RecurringIncomeRule
 	err := row.Scan(
@@ -253,6 +266,7 @@ func (q *Queries) UpdateRecurringIncomeRule(ctx context.Context, arg UpdateRecur
 		&i.CategoryID,
 		&i.Notes,
 		&i.Priority,
+		&i.MaterializedThrough,
 	)
 	return i, err
 }

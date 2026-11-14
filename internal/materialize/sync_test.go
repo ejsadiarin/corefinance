@@ -182,13 +182,14 @@ func TestMaterializeDue_PausedIncomeRuleSkippedThenResumed(t *testing.T) {
 		StartDate:     rule.StartDate,
 		EndDate:       rule.EndDate,
 		IsActive:      pgtype.Bool{Bool: true, Valid: true},
+		ResumeThrough: ResumeThrough(today),
 	})
 	require.NoError(t, err)
 	require.True(t, resumed.IsActive)
 
 	n, err = MaterializeDue(ctx, pool, q, today)
 	require.NoError(t, err)
-	assert.Equal(t, 1, n, "resumed rule must materialize again")
+	assert.Equal(t, 1, n, "resumed rule fills from today, not the paused stretch")
 	assert.Equal(t, 1, countRuleIncomes(t, ctx, pool, rule.ID))
 }
 
@@ -207,7 +208,7 @@ func TestMaterializeIncome_CopiesCategoryNotesPriority_Integration(t *testing.T)
 		Currency:      "PHP",
 		Description:   "baon",
 		RecurringType: "daily",
-		StartDate:     pgtype.Date{Time: d("2026-09-01"), Valid: true},
+		StartDate:     pgtype.Date{Time: d("2026-09-10"), Valid: true},
 		CategoryID:    pgtype.UUID{Bytes: categoryID, Valid: true},
 		Notes:         pgtype.Text{String: "from mom", Valid: true},
 		Priority:      pgtype.Text{String: "need", Valid: true},

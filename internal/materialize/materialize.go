@@ -160,68 +160,112 @@ func DueDates(start time.Time, cadence string, end *time.Time, today time.Time) 
 	return out
 }
 
-// materializeDueToday inserts today's instance for each active rule due
-// today. Inserts are ON CONFLICT DO NOTHING against the partial unique
-// indexes, so re-runs are no-ops. Returns inserted counts.
-func materializeDueToday(ctx context.Context, q *db.Queries, today time.Time) (expenseN, incomeN int, err error) {
+// MaxDatesPerRulePass bounds how many dates one pass fills for a single rule.
+// A long outage (or a daily rule with a years-old start and no watermark)
+// fills in over several passes instead of one huge transaction; the
+// watermark records where each pass stopped.
+const MaxDatesPerRulePass = 400
+
+// catchUpBound is the last date a rule can be filled through: min(end, today).
+func catchUpBound(end pgtype.Date, today time.Time) time.Time {
+	bound := truncateDate(today)
+	if end.Valid {
+		if e := truncateDate(end.Time); e.Before(bound) {
+			bound = e
+		}
+	}
+	return bound
+}
+
+// PendingDates returns the due dates of a rule after its watermark, up to
+// min(end, today), capped at limit, and the date the watermark should move to
+// once those dates are inserted: the last returned date when the cap was hit,
+// otherwise the bound. An invalid watermark means nothing has been filled yet.
+func PendingDates(start time.Time, cadence string, watermark, end pgtype.Date, today time.Time, limit int) (dates []time.Time, through time.Time) {
+	bound := catchUpBound(end, today)
+	for _, d := range DueDates(start, cadence, pgTimeOrNil(end), today) {
+		if watermark.Valid && !d.After(truncateDate(watermark.Time)) {
+			continue
+		}
+		dates = append(dates, d)
+		if len(dates) == limit {
+			return dates, d
+		}
+	}
+	return dates, bound
+}
+
+// catchUp fills every active rule from its watermark (materialized_through)
+// to min(end_date, today) and moves the watermark forward. Missed days while
+// the worker was down are filled on the next pass; rules that ended in the
+// meantime still get their last entries. The watermark never moves backward,
+// so an entry the user deleted is not recreated, and inserts are
+// ON CONFLICT DO NOTHING, so entries the user edited or skipped are untouched.
+func catchUp(ctx context.Context, q *db.Queries, today time.Time) (expenseN, incomeN int, err error) {
 	todayPg := pgDate(today)
 
-	expenseRules, err := q.ListActiveExpenseRules(ctx, todayPg)
+	expenseRules, err := q.ListExpenseRulesBehind(ctx, todayPg)
 	if err != nil {
-		return 0, 0, fmt.Errorf("list active expense rules: %w", err)
+		return 0, 0, fmt.Errorf("list expense rules behind: %w", err)
 	}
 	for _, r := range expenseRules {
-		if !IsDue(r.StartDate.Time, r.RecurringType, today) {
-			continue
+		dates, through := PendingDates(r.StartDate.Time, r.RecurringType, r.MaterializedThrough, r.EndDate, today, MaxDatesPerRulePass)
+		for _, d := range dates {
+			n, err := q.CreateExpenseInstance(ctx, db.CreateExpenseInstanceParams{
+				UserID:       r.UserID,
+				CategoryID:   r.CategoryID,
+				Amount:       r.Amount,
+				Currency:     r.Currency,
+				Description:  r.Description,
+				Notes:        r.Notes,
+				ExpenseDate:  pgDate(d),
+				Priority:     r.Priority,
+				IsDebt:       false,
+				SourceRuleID: pgtype.UUID{Bytes: r.ID, Valid: true},
+			})
+			if err != nil {
+				return expenseN, incomeN, fmt.Errorf("create expense instance: %w", err)
+			}
+			expenseN += int(n)
 		}
-		n, err := q.CreateExpenseInstance(ctx, db.CreateExpenseInstanceParams{
-			UserID:       r.UserID,
-			CategoryID:   r.CategoryID,
-			Amount:       r.Amount,
-			Currency:     r.Currency,
-			Description:  r.Description,
-			Notes:        r.Notes,
-			ExpenseDate:  todayPg,
-			Priority:     r.Priority,
-			IsDebt:       false,
-			SourceRuleID: pgtype.UUID{Bytes: r.ID, Valid: true},
-		})
-		if err != nil {
-			return expenseN, incomeN, fmt.Errorf("create expense instance: %w", err)
+		if err := q.AdvanceExpenseRuleWatermark(ctx, db.AdvanceExpenseRuleWatermarkParams{ID: r.ID, Through: pgDate(through)}); err != nil {
+			return expenseN, incomeN, fmt.Errorf("advance expense rule watermark: %w", err)
 		}
-		expenseN += int(n)
 	}
 
-	incomeRules, err := q.ListActiveIncomeRules(ctx, todayPg)
+	incomeRules, err := q.ListIncomeRulesBehind(ctx, todayPg)
 	if err != nil {
-		return expenseN, incomeN, fmt.Errorf("list active income rules: %w", err)
+		return expenseN, incomeN, fmt.Errorf("list income rules behind: %w", err)
 	}
 	for _, r := range incomeRules {
-		if !IsDue(r.StartDate.Time, r.RecurringType, today) {
-			continue
+		dates, through := PendingDates(r.StartDate.Time, r.RecurringType, r.MaterializedThrough, r.EndDate, today, MaxDatesPerRulePass)
+		for _, d := range dates {
+			n, err := q.CreateIncomeInstance(ctx, db.CreateIncomeInstanceParams{
+				UserID:       r.UserID,
+				CategoryID:   r.CategoryID,
+				Amount:       r.Amount,
+				Currency:     r.Currency,
+				Description:  r.Description,
+				Notes:        r.Notes,
+				Date:         pgDate(d),
+				Priority:     r.Priority,
+				SourceRuleID: pgtype.UUID{Bytes: r.ID, Valid: true},
+			})
+			if err != nil {
+				return expenseN, incomeN, fmt.Errorf("create income instance: %w", err)
+			}
+			incomeN += int(n)
 		}
-		n, err := q.CreateIncomeInstance(ctx, db.CreateIncomeInstanceParams{
-			UserID:       r.UserID,
-			CategoryID:   r.CategoryID,
-			Amount:       r.Amount,
-			Currency:     r.Currency,
-			Description:  r.Description,
-			Notes:        r.Notes,
-			Date:         todayPg,
-			Priority:     r.Priority,
-			SourceRuleID: pgtype.UUID{Bytes: r.ID, Valid: true},
-		})
-		if err != nil {
-			return expenseN, incomeN, fmt.Errorf("create income instance: %w", err)
+		if err := q.AdvanceIncomeRuleWatermark(ctx, db.AdvanceIncomeRuleWatermarkParams{ID: r.ID, Through: pgDate(through)}); err != nil {
+			return expenseN, incomeN, fmt.Errorf("advance income rule watermark: %w", err)
 		}
-		incomeN += int(n)
 	}
 	return expenseN, incomeN, nil
 }
 
 // materializeHistory inserts one instance row per due date bounded by
 // start..min(end, today) for every active rule. Used by the backfill path
-// (D5 Phase 1) to converge history; the daily pass uses materializeDueToday.
+// (D5 Phase 1) to converge history; the regular pass uses catchUp.
 func materializeHistory(ctx context.Context, q *db.Queries, today time.Time) (expenseN, incomeN int, err error) {
 	todayPg := pgDate(today)
 
@@ -248,6 +292,9 @@ func materializeHistory(ctx context.Context, q *db.Queries, today time.Time) (ex
 			}
 			expenseN += int(n)
 		}
+		if err := q.AdvanceExpenseRuleWatermark(ctx, db.AdvanceExpenseRuleWatermarkParams{ID: r.ID, Through: pgDate(catchUpBound(r.EndDate, today))}); err != nil {
+			return expenseN, incomeN, fmt.Errorf("advance expense rule watermark: %w", err)
+		}
 	}
 
 	incomeRules, err := q.ListActiveIncomeRules(ctx, todayPg)
@@ -271,6 +318,9 @@ func materializeHistory(ctx context.Context, q *db.Queries, today time.Time) (ex
 				return expenseN, incomeN, fmt.Errorf("create income instance: %w", err)
 			}
 			incomeN += int(n)
+		}
+		if err := q.AdvanceIncomeRuleWatermark(ctx, db.AdvanceIncomeRuleWatermarkParams{ID: r.ID, Through: pgDate(catchUpBound(r.EndDate, today))}); err != nil {
+			return expenseN, incomeN, fmt.Errorf("advance income rule watermark: %w", err)
 		}
 	}
 	return expenseN, incomeN, nil
@@ -296,15 +346,15 @@ func withMaterializeLock(ctx context.Context, pool *pgxpool.Pool, queries *db.Qu
 	return nil
 }
 
-// MaterializeDue inserts today's static instance row for each active rule
-// due today (start_date <= today, end_date NULL or >= today). Instance rows
-// use recurring_type='one-time', NULL start/end, source_rule_id set,
-// status='posted'. Ended or not-yet-due rules produce nothing. Returns the
-// number of rows inserted.
+// MaterializeDue runs the catch-up pass: every active rule gets its due dates
+// after its watermark up to min(end_date, today), so entries missed while the
+// worker was down are created on the next pass. Instance rows use
+// recurring_type='one-time', NULL start/end, source_rule_id set,
+// status='posted'. Returns the number of rows inserted.
 func MaterializeDue(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, today time.Time) (int, error) {
 	inserted := 0
 	err := withMaterializeLock(ctx, pool, queries, func(q *db.Queries) error {
-		e, i, err := materializeDueToday(ctx, q, today)
+		e, i, err := catchUp(ctx, q, today)
 		if err != nil {
 			return err
 		}
@@ -404,6 +454,9 @@ func BackfillLegacy(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries
 				}
 				res.ExpenseInstances += int(n)
 			}
+			if err := q.AdvanceExpenseRuleWatermark(ctx, db.AdvanceExpenseRuleWatermarkParams{ID: rule.ID, Through: pgDate(catchUpBound(leg.EndDate, today))}); err != nil {
+				return fmt.Errorf("advance expense rule watermark: %w", err)
+			}
 			if err := q.FlipLegacyExpenseToOneTime(ctx, leg.ID); err != nil {
 				return fmt.Errorf("flip legacy expense %s: %w", leg.ID, err)
 			}
@@ -451,6 +504,9 @@ func BackfillLegacy(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries
 					return fmt.Errorf("backfill income instance: %w", err)
 				}
 				res.IncomeInstances += int(n)
+			}
+			if err := q.AdvanceIncomeRuleWatermark(ctx, db.AdvanceIncomeRuleWatermarkParams{ID: rule.ID, Through: pgDate(catchUpBound(leg.EndDate, today))}); err != nil {
+				return fmt.Errorf("advance income rule watermark: %w", err)
 			}
 			if err := q.FlipLegacyIncomeToOneTime(ctx, leg.ID); err != nil {
 				return fmt.Errorf("flip legacy income %s: %w", leg.ID, err)
@@ -508,6 +564,9 @@ func materializeHistoryForUser(ctx context.Context, q *db.Queries, userID uuid.U
 			}
 			expenseN += int(n)
 		}
+		if err := q.AdvanceExpenseRuleWatermark(ctx, db.AdvanceExpenseRuleWatermarkParams{ID: r.ID, Through: pgDate(catchUpBound(r.EndDate, today))}); err != nil {
+			return expenseN, incomeN, fmt.Errorf("advance expense rule watermark: %w", err)
+		}
 	}
 
 	incomeRules, err := q.ListActiveIncomeRulesByUser(ctx, db.ListActiveIncomeRulesByUserParams{
@@ -534,6 +593,9 @@ func materializeHistoryForUser(ctx context.Context, q *db.Queries, userID uuid.U
 				return expenseN, incomeN, fmt.Errorf("create income instance: %w", err)
 			}
 			incomeN += int(n)
+		}
+		if err := q.AdvanceIncomeRuleWatermark(ctx, db.AdvanceIncomeRuleWatermarkParams{ID: r.ID, Through: pgDate(catchUpBound(r.EndDate, today))}); err != nil {
+			return expenseN, incomeN, fmt.Errorf("advance income rule watermark: %w", err)
 		}
 	}
 	return expenseN, incomeN, nil
@@ -600,6 +662,9 @@ func BackfillLegacyForUser(ctx context.Context, pool *pgxpool.Pool, queries *db.
 				}
 				res.ExpenseInstances += int(n)
 			}
+			if err := q.AdvanceExpenseRuleWatermark(ctx, db.AdvanceExpenseRuleWatermarkParams{ID: rule.ID, Through: pgDate(catchUpBound(leg.EndDate, today))}); err != nil {
+				return fmt.Errorf("advance expense rule watermark: %w", err)
+			}
 			if err := q.FlipLegacyExpenseToOneTime(ctx, leg.ID); err != nil {
 				return fmt.Errorf("flip legacy expense %s: %w", leg.ID, err)
 			}
@@ -647,6 +712,9 @@ func BackfillLegacyForUser(ctx context.Context, pool *pgxpool.Pool, queries *db.
 					return fmt.Errorf("backfill income instance: %w", err)
 				}
 				res.IncomeInstances += int(n)
+			}
+			if err := q.AdvanceIncomeRuleWatermark(ctx, db.AdvanceIncomeRuleWatermarkParams{ID: rule.ID, Through: pgDate(catchUpBound(leg.EndDate, today))}); err != nil {
+				return fmt.Errorf("advance income rule watermark: %w", err)
 			}
 			if err := q.FlipLegacyIncomeToOneTime(ctx, leg.ID); err != nil {
 				return fmt.Errorf("flip legacy income %s: %w", leg.ID, err)

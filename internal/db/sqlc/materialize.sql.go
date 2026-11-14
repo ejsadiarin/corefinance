@@ -13,6 +13,39 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const advanceExpenseRuleWatermark = `-- name: AdvanceExpenseRuleWatermark :exec
+UPDATE recurring_expense_rules
+SET materialized_through = GREATEST(materialized_through, $1::date)
+WHERE id = $2
+`
+
+type AdvanceExpenseRuleWatermarkParams struct {
+	Through pgtype.Date `db:"through" json:"through"`
+	ID      uuid.UUID   `db:"id" json:"id"`
+}
+
+// The watermark only moves forward: GREATEST ignores a NULL current value.
+func (q *Queries) AdvanceExpenseRuleWatermark(ctx context.Context, arg AdvanceExpenseRuleWatermarkParams) error {
+	_, err := q.db.Exec(ctx, advanceExpenseRuleWatermark, arg.Through, arg.ID)
+	return err
+}
+
+const advanceIncomeRuleWatermark = `-- name: AdvanceIncomeRuleWatermark :exec
+UPDATE recurring_income_rules
+SET materialized_through = GREATEST(materialized_through, $1::date)
+WHERE id = $2
+`
+
+type AdvanceIncomeRuleWatermarkParams struct {
+	Through pgtype.Date `db:"through" json:"through"`
+	ID      uuid.UUID   `db:"id" json:"id"`
+}
+
+func (q *Queries) AdvanceIncomeRuleWatermark(ctx context.Context, arg AdvanceIncomeRuleWatermarkParams) error {
+	_, err := q.db.Exec(ctx, advanceIncomeRuleWatermark, arg.Through, arg.ID)
+	return err
+}
+
 const countLegacyExpenses = `-- name: CountLegacyExpenses :one
 SELECT COUNT(*)::bigint AS legacy_count FROM expenses
 WHERE recurring_type != 'one-time' AND source_rule_id IS NULL
@@ -157,7 +190,7 @@ func (q *Queries) FlipLegacyIncomeToOneTime(ctx context.Context, id uuid.UUID) e
 
 const listActiveExpenseRules = `-- name: ListActiveExpenseRules :many
 
-SELECT id, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, created_at, updated_at FROM recurring_expense_rules
+SELECT id, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, created_at, updated_at, materialized_through FROM recurring_expense_rules
 WHERE is_active = true
   AND start_date <= $1
   AND (end_date IS NULL OR end_date >= $1)
@@ -190,6 +223,7 @@ func (q *Queries) ListActiveExpenseRules(ctx context.Context, startDate pgtype.D
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.MaterializedThrough,
 		); err != nil {
 			return nil, err
 		}
@@ -202,7 +236,7 @@ func (q *Queries) ListActiveExpenseRules(ctx context.Context, startDate pgtype.D
 }
 
 const listActiveExpenseRulesByUser = `-- name: ListActiveExpenseRulesByUser :many
-SELECT id, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, created_at, updated_at FROM recurring_expense_rules
+SELECT id, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, created_at, updated_at, materialized_through FROM recurring_expense_rules
 WHERE user_id = $1
   AND is_active = true
   AND start_date <= $2
@@ -239,6 +273,7 @@ func (q *Queries) ListActiveExpenseRulesByUser(ctx context.Context, arg ListActi
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.MaterializedThrough,
 		); err != nil {
 			return nil, err
 		}
@@ -251,7 +286,7 @@ func (q *Queries) ListActiveExpenseRulesByUser(ctx context.Context, arg ListActi
 }
 
 const listActiveIncomeRules = `-- name: ListActiveIncomeRules :many
-SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority FROM recurring_income_rules
+SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority, materialized_through FROM recurring_income_rules
 WHERE is_active = true
   AND start_date <= $1
   AND (end_date IS NULL OR end_date >= $1)
@@ -282,6 +317,7 @@ func (q *Queries) ListActiveIncomeRules(ctx context.Context, startDate pgtype.Da
 			&i.CategoryID,
 			&i.Notes,
 			&i.Priority,
+			&i.MaterializedThrough,
 		); err != nil {
 			return nil, err
 		}
@@ -294,7 +330,7 @@ func (q *Queries) ListActiveIncomeRules(ctx context.Context, startDate pgtype.Da
 }
 
 const listActiveIncomeRulesByUser = `-- name: ListActiveIncomeRulesByUser :many
-SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority FROM recurring_income_rules
+SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority, materialized_through FROM recurring_income_rules
 WHERE user_id = $1
   AND is_active = true
   AND start_date <= $2
@@ -331,6 +367,103 @@ func (q *Queries) ListActiveIncomeRulesByUser(ctx context.Context, arg ListActiv
 			&i.CategoryID,
 			&i.Notes,
 			&i.Priority,
+			&i.MaterializedThrough,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listExpenseRulesBehind = `-- name: ListExpenseRulesBehind :many
+
+SELECT id, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, created_at, updated_at, materialized_through FROM recurring_expense_rules
+WHERE is_active = true
+  AND start_date <= $1::date
+  AND COALESCE(materialized_through, start_date - 1)
+      < LEAST(COALESCE(end_date, $1::date), $1::date)
+ORDER BY start_date ASC, id ASC
+`
+
+// Catch-up pass (#7): rules with due dates the worker hasn't filled yet.
+// A rule is behind when its watermark (materialized_through, or the day before
+// start_date when nothing has been filled) is earlier than min(end_date, today).
+// Rules that ended while the worker was down are still included. Paused rules
+// are not.
+func (q *Queries) ListExpenseRulesBehind(ctx context.Context, today pgtype.Date) ([]RecurringExpenseRule, error) {
+	rows, err := q.db.Query(ctx, listExpenseRulesBehind, today)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RecurringExpenseRule{}
+	for rows.Next() {
+		var i RecurringExpenseRule
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Description,
+			&i.Amount,
+			&i.Currency,
+			&i.CategoryID,
+			&i.Notes,
+			&i.RecurringType,
+			&i.StartDate,
+			&i.EndDate,
+			&i.Priority,
+			&i.IsActive,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.MaterializedThrough,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIncomeRulesBehind = `-- name: ListIncomeRulesBehind :many
+SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority, materialized_through FROM recurring_income_rules
+WHERE is_active = true
+  AND start_date <= $1::date
+  AND COALESCE(materialized_through, start_date - 1)
+      < LEAST(COALESCE(end_date, $1::date), $1::date)
+ORDER BY start_date ASC, id ASC
+`
+
+func (q *Queries) ListIncomeRulesBehind(ctx context.Context, today pgtype.Date) ([]RecurringIncomeRule, error) {
+	rows, err := q.db.Query(ctx, listIncomeRulesBehind, today)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RecurringIncomeRule{}
+	for rows.Next() {
+		var i RecurringIncomeRule
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Amount,
+			&i.Currency,
+			&i.Description,
+			&i.RecurringType,
+			&i.StartDate,
+			&i.EndDate,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.IsActive,
+			&i.CategoryID,
+			&i.Notes,
+			&i.Priority,
+			&i.MaterializedThrough,
 		); err != nil {
 			return nil, err
 		}

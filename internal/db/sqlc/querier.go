@@ -15,6 +15,9 @@ import (
 type Querier interface {
 	AddTagToExpense(ctx context.Context, arg AddTagToExpenseParams) error
 	AddTagToIncome(ctx context.Context, arg AddTagToIncomeParams) error
+	// The watermark only moves forward: GREATEST ignores a NULL current value.
+	AdvanceExpenseRuleWatermark(ctx context.Context, arg AdvanceExpenseRuleWatermarkParams) error
+	AdvanceIncomeRuleWatermark(ctx context.Context, arg AdvanceIncomeRuleWatermarkParams) error
 	CheckSkippedExpense(ctx context.Context, arg CheckSkippedExpenseParams) (bool, error)
 	CheckSkippedIncome(ctx context.Context, arg CheckSkippedIncomeParams) (bool, error)
 	CountLegacyExpenses(ctx context.Context) (int64, error)
@@ -74,11 +77,18 @@ type Querier interface {
 	ListAllIncomeTagsByUser(ctx context.Context, userID uuid.UUID) ([]IncomeTag, error)
 	ListAllIncomesByUser(ctx context.Context, userID uuid.UUID) ([]Income, error)
 	ListExpenseCategories(ctx context.Context, userID uuid.UUID) ([]ExpenseCategory, error)
+	// Catch-up pass (#7): rules with due dates the worker hasn't filled yet.
+	// A rule is behind when its watermark (materialized_through, or the day before
+	// start_date when nothing has been filled) is earlier than min(end_date, today).
+	// Rules that ended while the worker was down are still included. Paused rules
+	// are not.
+	ListExpenseRulesBehind(ctx context.Context, today pgtype.Date) ([]RecurringExpenseRule, error)
 	ListExpenses(ctx context.Context, arg ListExpensesParams) ([]ListExpensesRow, error)
 	// The caller's expenses among the given ids; ids that don't exist or
 	// belong to someone else are simply absent.
 	ListExpensesByIDs(ctx context.Context, arg ListExpensesByIDsParams) ([]ListExpensesByIDsRow, error)
 	ListIncomeCategories(ctx context.Context, userID uuid.UUID) ([]IncomeCategory, error)
+	ListIncomeRulesBehind(ctx context.Context, today pgtype.Date) ([]RecurringIncomeRule, error)
 	ListIncomes(ctx context.Context, arg ListIncomesParams) ([]ListIncomesRow, error)
 	// The caller's incomes among the given ids; ids that don't exist or
 	// belong to someone else are simply absent.

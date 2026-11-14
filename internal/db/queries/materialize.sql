@@ -84,3 +84,36 @@ WHERE user_id = $1 AND recurring_type != 'one-time' AND source_rule_id IS NULL;
 -- name: CountLegacyIncomesByUser :one
 SELECT COUNT(*)::bigint AS legacy_count FROM incomes
 WHERE user_id = $1 AND recurring_type != 'one-time' AND source_rule_id IS NULL;
+
+-- Catch-up pass (#7): rules with due dates the worker hasn't filled yet.
+-- A rule is behind when its watermark (materialized_through, or the day before
+-- start_date when nothing has been filled) is earlier than min(end_date, today).
+-- Rules that ended while the worker was down are still included. Paused rules
+-- are not.
+
+-- name: ListExpenseRulesBehind :many
+SELECT * FROM recurring_expense_rules
+WHERE is_active = true
+  AND start_date <= sqlc.arg(today)::date
+  AND COALESCE(materialized_through, start_date - 1)
+      < LEAST(COALESCE(end_date, sqlc.arg(today)::date), sqlc.arg(today)::date)
+ORDER BY start_date ASC, id ASC;
+
+-- name: ListIncomeRulesBehind :many
+SELECT * FROM recurring_income_rules
+WHERE is_active = true
+  AND start_date <= sqlc.arg(today)::date
+  AND COALESCE(materialized_through, start_date - 1)
+      < LEAST(COALESCE(end_date, sqlc.arg(today)::date), sqlc.arg(today)::date)
+ORDER BY start_date ASC, id ASC;
+
+-- The watermark only moves forward: GREATEST ignores a NULL current value.
+-- name: AdvanceExpenseRuleWatermark :exec
+UPDATE recurring_expense_rules
+SET materialized_through = GREATEST(materialized_through, sqlc.arg(through)::date)
+WHERE id = sqlc.arg(id);
+
+-- name: AdvanceIncomeRuleWatermark :exec
+UPDATE recurring_income_rules
+SET materialized_through = GREATEST(materialized_through, sqlc.arg(through)::date)
+WHERE id = sqlc.arg(id);

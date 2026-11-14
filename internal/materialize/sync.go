@@ -72,3 +72,11 @@ func MaterializeIncomeRuleToday(ctx context.Context, q db.Querier, rule db.Recur
 	}
 	return n, nil
 }
+
+// ResumeThrough is the watermark a rule gets when it is resumed from paused
+// on today: the day before today, so the catch-up pass fills today onward and
+// not the stretch the rule was paused. Pass it as ResumeThrough on every rule
+// update; the update query only applies it when is_active flips false->true.
+func ResumeThrough(today time.Time) pgtype.Date {
+	return pgDate(truncateDate(today).AddDate(0, 0, -1))
+}

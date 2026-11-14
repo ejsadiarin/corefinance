@@ -104,6 +104,7 @@ func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 		Notes:         helper.ToPgText(req.Notes),
 		Priority:      optionalPriority(req.Priority),
 		IsActive:      helper.ToPgBool(req.IsActive),
+		ResumeThrough: materialize.ResumeThrough(time.Now()),
 	})
 	if err != nil {
 		return db.RecurringIncomeRule{}, err
@@ -166,6 +167,7 @@ func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uu
 		EndDate:       helper.ToPgDatePtr(req.EndDate),
 		Priority:      req.Priority,
 		IsActive:      helper.ToPgBool(req.IsActive),
+		ResumeThrough: materialize.ResumeThrough(time.Now()),
 	})
 	if err != nil {
 		return db.RecurringExpenseRule{}, err

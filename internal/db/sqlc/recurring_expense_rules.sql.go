@@ -16,7 +16,7 @@ import (
 const createRecurringExpenseRule = `-- name: CreateRecurringExpenseRule :one
 INSERT INTO recurring_expense_rules (user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, created_at, updated_at
+RETURNING id, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, created_at, updated_at, materialized_through
 `
 
 type CreateRecurringExpenseRuleParams struct {
@@ -61,6 +61,7 @@ func (q *Queries) CreateRecurringExpenseRule(ctx context.Context, arg CreateRecu
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MaterializedThrough,
 	)
 	return i, err
 }
@@ -81,7 +82,7 @@ func (q *Queries) DeleteRecurringExpenseRule(ctx context.Context, arg DeleteRecu
 }
 
 const getRecurringExpenseRule = `-- name: GetRecurringExpenseRule :one
-SELECT r.id, r.user_id, r.description, r.amount, r.currency, r.category_id, r.notes, r.recurring_type, r.start_date, r.end_date, r.priority, r.is_active, r.created_at, r.updated_at, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
+SELECT r.id, r.user_id, r.description, r.amount, r.currency, r.category_id, r.notes, r.recurring_type, r.start_date, r.end_date, r.priority, r.is_active, r.created_at, r.updated_at, r.materialized_through, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
 FROM recurring_expense_rules r
 LEFT JOIN expense_categories ec ON r.category_id = ec.id
 WHERE r.id = $1 AND r.user_id = $2
@@ -93,23 +94,24 @@ type GetRecurringExpenseRuleParams struct {
 }
 
 type GetRecurringExpenseRuleRow struct {
-	ID            uuid.UUID          `db:"id" json:"id"`
-	UserID        uuid.UUID          `db:"user_id" json:"user_id"`
-	Description   string             `db:"description" json:"description"`
-	Amount        decimal.Decimal    `db:"amount" json:"amount"`
-	Currency      string             `db:"currency" json:"currency"`
-	CategoryID    pgtype.UUID        `db:"category_id" json:"category_id"`
-	Notes         pgtype.Text        `db:"notes" json:"notes"`
-	RecurringType string             `db:"recurring_type" json:"recurring_type"`
-	StartDate     pgtype.Date        `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date        `db:"end_date" json:"end_date"`
-	Priority      string             `db:"priority" json:"priority"`
-	IsActive      bool               `db:"is_active" json:"is_active"`
-	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	CategoryName  pgtype.Text        `db:"category_name" json:"category_name"`
-	CategoryColor pgtype.Text        `db:"category_color" json:"category_color"`
-	CategoryIcon  pgtype.Text        `db:"category_icon" json:"category_icon"`
+	ID                  uuid.UUID          `db:"id" json:"id"`
+	UserID              uuid.UUID          `db:"user_id" json:"user_id"`
+	Description         string             `db:"description" json:"description"`
+	Amount              decimal.Decimal    `db:"amount" json:"amount"`
+	Currency            string             `db:"currency" json:"currency"`
+	CategoryID          pgtype.UUID        `db:"category_id" json:"category_id"`
+	Notes               pgtype.Text        `db:"notes" json:"notes"`
+	RecurringType       string             `db:"recurring_type" json:"recurring_type"`
+	StartDate           pgtype.Date        `db:"start_date" json:"start_date"`
+	EndDate             pgtype.Date        `db:"end_date" json:"end_date"`
+	Priority            string             `db:"priority" json:"priority"`
+	IsActive            bool               `db:"is_active" json:"is_active"`
+	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	MaterializedThrough pgtype.Date        `db:"materialized_through" json:"materialized_through"`
+	CategoryName        pgtype.Text        `db:"category_name" json:"category_name"`
+	CategoryColor       pgtype.Text        `db:"category_color" json:"category_color"`
+	CategoryIcon        pgtype.Text        `db:"category_icon" json:"category_icon"`
 }
 
 func (q *Queries) GetRecurringExpenseRule(ctx context.Context, arg GetRecurringExpenseRuleParams) (GetRecurringExpenseRuleRow, error) {
@@ -130,6 +132,7 @@ func (q *Queries) GetRecurringExpenseRule(ctx context.Context, arg GetRecurringE
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MaterializedThrough,
 		&i.CategoryName,
 		&i.CategoryColor,
 		&i.CategoryIcon,
@@ -138,7 +141,7 @@ func (q *Queries) GetRecurringExpenseRule(ctx context.Context, arg GetRecurringE
 }
 
 const listRecurringExpenseRules = `-- name: ListRecurringExpenseRules :many
-SELECT r.id, r.user_id, r.description, r.amount, r.currency, r.category_id, r.notes, r.recurring_type, r.start_date, r.end_date, r.priority, r.is_active, r.created_at, r.updated_at, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
+SELECT r.id, r.user_id, r.description, r.amount, r.currency, r.category_id, r.notes, r.recurring_type, r.start_date, r.end_date, r.priority, r.is_active, r.created_at, r.updated_at, r.materialized_through, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
 FROM recurring_expense_rules r
 LEFT JOIN expense_categories ec ON r.category_id = ec.id
 WHERE r.user_id = $1 AND r.is_active = true
@@ -146,23 +149,24 @@ ORDER BY r.created_at DESC
 `
 
 type ListRecurringExpenseRulesRow struct {
-	ID            uuid.UUID          `db:"id" json:"id"`
-	UserID        uuid.UUID          `db:"user_id" json:"user_id"`
-	Description   string             `db:"description" json:"description"`
-	Amount        decimal.Decimal    `db:"amount" json:"amount"`
-	Currency      string             `db:"currency" json:"currency"`
-	CategoryID    pgtype.UUID        `db:"category_id" json:"category_id"`
-	Notes         pgtype.Text        `db:"notes" json:"notes"`
-	RecurringType string             `db:"recurring_type" json:"recurring_type"`
-	StartDate     pgtype.Date        `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date        `db:"end_date" json:"end_date"`
-	Priority      string             `db:"priority" json:"priority"`
-	IsActive      bool               `db:"is_active" json:"is_active"`
-	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	CategoryName  pgtype.Text        `db:"category_name" json:"category_name"`
-	CategoryColor pgtype.Text        `db:"category_color" json:"category_color"`
-	CategoryIcon  pgtype.Text        `db:"category_icon" json:"category_icon"`
+	ID                  uuid.UUID          `db:"id" json:"id"`
+	UserID              uuid.UUID          `db:"user_id" json:"user_id"`
+	Description         string             `db:"description" json:"description"`
+	Amount              decimal.Decimal    `db:"amount" json:"amount"`
+	Currency            string             `db:"currency" json:"currency"`
+	CategoryID          pgtype.UUID        `db:"category_id" json:"category_id"`
+	Notes               pgtype.Text        `db:"notes" json:"notes"`
+	RecurringType       string             `db:"recurring_type" json:"recurring_type"`
+	StartDate           pgtype.Date        `db:"start_date" json:"start_date"`
+	EndDate             pgtype.Date        `db:"end_date" json:"end_date"`
+	Priority            string             `db:"priority" json:"priority"`
+	IsActive            bool               `db:"is_active" json:"is_active"`
+	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	MaterializedThrough pgtype.Date        `db:"materialized_through" json:"materialized_through"`
+	CategoryName        pgtype.Text        `db:"category_name" json:"category_name"`
+	CategoryColor       pgtype.Text        `db:"category_color" json:"category_color"`
+	CategoryIcon        pgtype.Text        `db:"category_icon" json:"category_icon"`
 }
 
 func (q *Queries) ListRecurringExpenseRules(ctx context.Context, userID uuid.UUID) ([]ListRecurringExpenseRulesRow, error) {
@@ -189,6 +193,7 @@ func (q *Queries) ListRecurringExpenseRules(ctx context.Context, userID uuid.UUI
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.MaterializedThrough,
 			&i.CategoryName,
 			&i.CategoryColor,
 			&i.CategoryIcon,
@@ -204,7 +209,7 @@ func (q *Queries) ListRecurringExpenseRules(ctx context.Context, userID uuid.UUI
 }
 
 const listRecurringExpenseRulesWithPaused = `-- name: ListRecurringExpenseRulesWithPaused :many
-SELECT r.id, r.user_id, r.description, r.amount, r.currency, r.category_id, r.notes, r.recurring_type, r.start_date, r.end_date, r.priority, r.is_active, r.created_at, r.updated_at, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
+SELECT r.id, r.user_id, r.description, r.amount, r.currency, r.category_id, r.notes, r.recurring_type, r.start_date, r.end_date, r.priority, r.is_active, r.created_at, r.updated_at, r.materialized_through, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
 FROM recurring_expense_rules r
 LEFT JOIN expense_categories ec ON r.category_id = ec.id
 WHERE r.user_id = $1
@@ -212,23 +217,24 @@ ORDER BY r.created_at DESC
 `
 
 type ListRecurringExpenseRulesWithPausedRow struct {
-	ID            uuid.UUID          `db:"id" json:"id"`
-	UserID        uuid.UUID          `db:"user_id" json:"user_id"`
-	Description   string             `db:"description" json:"description"`
-	Amount        decimal.Decimal    `db:"amount" json:"amount"`
-	Currency      string             `db:"currency" json:"currency"`
-	CategoryID    pgtype.UUID        `db:"category_id" json:"category_id"`
-	Notes         pgtype.Text        `db:"notes" json:"notes"`
-	RecurringType string             `db:"recurring_type" json:"recurring_type"`
-	StartDate     pgtype.Date        `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date        `db:"end_date" json:"end_date"`
-	Priority      string             `db:"priority" json:"priority"`
-	IsActive      bool               `db:"is_active" json:"is_active"`
-	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	CategoryName  pgtype.Text        `db:"category_name" json:"category_name"`
-	CategoryColor pgtype.Text        `db:"category_color" json:"category_color"`
-	CategoryIcon  pgtype.Text        `db:"category_icon" json:"category_icon"`
+	ID                  uuid.UUID          `db:"id" json:"id"`
+	UserID              uuid.UUID          `db:"user_id" json:"user_id"`
+	Description         string             `db:"description" json:"description"`
+	Amount              decimal.Decimal    `db:"amount" json:"amount"`
+	Currency            string             `db:"currency" json:"currency"`
+	CategoryID          pgtype.UUID        `db:"category_id" json:"category_id"`
+	Notes               pgtype.Text        `db:"notes" json:"notes"`
+	RecurringType       string             `db:"recurring_type" json:"recurring_type"`
+	StartDate           pgtype.Date        `db:"start_date" json:"start_date"`
+	EndDate             pgtype.Date        `db:"end_date" json:"end_date"`
+	Priority            string             `db:"priority" json:"priority"`
+	IsActive            bool               `db:"is_active" json:"is_active"`
+	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	MaterializedThrough pgtype.Date        `db:"materialized_through" json:"materialized_through"`
+	CategoryName        pgtype.Text        `db:"category_name" json:"category_name"`
+	CategoryColor       pgtype.Text        `db:"category_color" json:"category_color"`
+	CategoryIcon        pgtype.Text        `db:"category_icon" json:"category_icon"`
 }
 
 // ListRecurringExpenseRulesWithPaused lists every rule, paused ones too, so
@@ -257,6 +263,7 @@ func (q *Queries) ListRecurringExpenseRulesWithPaused(ctx context.Context, userI
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.MaterializedThrough,
 			&i.CategoryName,
 			&i.CategoryColor,
 			&i.CategoryIcon,
@@ -275,10 +282,17 @@ const updateRecurringExpenseRule = `-- name: UpdateRecurringExpenseRule :one
 UPDATE recurring_expense_rules
 SET description = $3, amount = $4, currency = $5, category_id = $6, notes = $7,
     recurring_type = $8, start_date = $9, end_date = $10, priority = $11,
+    -- Resuming a paused rule (#7): skip the paused stretch so the catch-up
+    -- pass doesn't fill it. RHS columns are the pre-update values.
+    materialized_through = CASE
+        WHEN NOT is_active AND $12::bool
+        THEN GREATEST(COALESCE(materialized_through, start_date - 1), $13::date)
+        ELSE materialized_through
+    END,
     is_active = COALESCE($12, is_active),
     updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, created_at, updated_at
+RETURNING id, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, created_at, updated_at, materialized_through
 `
 
 type UpdateRecurringExpenseRuleParams struct {
@@ -294,6 +308,7 @@ type UpdateRecurringExpenseRuleParams struct {
 	EndDate       pgtype.Date     `db:"end_date" json:"end_date"`
 	Priority      string          `db:"priority" json:"priority"`
 	IsActive      pgtype.Bool     `db:"is_active" json:"is_active"`
+	ResumeThrough pgtype.Date     `db:"resume_through" json:"resume_through"`
 }
 
 func (q *Queries) UpdateRecurringExpenseRule(ctx context.Context, arg UpdateRecurringExpenseRuleParams) (RecurringExpenseRule, error) {
@@ -310,6 +325,7 @@ func (q *Queries) UpdateRecurringExpenseRule(ctx context.Context, arg UpdateRecu
 		arg.EndDate,
 		arg.Priority,
 		arg.IsActive,
+		arg.ResumeThrough,
 	)
 	var i RecurringExpenseRule
 	err := row.Scan(
@@ -327,6 +343,7 @@ func (q *Queries) UpdateRecurringExpenseRule(ctx context.Context, arg UpdateRecu
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MaterializedThrough,
 	)
 	return i, err
 }

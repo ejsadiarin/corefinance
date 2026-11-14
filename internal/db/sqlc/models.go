@@ -82,37 +82,39 @@ type IncomeTag struct {
 }
 
 type RecurringExpenseRule struct {
-	ID            uuid.UUID          `db:"id" json:"id"`
-	UserID        uuid.UUID          `db:"user_id" json:"user_id"`
-	Description   string             `db:"description" json:"description"`
-	Amount        decimal.Decimal    `db:"amount" json:"amount"`
-	Currency      string             `db:"currency" json:"currency"`
-	CategoryID    pgtype.UUID        `db:"category_id" json:"category_id"`
-	Notes         pgtype.Text        `db:"notes" json:"notes"`
-	RecurringType string             `db:"recurring_type" json:"recurring_type"`
-	StartDate     pgtype.Date        `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date        `db:"end_date" json:"end_date"`
-	Priority      string             `db:"priority" json:"priority"`
-	IsActive      bool               `db:"is_active" json:"is_active"`
-	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID                  uuid.UUID          `db:"id" json:"id"`
+	UserID              uuid.UUID          `db:"user_id" json:"user_id"`
+	Description         string             `db:"description" json:"description"`
+	Amount              decimal.Decimal    `db:"amount" json:"amount"`
+	Currency            string             `db:"currency" json:"currency"`
+	CategoryID          pgtype.UUID        `db:"category_id" json:"category_id"`
+	Notes               pgtype.Text        `db:"notes" json:"notes"`
+	RecurringType       string             `db:"recurring_type" json:"recurring_type"`
+	StartDate           pgtype.Date        `db:"start_date" json:"start_date"`
+	EndDate             pgtype.Date        `db:"end_date" json:"end_date"`
+	Priority            string             `db:"priority" json:"priority"`
+	IsActive            bool               `db:"is_active" json:"is_active"`
+	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	MaterializedThrough pgtype.Date        `db:"materialized_through" json:"materialized_through"`
 }
 
 type RecurringIncomeRule struct {
-	ID            uuid.UUID          `db:"id" json:"id"`
-	UserID        uuid.UUID          `db:"user_id" json:"user_id"`
-	Amount        decimal.Decimal    `db:"amount" json:"amount"`
-	Currency      string             `db:"currency" json:"currency"`
-	Description   string             `db:"description" json:"description"`
-	RecurringType string             `db:"recurring_type" json:"recurring_type"`
-	StartDate     pgtype.Date        `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date        `db:"end_date" json:"end_date"`
-	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	IsActive      bool               `db:"is_active" json:"is_active"`
-	CategoryID    pgtype.UUID        `db:"category_id" json:"category_id"`
-	Notes         pgtype.Text        `db:"notes" json:"notes"`
-	Priority      string             `db:"priority" json:"priority"`
+	ID                  uuid.UUID          `db:"id" json:"id"`
+	UserID              uuid.UUID          `db:"user_id" json:"user_id"`
+	Amount              decimal.Decimal    `db:"amount" json:"amount"`
+	Currency            string             `db:"currency" json:"currency"`
+	Description         string             `db:"description" json:"description"`
+	RecurringType       string             `db:"recurring_type" json:"recurring_type"`
+	StartDate           pgtype.Date        `db:"start_date" json:"start_date"`
+	EndDate             pgtype.Date        `db:"end_date" json:"end_date"`
+	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	IsActive            bool               `db:"is_active" json:"is_active"`
+	CategoryID          pgtype.UUID        `db:"category_id" json:"category_id"`
+	Notes               pgtype.Text        `db:"notes" json:"notes"`
+	Priority            string             `db:"priority" json:"priority"`
+	MaterializedThrough pgtype.Date        `db:"materialized_through" json:"materialized_through"`
 }
 
 type Tag struct {
