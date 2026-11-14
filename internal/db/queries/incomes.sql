@@ -50,9 +50,11 @@ SELECT EXISTS (
 ) AS is_skipped;
 
 -- name: GetIncomeOccurrences :many
+-- Incomes a recurring rule created. The worker stamps them one-time with
+-- source_rule_id set, so the link, not the type, marks an occurrence.
 SELECT * FROM incomes
 WHERE user_id = @user_id
-  AND recurring_type != 'one-time'
+  AND source_rule_id IS NOT NULL
   AND (@start_date::date IS NULL OR date >= @start_date)
   AND (@end_date::date IS NULL OR date <= @end_date)
 ORDER BY date DESC;

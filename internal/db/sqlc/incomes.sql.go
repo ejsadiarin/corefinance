@@ -175,7 +175,7 @@ func (q *Queries) GetIncome(ctx context.Context, arg GetIncomeParams) (GetIncome
 const getIncomeOccurrences = `-- name: GetIncomeOccurrences :many
 SELECT id, user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id, created_at, updated_at FROM incomes
 WHERE user_id = $1
-  AND recurring_type != 'one-time'
+  AND source_rule_id IS NOT NULL
   AND ($2::date IS NULL OR date >= $2)
   AND ($3::date IS NULL OR date <= $3)
 ORDER BY date DESC
@@ -187,6 +187,8 @@ type GetIncomeOccurrencesParams struct {
 	EndDate   pgtype.Date `db:"end_date" json:"end_date"`
 }
 
+// Incomes a recurring rule created. The worker stamps them one-time with
+// source_rule_id set, so the link, not the type, marks an occurrence.
 func (q *Queries) GetIncomeOccurrences(ctx context.Context, arg GetIncomeOccurrencesParams) ([]Income, error) {
 	rows, err := q.db.Query(ctx, getIncomeOccurrences, arg.UserID, arg.StartDate, arg.EndDate)
 	if err != nil {

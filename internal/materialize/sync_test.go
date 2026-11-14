@@ -255,3 +255,24 @@ func TestCreateIncomeRule_PriorityDefaultsToWant_Integration(t *testing.T) {
 		`SELECT priority FROM recurring_income_rules WHERE id = $1`, rule.ID).Scan(&priority))
 	assert.Equal(t, "want", priority)
 }
+
+// An income occurrence is an income a recurring rule created: the worker
+// stamps rule instances one-time with source_rule_id set, so occurrences
+// follow the link, not the type. A hand-entered income is never one.
+func TestGetIncomeOccurrences_AreRuleCreatedIncomes_Integration(t *testing.T) {
+	pool, q := newMaterializeTest(t)
+	ctx := context.Background()
+	userID := uuid.New()
+	today := d("2026-09-10")
+
+	rule := seedIncomeRule(t, ctx, q, userID, "daily", "2026-09-01")
+	_, err := MaterializeIncomeRuleToday(ctx, q, rule, today)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `INSERT INTO incomes (user_id, amount, description, date) VALUES ($1, 100, 'gift', '2026-09-10')`, userID)
+	require.NoError(t, err)
+
+	got, err := q.GetIncomeOccurrences(ctx, db.GetIncomeOccurrencesParams{UserID: userID})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, rule.ID, uuid.UUID(got[0].SourceRuleID.Bytes))
+}

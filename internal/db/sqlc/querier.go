@@ -47,6 +47,8 @@ type Querier interface {
 	GetFiftyThirtyTwenty(ctx context.Context, arg GetFiftyThirtyTwentyParams) (GetFiftyThirtyTwentyRow, error)
 	GetIncome(ctx context.Context, arg GetIncomeParams) (GetIncomeRow, error)
 	GetIncomeCategory(ctx context.Context, arg GetIncomeCategoryParams) (IncomeCategory, error)
+	// Incomes a recurring rule created. The worker stamps them one-time with
+	// source_rule_id set, so the link, not the type, marks an occurrence.
 	GetIncomeOccurrences(ctx context.Context, arg GetIncomeOccurrencesParams) ([]Income, error)
 	GetMonthOverMonthTrends(ctx context.Context, arg GetMonthOverMonthTrendsParams) ([]GetMonthOverMonthTrendsRow, error)
 	GetRecurringExpenseRule(ctx context.Context, arg GetRecurringExpenseRuleParams) (GetRecurringExpenseRuleRow, error)
