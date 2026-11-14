@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
@@ -59,6 +60,9 @@ func (s *Service) CreateIncomeRule(ctx context.Context, userID uuid.UUID, req Cr
 		RecurringType: req.RecurringType,
 		StartDate:     helper.ToPgDate(req.StartDate),
 		EndDate:       helper.ToPgDatePtr(req.EndDate),
+		CategoryID:    helper.ToPgUUID(req.CategoryID),
+		Notes:         helper.ToPgText(req.Notes),
+		Priority:      optionalPriority(req.Priority),
 	})
 	if err != nil {
 		return db.RecurringIncomeRule{}, err
@@ -91,6 +95,9 @@ func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 		RecurringType: req.RecurringType,
 		StartDate:     helper.ToPgDate(req.StartDate),
 		EndDate:       helper.ToPgDatePtr(req.EndDate),
+		CategoryID:    helper.ToPgUUID(req.CategoryID),
+		Notes:         helper.ToPgText(req.Notes),
+		Priority:      optionalPriority(req.Priority),
 		IsActive:      helper.ToPgBool(req.IsActive),
 	})
 	if err != nil {
@@ -173,4 +180,13 @@ func (s *Service) DeleteExpenseRule(ctx context.Context, id uuid.UUID, userID uu
 func (s *Service) ListExpenseRules(ctx context.Context, userID uuid.UUID) ([]db.ListRecurringExpenseRulesRow, error) {
 	slog.Debug("recurring.Service.ListExpenseRules", "user_id", userID)
 	return s.queries.ListRecurringExpenseRules(ctx, userID)
+}
+
+// optionalPriority maps an omitted or empty priority to NULL so the query
+// keeps the stored value (or the 'want' default on create).
+func optionalPriority(p *string) pgtype.Text {
+	if p == nil || *p == "" {
+		return pgtype.Text{}
+	}
+	return pgtype.Text{String: *p, Valid: true}
 }

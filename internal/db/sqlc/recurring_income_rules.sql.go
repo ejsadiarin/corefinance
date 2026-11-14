@@ -14,9 +14,9 @@ import (
 )
 
 const createRecurringIncomeRule = `-- name: CreateRecurringIncomeRule :one
-INSERT INTO recurring_income_rules (user_id, amount, currency, description, recurring_type, start_date, end_date)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active
+INSERT INTO recurring_income_rules (user_id, amount, currency, description, recurring_type, start_date, end_date, category_id, notes, priority)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, 'want'))
+RETURNING id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority
 `
 
 type CreateRecurringIncomeRuleParams struct {
@@ -27,6 +27,9 @@ type CreateRecurringIncomeRuleParams struct {
 	RecurringType string          `db:"recurring_type" json:"recurring_type"`
 	StartDate     pgtype.Date     `db:"start_date" json:"start_date"`
 	EndDate       pgtype.Date     `db:"end_date" json:"end_date"`
+	CategoryID    pgtype.UUID     `db:"category_id" json:"category_id"`
+	Notes         pgtype.Text     `db:"notes" json:"notes"`
+	Priority      interface{}     `db:"priority" json:"priority"`
 }
 
 func (q *Queries) CreateRecurringIncomeRule(ctx context.Context, arg CreateRecurringIncomeRuleParams) (RecurringIncomeRule, error) {
@@ -38,6 +41,9 @@ func (q *Queries) CreateRecurringIncomeRule(ctx context.Context, arg CreateRecur
 		arg.RecurringType,
 		arg.StartDate,
 		arg.EndDate,
+		arg.CategoryID,
+		arg.Notes,
+		arg.Priority,
 	)
 	var i RecurringIncomeRule
 	err := row.Scan(
@@ -52,6 +58,9 @@ func (q *Queries) CreateRecurringIncomeRule(ctx context.Context, arg CreateRecur
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsActive,
+		&i.CategoryID,
+		&i.Notes,
+		&i.Priority,
 	)
 	return i, err
 }
@@ -72,7 +81,7 @@ func (q *Queries) DeleteRecurringIncomeRule(ctx context.Context, arg DeleteRecur
 }
 
 const getRecurringIncomeRule = `-- name: GetRecurringIncomeRule :one
-SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active FROM recurring_income_rules
+SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority FROM recurring_income_rules
 WHERE id = $1 AND user_id = $2
 `
 
@@ -96,12 +105,15 @@ func (q *Queries) GetRecurringIncomeRule(ctx context.Context, arg GetRecurringIn
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsActive,
+		&i.CategoryID,
+		&i.Notes,
+		&i.Priority,
 	)
 	return i, err
 }
 
 const listRecurringIncomeRules = `-- name: ListRecurringIncomeRules :many
-SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active FROM recurring_income_rules
+SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority FROM recurring_income_rules
 WHERE user_id = $1 AND is_active = true
 ORDER BY created_at DESC
 `
@@ -127,6 +139,9 @@ func (q *Queries) ListRecurringIncomeRules(ctx context.Context, userID uuid.UUID
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.IsActive,
+			&i.CategoryID,
+			&i.Notes,
+			&i.Priority,
 		); err != nil {
 			return nil, err
 		}
@@ -142,10 +157,12 @@ const updateRecurringIncomeRule = `-- name: UpdateRecurringIncomeRule :one
 UPDATE recurring_income_rules
 SET amount = $3, currency = $4, description = $5, recurring_type = $6,
     start_date = $7, end_date = $8,
-    is_active = COALESCE($9, is_active),
+    category_id = $9, notes = $10,
+    priority = COALESCE($11, priority),
+    is_active = COALESCE($12, is_active),
     updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active
+RETURNING id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority
 `
 
 type UpdateRecurringIncomeRuleParams struct {
@@ -157,6 +174,9 @@ type UpdateRecurringIncomeRuleParams struct {
 	RecurringType string          `db:"recurring_type" json:"recurring_type"`
 	StartDate     pgtype.Date     `db:"start_date" json:"start_date"`
 	EndDate       pgtype.Date     `db:"end_date" json:"end_date"`
+	CategoryID    pgtype.UUID     `db:"category_id" json:"category_id"`
+	Notes         pgtype.Text     `db:"notes" json:"notes"`
+	Priority      pgtype.Text     `db:"priority" json:"priority"`
 	IsActive      pgtype.Bool     `db:"is_active" json:"is_active"`
 }
 
@@ -170,6 +190,9 @@ func (q *Queries) UpdateRecurringIncomeRule(ctx context.Context, arg UpdateRecur
 		arg.RecurringType,
 		arg.StartDate,
 		arg.EndDate,
+		arg.CategoryID,
+		arg.Notes,
+		arg.Priority,
 		arg.IsActive,
 	)
 	var i RecurringIncomeRule
@@ -185,6 +208,9 @@ func (q *Queries) UpdateRecurringIncomeRule(ctx context.Context, arg UpdateRecur
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsActive,
+		&i.CategoryID,
+		&i.Notes,
+		&i.Priority,
 	)
 	return i, err
 }

@@ -110,6 +110,9 @@ type RecurringIncomeRule struct {
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	IsActive      bool               `db:"is_active" json:"is_active"`
+	CategoryID    pgtype.UUID        `db:"category_id" json:"category_id"`
+	Notes         pgtype.Text        `db:"notes" json:"notes"`
+	Priority      string             `db:"priority" json:"priority"`
 }
 
 type Tag struct {

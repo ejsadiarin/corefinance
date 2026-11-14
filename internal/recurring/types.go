@@ -8,6 +8,10 @@ type CreateIncomeRuleRequest struct {
 	Amount        float64  `json:"amount"`
 	Currency      string   `json:"currency"`
 	Description   string   `json:"description"`
+	CategoryID    *string  `json:"category_id,omitempty"`
+	Notes         *string  `json:"notes,omitempty"`
+	// Priority is need, want or savings; omitted keeps the current value (want on create).
+	Priority      *string  `json:"priority,omitempty"`
 	RecurringType string   `json:"recurring_type"`
 	StartDate     string   `json:"start_date"`
 	EndDate       *string  `json:"end_date,omitempty"`
@@ -17,6 +21,10 @@ type UpdateIncomeRuleRequest struct {
 	Amount        float64  `json:"amount"`
 	Currency      string   `json:"currency"`
 	Description   string   `json:"description"`
+	CategoryID    *string  `json:"category_id,omitempty"`
+	Notes         *string  `json:"notes,omitempty"`
+	// Priority is need, want or savings; omitted keeps the current value (want on create).
+	Priority      *string  `json:"priority,omitempty"`
 	RecurringType string   `json:"recurring_type"`
 	StartDate     string   `json:"start_date"`
 	EndDate       *string  `json:"end_date,omitempty"`

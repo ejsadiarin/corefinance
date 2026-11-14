@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -189,4 +190,68 @@ func TestMaterializeDue_PausedIncomeRuleSkippedThenResumed(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, n, "resumed rule must materialize again")
 	assert.Equal(t, 1, countRuleIncomes(t, ctx, pool, rule.ID))
+}
+
+// Income rules carry category, notes and priority (migration 00005) and every
+// instance they create copies them, as expense rules already do.
+func TestMaterializeIncome_CopiesCategoryNotesPriority_Integration(t *testing.T) {
+	pool, q := newMaterializeTest(t)
+	ctx := context.Background()
+	userID := uuid.New()
+	today := d("2026-09-10")
+	categoryID := uuid.New()
+
+	rule, err := q.CreateRecurringIncomeRule(ctx, db.CreateRecurringIncomeRuleParams{
+		UserID:        userID,
+		Amount:        decimal.NewFromFloat(500),
+		Currency:      "PHP",
+		Description:   "baon",
+		RecurringType: "daily",
+		StartDate:     pgtype.Date{Time: d("2026-09-01"), Valid: true},
+		CategoryID:    pgtype.UUID{Bytes: categoryID, Valid: true},
+		Notes:         pgtype.Text{String: "from mom", Valid: true},
+		Priority:      pgtype.Text{String: "need", Valid: true},
+	})
+	require.NoError(t, err)
+
+	check := func(t *testing.T) {
+		var cat pgtype.UUID
+		var notes pgtype.Text
+		var priority string
+		err := pool.QueryRow(ctx,
+			`SELECT category_id, notes, priority FROM incomes WHERE source_rule_id = $1`, rule.ID).
+			Scan(&cat, &notes, &priority)
+		require.NoError(t, err)
+		assert.Equal(t, categoryID, uuid.UUID(cat.Bytes))
+		assert.Equal(t, "from mom", notes.String)
+		assert.Equal(t, "need", priority)
+	}
+
+	t.Run("sync helper", func(t *testing.T) {
+		n, err := MaterializeIncomeRuleToday(ctx, q, rule, today)
+		require.NoError(t, err)
+		require.Equal(t, int64(1), n)
+		check(t)
+	})
+
+	t.Run("worker pass", func(t *testing.T) {
+		_, err := pool.Exec(ctx, `DELETE FROM incomes WHERE source_rule_id = $1`, rule.ID)
+		require.NoError(t, err)
+		n, err := MaterializeDue(ctx, pool, q, today)
+		require.NoError(t, err)
+		require.Equal(t, 1, n)
+		check(t)
+	})
+}
+
+// A rule created without a priority defaults to 'want', matching how
+// income instances were stamped before income rules had the column.
+func TestCreateIncomeRule_PriorityDefaultsToWant_Integration(t *testing.T) {
+	pool, q := newMaterializeTest(t)
+	ctx := context.Background()
+	var priority string
+	rule := seedIncomeRule(t, ctx, q, uuid.New(), "daily", "2026-09-01")
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT priority FROM recurring_income_rules WHERE id = $1`, rule.ID).Scan(&priority))
+	assert.Equal(t, "want", priority)
 }

@@ -58,13 +58,13 @@ func MaterializeIncomeRuleToday(ctx context.Context, q db.Querier, rule db.Recur
 	}
 	n, err := q.CreateIncomeInstance(ctx, db.CreateIncomeInstanceParams{
 		UserID:       rule.UserID,
-		CategoryID:   pgtype.UUID{},
+		CategoryID:   rule.CategoryID,
 		Amount:       rule.Amount,
 		Currency:     rule.Currency,
 		Description:  rule.Description,
-		Notes:        pgtype.Text{},
+		Notes:        rule.Notes,
 		Date:         pgDate(today),
-		Priority:     "want",
+		Priority:     rule.Priority,
 		SourceRuleID: pgtype.UUID{Bytes: rule.ID, Valid: true},
 	})
 	if err != nil {

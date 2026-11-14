@@ -251,7 +251,7 @@ func (q *Queries) ListActiveExpenseRulesByUser(ctx context.Context, arg ListActi
 }
 
 const listActiveIncomeRules = `-- name: ListActiveIncomeRules :many
-SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active FROM recurring_income_rules
+SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority FROM recurring_income_rules
 WHERE is_active = true
   AND start_date <= $1
   AND (end_date IS NULL OR end_date >= $1)
@@ -279,6 +279,9 @@ func (q *Queries) ListActiveIncomeRules(ctx context.Context, startDate pgtype.Da
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.IsActive,
+			&i.CategoryID,
+			&i.Notes,
+			&i.Priority,
 		); err != nil {
 			return nil, err
 		}
@@ -291,7 +294,7 @@ func (q *Queries) ListActiveIncomeRules(ctx context.Context, startDate pgtype.Da
 }
 
 const listActiveIncomeRulesByUser = `-- name: ListActiveIncomeRulesByUser :many
-SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active FROM recurring_income_rules
+SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority FROM recurring_income_rules
 WHERE user_id = $1
   AND is_active = true
   AND start_date <= $2
@@ -325,6 +328,9 @@ func (q *Queries) ListActiveIncomeRulesByUser(ctx context.Context, arg ListActiv
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.IsActive,
+			&i.CategoryID,
+			&i.Notes,
+			&i.Priority,
 		); err != nil {
 			return nil, err
 		}

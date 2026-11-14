@@ -202,13 +202,13 @@ func materializeDueToday(ctx context.Context, q *db.Queries, today time.Time) (e
 		}
 		n, err := q.CreateIncomeInstance(ctx, db.CreateIncomeInstanceParams{
 			UserID:       r.UserID,
-			CategoryID:   pgtype.UUID{},
+			CategoryID:   r.CategoryID,
 			Amount:       r.Amount,
 			Currency:     r.Currency,
 			Description:  r.Description,
-			Notes:        pgtype.Text{},
+			Notes:        r.Notes,
 			Date:         todayPg,
-			Priority:     "want",
+			Priority:     r.Priority,
 			SourceRuleID: pgtype.UUID{Bytes: r.ID, Valid: true},
 		})
 		if err != nil {
@@ -258,13 +258,13 @@ func materializeHistory(ctx context.Context, q *db.Queries, today time.Time) (ex
 		for _, d := range DueDates(r.StartDate.Time, r.RecurringType, pgTimeOrNil(r.EndDate), today) {
 			n, err := q.CreateIncomeInstance(ctx, db.CreateIncomeInstanceParams{
 				UserID:       r.UserID,
-				CategoryID:   pgtype.UUID{},
+				CategoryID:   r.CategoryID,
 				Amount:       r.Amount,
 				Currency:     r.Currency,
 				Description:  r.Description,
-				Notes:        pgtype.Text{},
+				Notes:        r.Notes,
 				Date:         pgDate(d),
-				Priority:     "want",
+				Priority:     r.Priority,
 				SourceRuleID: pgtype.UUID{Bytes: r.ID, Valid: true},
 			})
 			if err != nil {
@@ -521,13 +521,13 @@ func materializeHistoryForUser(ctx context.Context, q *db.Queries, userID uuid.U
 		for _, d := range DueDates(r.StartDate.Time, r.RecurringType, pgTimeOrNil(r.EndDate), today) {
 			n, err := q.CreateIncomeInstance(ctx, db.CreateIncomeInstanceParams{
 				UserID:       r.UserID,
-				CategoryID:   pgtype.UUID{},
+				CategoryID:   r.CategoryID,
 				Amount:       r.Amount,
 				Currency:     r.Currency,
 				Description:  r.Description,
-				Notes:        pgtype.Text{},
+				Notes:        r.Notes,
 				Date:         pgDate(d),
-				Priority:     "want",
+				Priority:     r.Priority,
 				SourceRuleID: pgtype.UUID{Bytes: r.ID, Valid: true},
 			})
 			if err != nil {
