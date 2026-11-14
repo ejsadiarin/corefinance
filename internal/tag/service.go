@@ -98,3 +98,24 @@ func (s *Service) GetTagsByIncomeID(ctx context.Context, incomeID uuid.UUID) ([]
 	slog.Debug("tag.Service.GetTagsByIncomeID", "income_id", incomeID)
 	return s.queries.GetTagsByIncomeID(ctx, incomeID)
 }
+
+// Links lists which tags every expense and income of a user carries, so a
+// list of records can show its tags without a request per record.
+func (s *Service) Links(ctx context.Context, userID uuid.UUID) (Links, error) {
+	exp, err := s.queries.ListAllExpenseTagsByUser(ctx, userID)
+	if err != nil {
+		return Links{}, err
+	}
+	inc, err := s.queries.ListAllIncomeTagsByUser(ctx, userID)
+	if err != nil {
+		return Links{}, err
+	}
+	out := Links{Expenses: make([]Link, 0, len(exp)), Incomes: make([]Link, 0, len(inc))}
+	for _, l := range exp {
+		out.Expenses = append(out.Expenses, Link{RecordID: l.ExpenseID, TagID: l.TagID})
+	}
+	for _, l := range inc {
+		out.Incomes = append(out.Incomes, Link{RecordID: l.IncomeID, TagID: l.TagID})
+	}
+	return out, nil
+}

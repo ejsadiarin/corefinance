@@ -203,6 +203,74 @@ func (q *Queries) ListRecurringExpenseRules(ctx context.Context, userID uuid.UUI
 	return items, nil
 }
 
+const listRecurringExpenseRulesWithPaused = `-- name: ListRecurringExpenseRulesWithPaused :many
+SELECT r.id, r.user_id, r.description, r.amount, r.currency, r.category_id, r.notes, r.recurring_type, r.start_date, r.end_date, r.priority, r.is_active, r.created_at, r.updated_at, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
+FROM recurring_expense_rules r
+LEFT JOIN expense_categories ec ON r.category_id = ec.id
+WHERE r.user_id = $1
+ORDER BY r.created_at DESC
+`
+
+type ListRecurringExpenseRulesWithPausedRow struct {
+	ID            uuid.UUID          `db:"id" json:"id"`
+	UserID        uuid.UUID          `db:"user_id" json:"user_id"`
+	Description   string             `db:"description" json:"description"`
+	Amount        decimal.Decimal    `db:"amount" json:"amount"`
+	Currency      string             `db:"currency" json:"currency"`
+	CategoryID    pgtype.UUID        `db:"category_id" json:"category_id"`
+	Notes         pgtype.Text        `db:"notes" json:"notes"`
+	RecurringType string             `db:"recurring_type" json:"recurring_type"`
+	StartDate     pgtype.Date        `db:"start_date" json:"start_date"`
+	EndDate       pgtype.Date        `db:"end_date" json:"end_date"`
+	Priority      string             `db:"priority" json:"priority"`
+	IsActive      bool               `db:"is_active" json:"is_active"`
+	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	CategoryName  pgtype.Text        `db:"category_name" json:"category_name"`
+	CategoryColor pgtype.Text        `db:"category_color" json:"category_color"`
+	CategoryIcon  pgtype.Text        `db:"category_icon" json:"category_icon"`
+}
+
+// ListRecurringExpenseRulesWithPaused lists every rule, paused ones too, so
+// the web can show a paused rule and resume it.
+func (q *Queries) ListRecurringExpenseRulesWithPaused(ctx context.Context, userID uuid.UUID) ([]ListRecurringExpenseRulesWithPausedRow, error) {
+	rows, err := q.db.Query(ctx, listRecurringExpenseRulesWithPaused, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRecurringExpenseRulesWithPausedRow{}
+	for rows.Next() {
+		var i ListRecurringExpenseRulesWithPausedRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Description,
+			&i.Amount,
+			&i.Currency,
+			&i.CategoryID,
+			&i.Notes,
+			&i.RecurringType,
+			&i.StartDate,
+			&i.EndDate,
+			&i.Priority,
+			&i.IsActive,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CategoryName,
+			&i.CategoryColor,
+			&i.CategoryIcon,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateRecurringExpenseRule = `-- name: UpdateRecurringExpenseRule :one
 UPDATE recurring_expense_rules
 SET description = $3, amount = $4, currency = $5, category_id = $6, notes = $7,

@@ -26,3 +26,9 @@ RETURNING *;
 -- name: DeleteRecurringIncomeRule :exec
 DELETE FROM recurring_income_rules
 WHERE id = $1 AND user_id = $2;
+
+-- ListRecurringIncomeRulesWithPaused lists every rule, paused ones too.
+-- name: ListRecurringIncomeRulesWithPaused :many
+SELECT * FROM recurring_income_rules
+WHERE user_id = $1
+ORDER BY created_at DESC;

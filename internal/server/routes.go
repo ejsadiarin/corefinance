@@ -57,6 +57,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 		r.Route("/tags", func(r chi.Router) {
 			r.Post("/", s.TagHandler.Create)
 			r.Get("/", s.TagHandler.List)
+			r.Get("/links", s.TagHandler.Links)
 			r.Put("/{id}", s.TagHandler.Update)
 			r.Delete("/{id}", s.TagHandler.Delete)
 		})

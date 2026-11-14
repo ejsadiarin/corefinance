@@ -28,3 +28,12 @@ RETURNING *;
 -- name: DeleteRecurringExpenseRule :exec
 DELETE FROM recurring_expense_rules
 WHERE id = $1 AND user_id = $2;
+
+-- ListRecurringExpenseRulesWithPaused lists every rule, paused ones too, so
+-- the web can show a paused rule and resume it.
+-- name: ListRecurringExpenseRulesWithPaused :many
+SELECT r.*, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
+FROM recurring_expense_rules r
+LEFT JOIN expense_categories ec ON r.category_id = ec.id
+WHERE r.user_id = $1
+ORDER BY r.created_at DESC;

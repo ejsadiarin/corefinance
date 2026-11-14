@@ -81,6 +81,8 @@ type MockQuerier struct {
 	ListLegacyIncomesByUserFn        func(ctx context.Context, userID uuid.UUID) ([]db.Income, error)
 	ListRecurringExpenseRulesFn      func(ctx context.Context, userID uuid.UUID) ([]db.ListRecurringExpenseRulesRow, error)
 	ListRecurringIncomeRulesFn       func(ctx context.Context, userID uuid.UUID) ([]db.RecurringIncomeRule, error)
+	ListRecurringExpenseRulesWithPausedFn func(ctx context.Context, userID uuid.UUID) ([]db.ListRecurringExpenseRulesWithPausedRow, error)
+	ListRecurringIncomeRulesWithPausedFn  func(ctx context.Context, userID uuid.UUID) ([]db.RecurringIncomeRule, error)
 	ListTagsFn                       func(ctx context.Context, userID uuid.UUID) ([]db.Tag, error)
 	RemoveTagFromExpenseFn           func(ctx context.Context, arg db.RemoveTagFromExpenseParams) error
 	RemoveTagFromIncomeFn            func(ctx context.Context, arg db.RemoveTagFromIncomeParams) error
@@ -370,6 +372,14 @@ func (m *MockQuerier) ListRecurringExpenseRules(ctx context.Context, userID uuid
 
 func (m *MockQuerier) ListRecurringIncomeRules(ctx context.Context, userID uuid.UUID) ([]db.RecurringIncomeRule, error) {
 	return m.ListRecurringIncomeRulesFn(ctx, userID)
+}
+
+func (m *MockQuerier) ListRecurringExpenseRulesWithPaused(ctx context.Context, userID uuid.UUID) ([]db.ListRecurringExpenseRulesWithPausedRow, error) {
+	return m.ListRecurringExpenseRulesWithPausedFn(ctx, userID)
+}
+
+func (m *MockQuerier) ListRecurringIncomeRulesWithPaused(ctx context.Context, userID uuid.UUID) ([]db.RecurringIncomeRule, error) {
+	return m.ListRecurringIncomeRulesWithPausedFn(ctx, userID)
 }
 
 func (m *MockQuerier) ListTags(ctx context.Context, userID uuid.UUID) ([]db.Tag, error) {

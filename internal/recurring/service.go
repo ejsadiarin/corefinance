@@ -76,6 +76,11 @@ func (s *Service) ListIncomeRules(ctx context.Context, userID uuid.UUID) ([]db.R
 	return s.queries.ListRecurringIncomeRules(ctx, userID)
 }
 
+// ListIncomeRulesWithPaused lists every income rule, paused ones too.
+func (s *Service) ListIncomeRulesWithPaused(ctx context.Context, userID uuid.UUID) ([]db.RecurringIncomeRule, error) {
+	return s.queries.ListRecurringIncomeRulesWithPaused(ctx, userID)
+}
+
 func (s *Service) GetIncomeRule(ctx context.Context, id uuid.UUID, userID uuid.UUID) (db.RecurringIncomeRule, error) {
 	slog.Debug("recurring.Service.GetIncomeRule", "id", id, "user_id", userID)
 	return s.queries.GetRecurringIncomeRule(ctx, db.GetRecurringIncomeRuleParams{
@@ -180,6 +185,11 @@ func (s *Service) DeleteExpenseRule(ctx context.Context, id uuid.UUID, userID uu
 func (s *Service) ListExpenseRules(ctx context.Context, userID uuid.UUID) ([]db.ListRecurringExpenseRulesRow, error) {
 	slog.Debug("recurring.Service.ListExpenseRules", "user_id", userID)
 	return s.queries.ListRecurringExpenseRules(ctx, userID)
+}
+
+// ListExpenseRulesWithPaused lists every expense rule, paused ones too.
+func (s *Service) ListExpenseRulesWithPaused(ctx context.Context, userID uuid.UUID) ([]db.ListRecurringExpenseRulesWithPausedRow, error) {
+	return s.queries.ListRecurringExpenseRulesWithPaused(ctx, userID)
 }
 
 // optionalPriority maps an omitted or empty priority to NULL so the query

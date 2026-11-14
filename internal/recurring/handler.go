@@ -12,6 +12,10 @@ type Handler struct {
 	service *Service
 }
 
+// withPaused tells a list request that asks for paused rules too
+// (?include=paused); by default a list holds only active rules.
+func withPaused(r *http.Request) bool { return r.URL.Query().Get("include") == "paused" }
+
 func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
@@ -45,13 +49,19 @@ func (h *Handler) ListIncomeRules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Debug("recurring.ListIncomeRules: request received", "user_id", userID)
-	rules, err := h.service.ListIncomeRules(r.Context(), userID)
+	var rules any
+	var err error
+	if withPaused(r) {
+		rules, err = h.service.ListIncomeRulesWithPaused(r.Context(), userID)
+	} else {
+		rules, err = h.service.ListIncomeRules(r.Context(), userID)
+	}
 	if err != nil {
 		slog.Error("recurring.ListIncomeRules: failed", "error", err, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	slog.Debug("recurring.ListIncomeRules: success", "user_id", userID, "count", len(rules))
+	slog.Debug("recurring.ListIncomeRules: success", "user_id", userID, "with_paused", withPaused(r))
 	helper.RespondJSON(w, http.StatusOK, rules)
 }
 
@@ -148,13 +158,19 @@ func (h *Handler) ListExpenseRules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Debug("recurring.ListExpenseRules: request received", "user_id", userID)
-	rules, err := h.service.ListExpenseRules(r.Context(), userID)
+	var rules any
+	var err error
+	if withPaused(r) {
+		rules, err = h.service.ListExpenseRulesWithPaused(r.Context(), userID)
+	} else {
+		rules, err = h.service.ListExpenseRules(r.Context(), userID)
+	}
 	if err != nil {
 		slog.Error("recurring.ListExpenseRules: failed", "error", err, "user_id", userID)
 		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	slog.Debug("recurring.ListExpenseRules: success", "user_id", userID, "count", len(rules))
+	slog.Debug("recurring.ListExpenseRules: success", "user_id", userID, "with_paused", withPaused(r))
 	helper.RespondJSON(w, http.StatusOK, rules)
 }
 

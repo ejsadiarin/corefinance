@@ -58,6 +58,21 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	helper.RespondJSON(w, http.StatusOK, tags)
 }
 
+// Links answers GET /tags/links: every expense's and income's tags.
+func (h *Handler) Links(w http.ResponseWriter, r *http.Request) {
+	userID, ok := helper.GetUserID(w, r)
+	if !ok {
+		return
+	}
+	links, err := h.service.Links(r.Context(), userID)
+	if err != nil {
+		slog.Error("tag.Links: failed", "error", err, "user_id", userID)
+		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	helper.RespondJSON(w, http.StatusOK, links)
+}
+
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	id, ok := helper.ParseUUID(w, r, "id")
 	if !ok {

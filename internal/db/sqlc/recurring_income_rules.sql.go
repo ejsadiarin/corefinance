@@ -153,6 +153,48 @@ func (q *Queries) ListRecurringIncomeRules(ctx context.Context, userID uuid.UUID
 	return items, nil
 }
 
+const listRecurringIncomeRulesWithPaused = `-- name: ListRecurringIncomeRulesWithPaused :many
+SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority FROM recurring_income_rules
+WHERE user_id = $1
+ORDER BY created_at DESC
+`
+
+// ListRecurringIncomeRulesWithPaused lists every rule, paused ones too.
+func (q *Queries) ListRecurringIncomeRulesWithPaused(ctx context.Context, userID uuid.UUID) ([]RecurringIncomeRule, error) {
+	rows, err := q.db.Query(ctx, listRecurringIncomeRulesWithPaused, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RecurringIncomeRule{}
+	for rows.Next() {
+		var i RecurringIncomeRule
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Amount,
+			&i.Currency,
+			&i.Description,
+			&i.RecurringType,
+			&i.StartDate,
+			&i.EndDate,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.IsActive,
+			&i.CategoryID,
+			&i.Notes,
+			&i.Priority,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateRecurringIncomeRule = `-- name: UpdateRecurringIncomeRule :one
 UPDATE recurring_income_rules
 SET amount = $3, currency = $4, description = $5, recurring_type = $6,

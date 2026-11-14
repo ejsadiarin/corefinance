@@ -88,7 +88,12 @@ type Querier interface {
 	ListLegacyIncomes(ctx context.Context) ([]Income, error)
 	ListLegacyIncomesByUser(ctx context.Context, userID uuid.UUID) ([]Income, error)
 	ListRecurringExpenseRules(ctx context.Context, userID uuid.UUID) ([]ListRecurringExpenseRulesRow, error)
+	// ListRecurringExpenseRulesWithPaused lists every rule, paused ones too, so
+	// the web can show a paused rule and resume it.
+	ListRecurringExpenseRulesWithPaused(ctx context.Context, userID uuid.UUID) ([]ListRecurringExpenseRulesWithPausedRow, error)
 	ListRecurringIncomeRules(ctx context.Context, userID uuid.UUID) ([]RecurringIncomeRule, error)
+	// ListRecurringIncomeRulesWithPaused lists every rule, paused ones too.
+	ListRecurringIncomeRulesWithPaused(ctx context.Context, userID uuid.UUID) ([]RecurringIncomeRule, error)
 	ListTags(ctx context.Context, userID uuid.UUID) ([]Tag, error)
 	RemoveTagFromExpense(ctx context.Context, arg RemoveTagFromExpenseParams) error
 	RemoveTagFromIncome(ctx context.Context, arg RemoveTagFromIncomeParams) error
