@@ -53,16 +53,16 @@ func dsn() string {
 func buildPool() *pgxpool.Pool {
 	config, err := pgxpool.ParseConfig(dsn())
 	if err != nil {
-		slog.Error("failed to parse pool config", "error", err)
+		slog.Error("main.buildPool: failed to parse pool config", "error", err)
 		panic(err)
 	}
 	pool, err := pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {
-		slog.Error("unable to create pgxpool", "error", err)
+		slog.Error("main.buildPool: unable to create pgxpool", "error", err)
 		panic(err)
 	}
 	if err := pool.Ping(context.Background()); err != nil {
-		slog.Error("unable to ping database", "error", err)
+		slog.Error("main.buildPool: unable to ping database", "error", err)
 		panic(err)
 	}
 	return pool
@@ -73,15 +73,15 @@ func runOnce(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones
 	if backfill {
 		res, err := materialize.BackfillLegacy(ctx, pool, queries, today)
 		if err != nil {
-			slog.Error("backfill failed", "error", err)
+			slog.Error("main.runOnce: backfill failed", "error", err)
 			return 1
 		}
 		legacy, err := materialize.CountLegacyRows(ctx, queries)
 		if err != nil {
-			slog.Error("legacy verification query failed", "error", err)
+			slog.Error("main.runOnce: legacy verification query failed", "error", err)
 			return 1
 		}
-		slog.Info("backfill complete",
+		slog.Info("main.runOnce: backfill complete",
 			"expense_rules", res.ExpenseRules,
 			"income_rules", res.IncomeRules,
 			"expense_instances", res.ExpenseInstances,
@@ -89,7 +89,7 @@ func runOnce(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones
 			"legacy_rows_remaining", legacy,
 		)
 		if legacy != 0 {
-			slog.Error("legacy rows remain after backfill", "count", legacy)
+			slog.Error("main.runOnce: legacy rows remain after backfill", "count", legacy)
 			return 1
 		}
 		return 0
@@ -98,14 +98,14 @@ func runOnce(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones
 	if err != nil {
 		// Some users were skipped (a failed zone read, a failed write); the
 		// rest were filled, and the skipped ones are retried next pass.
-		slog.Warn("materialize pass skipped some users", "inserted", n, "error", err)
+		slog.Warn("main.runOnce: materialize pass skipped some users", "inserted", n, "error", err)
 		return 1
 	}
 	// Passes run at least once a minute; only ones that did something are news.
 	if n > 0 {
-		slog.Info("materialize pass complete", "inserted", n)
+		slog.Info("main.runOnce: materialize pass complete", "inserted", n)
 	} else {
-		slog.Debug("materialize pass complete", "inserted", n)
+		slog.Debug("main.runOnce: materialize pass complete", "inserted", n)
 	}
 	return 0
 }
@@ -136,15 +136,15 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	slog.Info("worker started, filling rules as they fall due")
+	slog.Info("main: worker started, filling rules as they fall due")
 	for {
 		if code := runOnce(ctx, pool, queries, zones, false); code != 0 {
-			slog.Info("retrying skipped users at the next wake")
+			slog.Info("main: retrying skipped users at the next wake")
 		}
 		wait := untilNextWake(ctx, queries, time.Now())
 		select {
 		case <-ctx.Done():
-			slog.Info("worker shutting down")
+			slog.Info("main: worker shutting down")
 			return
 		case <-time.After(wait):
 		}
@@ -160,7 +160,7 @@ func untilNextWake(ctx context.Context, queries *db.Queries, now time.Time) time
 	wake, err := materialize.NextWake(ctx, queries, now)
 	if err != nil {
 		if !errors.Is(err, materialize.ErrNothingDue) {
-			slog.Error("next wake lookup failed", "error", err)
+			slog.Error("main.untilNextWake: next wake lookup failed", "error", err)
 		}
 		return maxSleep
 	}
