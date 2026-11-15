@@ -9,23 +9,25 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 )
 
 // The user's timezone decides which date "today" is for their rules (#9).
-// The gateway owns it (coregateway ADR-0005): API requests carry it in the
-// internal token's tz claim, and the worker looks it up from the gateway.
-// corefinance stores only the last zone it saw per user, to notice changes.
+// The gateway owns it (coregateway ADR-0005) and sends it in the internal
+// token's tz claim. corefinance records the last zone a token carried per
+// user (user_timezones); background work, which has no token, uses that
+// last-seen zone, and UTC for a user no token has carried one for yet.
 
-// Zones looks up a user's timezone. An error means the zone is unknown right
-// now: the caller skips that user rather than guess (ADR-0005).
+// Zones gives a user's timezone. An error means it can't be read right now:
+// the caller skips that user rather than guess.
 type Zones interface {
 	Zone(ctx context.Context, userID uuid.UUID) (*time.Location, error)
 }
 
-// LoadZone is the IANA zone tz, or UTC when tz is empty or unknown (a token
-// minted before the gateway sent tz, or a zone this build's tzdata lacks).
+// LoadZone is the IANA zone tz, or UTC when tz is empty or unknown (a zone
+// this build's tzdata lacks).
 func LoadZone(tz string) *time.Location {
 	if tz == "" {
 		return time.UTC
@@ -37,8 +39,25 @@ func LoadZone(tz string) *time.Location {
 	return loc
 }
 
+// SeenZones is the Zones the worker uses: each user's last-seen zone, UTC
+// when none has been seen.
+type SeenZones struct {
+	Queries db.Querier
+}
+
+func (z SeenZones) Zone(ctx context.Context, userID uuid.UUID) (*time.Location, error) {
+	tz, err := z.Queries.GetSeenTimezone(ctx, userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return time.UTC, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get seen timezone: %w", err)
+	}
+	return LoadZone(tz), nil
+}
+
 // FixedZones is a Zones from a map of user to IANA zone; users not in it are
-// on UTC. For tests and one-off runs.
+// on UTC. For tests.
 type FixedZones map[uuid.UUID]string
 
 func (z FixedZones) Zone(_ context.Context, userID uuid.UUID) (*time.Location, error) {
@@ -53,82 +72,35 @@ func dateIn(now time.Time, loc *time.Location) time.Time {
 }
 
 // ObserveTimezone records the zone a request's token carried for the user,
-// seen at now: when it differs from the last one corefinance saw, the user's
-// next due times are reset in the same statement (#16). The common case, an
-// unchanged zone, is a read and no write.
-func ObserveTimezone(ctx context.Context, q db.Querier, userID uuid.UUID, loc *time.Location, now time.Time) error {
-	seen, err := q.GetSeenTimezone(ctx, userID)
+// seen at now. The common case, an unchanged zone, is one read outside any
+// transaction. A new zone is recorded in a short transaction that takes the
+// user's materialize lock first, since recording it resets the user's next
+// due times (#16): a writer that touches the user's rules always takes that
+// lock before any rule row, so this can't deadlock with a rule save.
+func ObserveTimezone(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, loc *time.Location, now time.Time) error {
+	seen, err := db.New(pool).GetSeenTimezone(ctx, userID)
 	if err == nil && seen == loc.String() {
 		return nil
 	}
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("get seen timezone: %w", err)
 	}
-	return recordZone(ctx, q, userID, loc, now)
-}
-
-// recordZone records loc as the user's zone checked at now, resetting their
-// next due times if it changed.
-func recordZone(ctx context.Context, q db.Querier, userID uuid.UUID, loc *time.Location, now time.Time) error {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin record timezone: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	q := db.New(tx)
+	if err := q.LockUserMaterialize(ctx, userID); err != nil {
+		return fmt.Errorf("lock user materialize: %w", err)
+	}
 	if _, err := q.RecordUserTimezone(ctx, db.RecordUserTimezoneParams{
 		Owner: userID, Timezone: loc.String(), SeenAt: pgtype.Timestamptz{Time: now, Valid: true},
 	}); err != nil {
 		return fmt.Errorf("record user timezone: %w", err)
 	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit record timezone: %w", err)
+	}
 	return nil
-}
-
-// ZoneRefreshEvery is how often the worker asks the gateway again for the
-// zone of a user with active rules, so a change there reaches their schedule
-// even if they make no request to corefinance.
-const ZoneRefreshEvery = 10 * time.Minute
-
-// zoneCheck is what refreshZones learned this pass: the zones it looked up,
-// and the users whose lookup failed (skipped for the rest of the pass).
-type zoneCheck struct {
-	zones  map[uuid.UUID]*time.Location
-	failed map[uuid.UUID]bool
-}
-
-// refreshZones asks zones again for every user with an active rule whose
-// zone wasn't checked in the last ZoneRefreshEvery, and records each answer
-// (resetting the schedule of users whose zone changed). A failed lookup is
-// reported, and the user's schedule is left alone until a later pass.
-func refreshZones(ctx context.Context, q db.Querier, zones Zones, now time.Time) (zoneCheck, error) {
-	check := zoneCheck{zones: map[uuid.UUID]*time.Location{}, failed: map[uuid.UUID]bool{}}
-	users, err := q.ListUsersToRefreshZone(ctx, pgtype.Timestamptz{Time: now.Add(-ZoneRefreshEvery), Valid: true})
-	if err != nil {
-		return check, fmt.Errorf("list users to refresh zone: %w", err)
-	}
-	var errs []error
-	for _, user := range users {
-		loc, err := zones.Zone(ctx, user)
-		if err != nil {
-			check.failed[user] = true
-			errs = append(errs, fmt.Errorf("user %s: timezone: %w", user, err))
-			continue
-		}
-		check.zones[user] = loc
-		if err := recordZone(ctx, q, user, loc, now); err != nil {
-			errs = append(errs, fmt.Errorf("user %s: %w", user, err))
-		}
-	}
-	return check, errors.Join(errs...)
-}
-
-// zoneFor is the user's zone for this pass: the one refreshZones just looked
-// up, or a fresh lookup. ok is false when the lookup failed (now or earlier
-// in the pass); the error is reported once.
-func (c zoneCheck) zoneFor(ctx context.Context, zones Zones, user uuid.UUID) (loc *time.Location, ok bool, err error) {
-	if c.failed[user] {
-		return nil, false, nil
-	}
-	if loc, ok := c.zones[user]; ok {
-		return loc, true, nil
-	}
-	loc, err = zones.Zone(ctx, user)
-	if err != nil {
-		return nil, false, fmt.Errorf("user %s: timezone: %w", user, err)
-	}
-	return loc, true, nil
 }

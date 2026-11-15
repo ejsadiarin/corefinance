@@ -245,10 +245,9 @@ func slogMiddleware(next http.Handler) http.Handler {
 
 // observeTimezone records the zone in the request's token (coregateway
 // ADR-0005) for the user it is about: the target of a targeted read,
-// otherwise the caller. When it changed since corefinance last saw it, the
-// user's rules' next due times are recomputed (#16, #18). Best effort: a
-// failure is logged and the request goes on, since the worker re-checks
-// zones itself.
+// otherwise the caller. Background work dates that user's entries in it, and
+// a change recomputes their rules' next due times (#16, #18). Best effort: a
+// failure is logged and the request goes on; the next request records it.
 func (s *Server) observeTimezone(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -256,11 +255,11 @@ func (s *Server) observeTimezone(next http.Handler) http.Handler {
 		if target, targeted := auth.ActAsFromContext(ctx); targeted {
 			userID, ok = target, true
 		}
-		// A token without tz (minted before the gateway sent it) is UTC for
-		// dating, but says nothing about the user's zone: don't record it, or
-		// old and new tokens would flip the schedule back and forth.
+		// A token without tz (minted before the gateway sent it) says nothing
+		// about the user's zone: don't record it, or old and new tokens would
+		// flip the schedule back and forth. The last-seen zone stands.
 		if tz := auth.TimezoneFromContext(ctx); ok && tz != "" {
-			if err := materialize.ObserveTimezone(ctx, s.Queries, userID, materialize.LoadZone(tz), time.Now()); err != nil {
+			if err := materialize.ObserveTimezone(ctx, s.Pool, userID, materialize.LoadZone(tz), time.Now()); err != nil {
 				slog.Error("server.observeTimezone: failed", "error", err, "user_id", userID)
 			}
 		}

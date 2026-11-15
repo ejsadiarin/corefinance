@@ -21,8 +21,6 @@ type Querier interface {
 	AdvanceRuleWatermark(ctx context.Context, arg AdvanceRuleWatermarkParams) error
 	CheckSkippedExpense(ctx context.Context, arg CheckSkippedExpenseParams) (bool, error)
 	CheckSkippedIncome(ctx context.Context, arg CheckSkippedIncomeParams) (bool, error)
-	// A timezone change moves every next occurrence: the next pass recomputes.
-	ClearUserNextDue(ctx context.Context, userID uuid.UUID) error
 	CountLegacyExpenses(ctx context.Context) (int64, error)
 	CountLegacyExpensesByUser(ctx context.Context, userID uuid.UUID) (int64, error)
 	CountLegacyIncomes(ctx context.Context) (int64, error)
@@ -66,8 +64,9 @@ type Querier interface {
 	GetRecurringExpenseRule(ctx context.Context, arg GetRecurringExpenseRuleParams) (GetRecurringExpenseRuleRow, error)
 	GetRecurringIncomeRule(ctx context.Context, arg GetRecurringIncomeRuleParams) (RecurringIncomeRule, error)
 	GetSavingsRate(ctx context.Context, arg GetSavingsRateParams) (GetSavingsRateRow, error)
-	// The zone corefinance last saw per user (#18, coregateway ADR-0005), kept
-	// to notice a change and recompute the user's next due times.
+	// The zone a request's token last carried per user (#18, coregateway
+	// ADR-0005): background work dates entries in it, and a change recomputes
+	// the user's next due times.
 	GetSeenTimezone(ctx context.Context, userID uuid.UUID) (string, error)
 	GetSpendingVelocity(ctx context.Context, arg GetSpendingVelocityParams) (GetSpendingVelocityRow, error)
 	GetSummary(ctx context.Context, arg GetSummaryParams) (GetSummaryRow, error)
@@ -123,15 +122,10 @@ type Querier interface {
 	// Next-due scheduling (#16): users with an active rule whose next occurrence
 	// has started, or whose next_due_at hasn't been computed yet.
 	ListUsersDue(ctx context.Context, now pgtype.Timestamptz) ([]uuid.UUID, error)
-	// Users with an active rule whose zone hasn't been checked since cutoff: the
-	// worker asks the gateway again, so a change there reaches the schedule
-	// without the user making a request.
-	ListUsersToRefreshZone(ctx context.Context, cutoff pgtype.Timestamptz) ([]uuid.UUID, error)
-	// Catch-up pass (#7), one user at a time under a per-user lock (#14,
-	// ADR-0001). A rule is behind when its watermark (materialized_through, or
-	// the day before start_date when nothing has been filled) is earlier than
-	// min(end_date, today). Rules that ended while the worker was down are still
-	// included. Paused rules are not.
+	// The materialize pass runs one user at a time under a per-user lock (#14,
+	// ADR-0001). It fills each active rule's dates after its watermark
+	// (materialized_through) up to min(end_date, today), including rules that
+	// ended while the worker was down. Paused rules are not filled.
 	// Serializes every writer of one user's rule entries (the worker and rule
 	// saves) for the rest of the transaction. Take it before touching any rule
 	// row, so writers always lock in the same order.
@@ -143,7 +137,9 @@ type Querier interface {
 	// Records a zone seen at seen_at and, in the same statement, clears the
 	// user's next due times when it differs from the one before (each is
 	// midnight in the old zone; the next pass recomputes them). One statement,
-	// so a change can't be recorded without its schedule being reset.
+	// so a change can't be recorded without its schedule being reset. Take
+	// LockUserMaterialize first in the same transaction: it updates the user's
+	// rule rows, and rule saves lock in that order.
 	RecordUserTimezone(ctx context.Context, arg RecordUserTimezoneParams) (bool, error)
 	RemoveTagFromExpense(ctx context.Context, arg RemoveTagFromExpenseParams) error
 	RemoveTagFromIncome(ctx context.Context, arg RemoveTagFromIncomeParams) error

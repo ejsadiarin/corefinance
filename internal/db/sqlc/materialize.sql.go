@@ -62,16 +62,6 @@ func (q *Queries) AdvanceRuleWatermark(ctx context.Context, arg AdvanceRuleWater
 	return err
 }
 
-const clearUserNextDue = `-- name: ClearUserNextDue :exec
-UPDATE rules SET next_due_at = NULL WHERE user_id = $1
-`
-
-// A timezone change moves every next occurrence: the next pass recomputes.
-func (q *Queries) ClearUserNextDue(ctx context.Context, userID uuid.UUID) error {
-	_, err := q.db.Exec(ctx, clearUserNextDue, userID)
-	return err
-}
-
 const countLegacyExpenses = `-- name: CountLegacyExpenses :one
 SELECT COUNT(*)::bigint AS legacy_count FROM expenses
 WHERE recurring_type != 'one-time' AND source_rule_id IS NULL
@@ -731,11 +721,10 @@ const lockUserMaterialize = `-- name: LockUserMaterialize :exec
 SELECT pg_advisory_xact_lock(hashtext('corefinance-materialize'), hashtext($1::uuid::text))
 `
 
-// Catch-up pass (#7), one user at a time under a per-user lock (#14,
-// ADR-0001). A rule is behind when its watermark (materialized_through, or
-// the day before start_date when nothing has been filled) is earlier than
-// min(end_date, today). Rules that ended while the worker was down are still
-// included. Paused rules are not.
+// The materialize pass runs one user at a time under a per-user lock (#14,
+// ADR-0001). It fills each active rule's dates after its watermark
+// (materialized_through) up to min(end_date, today), including rules that
+// ended while the worker was down. Paused rules are not filled.
 // Serializes every writer of one user's rule entries (the worker and rule
 // saves) for the rest of the transaction. Take it before touching any rule
 // row, so writers always lock in the same order.

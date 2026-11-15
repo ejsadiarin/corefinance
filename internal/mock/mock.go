@@ -55,7 +55,6 @@ type MockQuerier struct {
 	ListRuleEntriesToReconcileFn          func(ctx context.Context, arg db.ListRuleEntriesToReconcileParams) ([]db.ListRuleEntriesToReconcileRow, error)
 	GetSeenTimezoneFn                     func(ctx context.Context, userID uuid.UUID) (string, error)
 	RecordUserTimezoneFn                  func(ctx context.Context, arg db.RecordUserTimezoneParams) (bool, error)
-	ListUsersToRefreshZoneFn              func(ctx context.Context, cutoff pgtype.Timestamptz) ([]uuid.UUID, error)
 	ListUsersDueFn                        func(ctx context.Context, now pgtype.Timestamptz) ([]uuid.UUID, error)
 	ListUserActiveRulesFn                 func(ctx context.Context, userID uuid.UUID) ([]db.Rule, error)
 	GetNextWakeFn                         func(ctx context.Context, now pgtype.Timestamptz) (pgtype.Timestamptz, error)
@@ -559,8 +558,6 @@ func (m *MockQuerier) SetRuleNextDue(ctx context.Context, arg db.SetRuleNextDueP
 	return nil
 }
 
-func (m *MockQuerier) ClearUserNextDue(ctx context.Context, userID uuid.UUID) error { return nil }
-
 // GetSeenTimezone defaults to "never seen".
 func (m *MockQuerier) GetSeenTimezone(ctx context.Context, userID uuid.UUID) (string, error) {
 	if m.GetSeenTimezoneFn == nil {
@@ -575,12 +572,4 @@ func (m *MockQuerier) RecordUserTimezone(ctx context.Context, arg db.RecordUserT
 		return false, nil
 	}
 	return m.RecordUserTimezoneFn(ctx, arg)
-}
-
-// ListUsersToRefreshZone defaults to nobody.
-func (m *MockQuerier) ListUsersToRefreshZone(ctx context.Context, cutoff pgtype.Timestamptz) ([]uuid.UUID, error) {
-	if m.ListUsersToRefreshZoneFn == nil {
-		return nil, nil
-	}
-	return m.ListUsersToRefreshZoneFn(ctx, cutoff)
 }

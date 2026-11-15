@@ -67,6 +67,46 @@ func TestSavingRuleFillsMissedDaysInOwnersTimezone_Integration(t *testing.T) {
 	assert.Equal(t, want, ruleEntryDates(t, ctx, q, user, inc.ID))
 }
 
+// A token without tz (#18) dates a rule save in the owner's last-seen zone,
+// not UTC: the next due time stays midnight in that zone after a create and
+// an update. Kiritimati (UTC+14) makes the difference visible at any hour.
+func TestSavingRuleWithoutTokenZoneUsesLastSeenZone_Integration(t *testing.T) {
+	ctx := context.Background()
+	pool := testutil.SetupTestDB(t)
+	q := db.New(pool)
+	s := NewServiceWithPool(q, pool)
+	user := uuid.New()
+	kiritimati, err := time.LoadLocation("Pacific/Kiritimati")
+	require.NoError(t, err)
+	require.NoError(t, materialize.ObserveTimezone(ctx, pool, user, kiritimati, time.Now()))
+
+	today := time.Now().In(kiritimati)
+	y, m, d := today.AddDate(0, 0, 1).Date()
+	tomorrowMidnight := time.Date(y, m, d, 0, 0, 0, 0, kiritimati)
+	wake := func() time.Time {
+		t.Helper()
+		w, err := materialize.NextWake(ctx, q, time.Now())
+		require.NoError(t, err)
+		return w
+	}
+
+	req := CreateExpenseRuleRequest{
+		Amount: 10, Currency: "PHP", Description: "coffee", RecurringType: "daily",
+		StartDate: today.Format(time.DateOnly), Priority: "want",
+	}
+	rule, err := s.CreateExpenseRule(ctx, user, req) // ctx has no tz
+	require.NoError(t, err)
+	assert.Equal(t, []string{today.Format(time.DateOnly)}, ruleEntryDates(t, ctx, q, user, rule.ID))
+	assert.True(t, tomorrowMidnight.Equal(wake()), "after create: %s", wake())
+
+	_, err = s.UpdateExpenseRule(ctx, rule.ID, user, UpdateExpenseRuleRequest{
+		Amount: 12, Currency: req.Currency, Description: req.Description,
+		RecurringType: req.RecurringType, StartDate: req.StartDate, Priority: req.Priority,
+	})
+	require.NoError(t, err)
+	assert.True(t, tomorrowMidnight.Equal(wake()), "after update: %s", wake())
+}
+
 func TestSavingRuleDuringWorkerPassMakesNoDuplicates_Integration(t *testing.T) {
 	ctx := context.Background()
 	pool := testutil.SetupTestDB(t)

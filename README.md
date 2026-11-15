@@ -36,8 +36,6 @@ internal/db/bootstrap.sql     — one-time role/grants bootstrap (not a migratio
 | `JWT_ISSUER` | Expected internal JWT issuer (default: `https://gateway.internal`) |
 | `JWT_AUDIENCE` | Expected internal JWT audience (default: `corefinance`) |
 | `JWT_JWKS_URL` | Gateway JWKS URL (default: `https://gateway.internal/.well-known/jwks.json`) |
-| `GATEWAY_URL` | Worker only, required: the gateway's base URL, for timezone lookups (see Timezone) |
-| `GATEWAY_API_KEY` | Worker only, required: an admin-owned gateway API key with the `corefinance:admin` scope |
 
 ## API Routes
 
@@ -72,13 +70,12 @@ All routes are prefixed with `/budget`.
 ## Timezone
 
 Rule entries are dated in the user's timezone, which the gateway owns
-(coregateway ADR-0005). API requests read it from the internal token's `tz`
-claim (a token without one is UTC). The worker looks it up from the gateway
-(`GET /api/users/{id}/timezone`) with `GATEWAY_URL` and `GATEWAY_API_KEY`: an
-API key owned by a gateway admin with only the `corefinance:admin` scope. It
-won't start without them, and skips a user whose lookup fails rather than
-guess a zone. corefinance keeps only the zone it last saw per user, to
-recompute a user's schedule when it changes.
+(coregateway ADR-0005) and sends in the internal token's `tz` claim. Each
+request records the zone its token carries as the user's last-seen zone
+(`user_timezones`); a change recomputes the user's rule schedule. A token
+without `tz` records nothing and uses the last-seen zone. The worker has no
+token: it uses the last-seen zone too. A user no token has carried a zone for
+is on UTC. corefinance never calls the gateway.
 
 ## Auth
 

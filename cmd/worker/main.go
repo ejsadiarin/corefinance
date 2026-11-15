@@ -14,16 +14,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
-	"github.com/ejsadiarin/corefinance/internal/gateway"
 	"github.com/ejsadiarin/corefinance/internal/logger"
 	"github.com/ejsadiarin/corefinance/internal/materialize"
 
 	_ "github.com/joho/godotenv/autoload"
 )
 
-// Env: DATABASE_URL (or DB_*), and GATEWAY_URL + GATEWAY_API_KEY: an API key
-// owned by a gateway admin with the corefinance:admin scope, used to look
-// users' timezones up (coregateway ADR-0005). Not needed for --backfill.
+// Env: DATABASE_URL (or DB_*). Entries are dated in each user's last-seen
+// timezone (the zone their last request's token carried; UTC if none), read
+// from corefinance's own database.
 //
 // Flags:
 //   --once      run one materialization pass and exit (one-shot jobs, tests)
@@ -97,8 +96,8 @@ func runOnce(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones
 	}
 	n, err := materialize.MaterializeDue(ctx, pool, queries, zones, today)
 	if err != nil {
-		// Some users were skipped (a failed timezone lookup, a failed write);
-		// the rest were filled, and the skipped ones are retried next pass.
+		// Some users were skipped (a failed zone read, a failed write); the
+		// rest were filled, and the skipped ones are retried next pass.
 		slog.Warn("materialize pass skipped some users", "inserted", n, "error", err)
 		return 1
 	}
@@ -122,17 +121,7 @@ func main() {
 	defer pool.Close()
 	queries := db.New(pool)
 
-	// The gateway owns users' timezones (ADR-0005); without a way to look them
-	// up the worker can't date entries, so it refuses to run rather than guess.
-	var zones materialize.Zones
-	if !*backfill {
-		gatewayURL, gatewayKey := os.Getenv("GATEWAY_URL"), os.Getenv("GATEWAY_API_KEY")
-		if gatewayURL == "" || gatewayKey == "" {
-			slog.Error("GATEWAY_URL and GATEWAY_API_KEY are required: the worker looks users' timezones up from the gateway")
-			os.Exit(1)
-		}
-		zones = gateway.NewTimezoneClient(gatewayURL, gatewayKey)
-	}
+	zones := materialize.SeenZones{Queries: queries}
 
 	if *backfill {
 		os.Exit(runOnce(context.Background(), pool, queries, nil, true))

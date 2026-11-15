@@ -22,7 +22,8 @@ type Claims struct {
 	Scope string `json:"scope,omitempty"`
 	ActAs string `json:"act_as,omitempty"`
 	// Tz is the IANA timezone of the user the request is about (coregateway
-	// ADR-0005); absent on tokens minted before the gateway sent it (UTC).
+	// ADR-0005); absent on tokens minted before the gateway sent it (the
+	// user's last-seen zone is used instead).
 	Tz string `json:"tz,omitempty"`
 }
 

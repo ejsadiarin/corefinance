@@ -17,43 +17,14 @@ const getSeenTimezone = `-- name: GetSeenTimezone :one
 SELECT timezone FROM user_timezones WHERE user_id = $1
 `
 
-// The zone corefinance last saw per user (#18, coregateway ADR-0005), kept
-// to notice a change and recompute the user's next due times.
+// The zone a request's token last carried per user (#18, coregateway
+// ADR-0005): background work dates entries in it, and a change recomputes
+// the user's next due times.
 func (q *Queries) GetSeenTimezone(ctx context.Context, userID uuid.UUID) (string, error) {
 	row := q.db.QueryRow(ctx, getSeenTimezone, userID)
 	var timezone string
 	err := row.Scan(&timezone)
 	return timezone, err
-}
-
-const listUsersToRefreshZone = `-- name: ListUsersToRefreshZone :many
-SELECT DISTINCT r.user_id FROM rules r
-LEFT JOIN user_timezones z ON z.user_id = r.user_id
-WHERE r.is_active = true
-  AND (z.seen_at IS NULL OR z.seen_at < $1::timestamptz)
-`
-
-// Users with an active rule whose zone hasn't been checked since cutoff: the
-// worker asks the gateway again, so a change there reaches the schedule
-// without the user making a request.
-func (q *Queries) ListUsersToRefreshZone(ctx context.Context, cutoff pgtype.Timestamptz) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, listUsersToRefreshZone, cutoff)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []uuid.UUID{}
-	for rows.Next() {
-		var user_id uuid.UUID
-		if err := rows.Scan(&user_id); err != nil {
-			return nil, err
-		}
-		items = append(items, user_id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const recordUserTimezone = `-- name: RecordUserTimezone :one
@@ -82,7 +53,9 @@ type RecordUserTimezoneParams struct {
 // Records a zone seen at seen_at and, in the same statement, clears the
 // user's next due times when it differs from the one before (each is
 // midnight in the old zone; the next pass recomputes them). One statement,
-// so a change can't be recorded without its schedule being reset.
+// so a change can't be recorded without its schedule being reset. Take
+// LockUserMaterialize first in the same transaction: it updates the user's
+// rule rows, and rule saves lock in that order.
 func (q *Queries) RecordUserTimezone(ctx context.Context, arg RecordUserTimezoneParams) (bool, error) {
 	row := q.db.QueryRow(ctx, recordUserTimezone, arg.Timezone, arg.Owner, arg.SeenAt)
 	var changed bool

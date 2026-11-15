@@ -54,22 +54,38 @@ func (s *Service) inTx(ctx context.Context, fn func(q db.Querier) error) error {
 // the one writer of rule entries, the same code the worker runs. Rule saves
 // call lockOwner first, so they take the owner's lock before any rule row,
 // in the same order the worker does.
-func fill(ctx context.Context, q db.Querier, userID uuid.UUID) error {
-	n, err := materialize.MaterializeUser(ctx, q, userID, ownerZone(ctx), time.Now())
+func fill(ctx context.Context, q db.Querier, userID uuid.UUID, loc *time.Location) error {
+	n, err := materialize.MaterializeUser(ctx, q, userID, loc, time.Now())
 	if err != nil {
 		return fmt.Errorf("fill rule entries: %w", err)
 	}
 	if n > 0 {
-		slog.Info("recurring.Service filled rule entries", "user_id", userID, "inserted", n)
+		slog.Info("recurring.fill: filled rule entries", "user_id", userID, "inserted", n)
 	}
 	return nil
 }
 
-// ownerZone is the rule owner's timezone from the request's internal token
-// (coregateway ADR-0005). Rule writes are always the caller's own, so the
-// token's zone is the owner's.
-func ownerZone(ctx context.Context) *time.Location {
-	return materialize.LoadZone(auth.TimezoneFromContext(ctx))
+// ownerZone is the rule owner's timezone (coregateway ADR-0005): the zone in
+// the request's internal token (rule writes are always the caller's own), or,
+// for a token without one, the zone last seen for the owner (UTC if none).
+func ownerZone(ctx context.Context, q db.Querier, userID uuid.UUID) (*time.Location, error) {
+	if tz := auth.TimezoneFromContext(ctx); tz != "" {
+		return materialize.LoadZone(tz), nil
+	}
+	loc, err := materialize.SeenZones{Queries: q}.Zone(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("owner timezone: %w", err)
+	}
+	return loc, nil
+}
+
+// lockOwnerInZone takes the owner's lock and then reads their zone, so a zone
+// recorded concurrently is either already committed or waits for this save.
+func lockOwnerInZone(ctx context.Context, q db.Querier, userID uuid.UUID) (*time.Location, error) {
+	if err := lockOwner(ctx, q, userID); err != nil {
+		return nil, err
+	}
+	return ownerZone(ctx, q, userID)
 }
 
 func lockOwner(ctx context.Context, q db.Querier, userID uuid.UUID) error {
@@ -85,7 +101,8 @@ func (s *Service) CreateIncomeRule(ctx context.Context, userID uuid.UUID, req Cr
 	slog.Debug("recurring.Service.CreateIncomeRule", "user_id", userID)
 	var rule db.RecurringIncomeRule
 	err := s.inTx(ctx, func(q db.Querier) error {
-		if err := lockOwner(ctx, q, userID); err != nil {
+		loc, err := lockOwnerInZone(ctx, q, userID)
+		if err != nil {
 			return err
 		}
 		r, err := q.CreateRecurringIncomeRule(ctx, db.CreateRecurringIncomeRuleParams{
@@ -104,7 +121,7 @@ func (s *Service) CreateIncomeRule(ctx context.Context, userID uuid.UUID, req Cr
 			return err
 		}
 		rule = r
-		return fill(ctx, q, userID)
+		return fill(ctx, q, userID, loc)
 	})
 	if err != nil {
 		return db.RecurringIncomeRule{}, err
@@ -144,14 +161,15 @@ func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 	// The rule and its entries change together: if skipping fails, the end
 	// date isn't saved either, so a retry still sees it move (#5).
 	err := s.inTx(ctx, func(q db.Querier) error {
-		if err := lockOwner(ctx, q, userID); err != nil {
+		loc, err := lockOwnerInZone(ctx, q, userID)
+		if err != nil {
 			return err
 		}
 		old, err := q.GetRecurringIncomeRule(ctx, db.GetRecurringIncomeRuleParams{ID: id, UserID: userID})
 		if err != nil {
 			return err
 		}
-		resumeThrough := materialize.ResumeThrough(ownerZone(ctx), time.Now())
+		resumeThrough := materialize.ResumeThrough(loc, time.Now())
 		rule, err := q.UpdateRecurringIncomeRule(ctx, db.UpdateRecurringIncomeRuleParams{
 			ID:            id,
 			UserID:        userID,
@@ -178,7 +196,7 @@ func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 			return err
 		}
 		out = IncomeRuleUpdate{RecurringIncomeRule: rule, StaleEntries: stale}
-		return fill(ctx, q, userID)
+		return fill(ctx, q, userID, loc)
 	})
 	if err != nil {
 		return IncomeRuleUpdate{}, err
@@ -200,7 +218,8 @@ func (s *Service) CreateExpenseRule(ctx context.Context, userID uuid.UUID, req C
 	slog.Debug("recurring.Service.CreateExpenseRule", "user_id", userID)
 	var rule db.RecurringExpenseRule
 	err := s.inTx(ctx, func(q db.Querier) error {
-		if err := lockOwner(ctx, q, userID); err != nil {
+		loc, err := lockOwnerInZone(ctx, q, userID)
+		if err != nil {
 			return err
 		}
 		r, err := q.CreateRecurringExpenseRule(ctx, db.CreateRecurringExpenseRuleParams{
@@ -219,7 +238,7 @@ func (s *Service) CreateExpenseRule(ctx context.Context, userID uuid.UUID, req C
 			return err
 		}
 		rule = r
-		return fill(ctx, q, userID)
+		return fill(ctx, q, userID, loc)
 	})
 	if err != nil {
 		return db.RecurringExpenseRule{}, err
@@ -249,14 +268,15 @@ func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uu
 	// The rule and its entries change together: if skipping fails, the end
 	// date isn't saved either, so a retry still sees it move (#5).
 	err := s.inTx(ctx, func(q db.Querier) error {
-		if err := lockOwner(ctx, q, userID); err != nil {
+		loc, err := lockOwnerInZone(ctx, q, userID)
+		if err != nil {
 			return err
 		}
 		old, err := q.GetRecurringExpenseRule(ctx, db.GetRecurringExpenseRuleParams{ID: id, UserID: userID})
 		if err != nil {
 			return err
 		}
-		resumeThrough := materialize.ResumeThrough(ownerZone(ctx), time.Now())
+		resumeThrough := materialize.ResumeThrough(loc, time.Now())
 		rule, err := q.UpdateRecurringExpenseRule(ctx, db.UpdateRecurringExpenseRuleParams{
 			ID:            id,
 			UserID:        userID,
@@ -283,7 +303,7 @@ func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uu
 			return err
 		}
 		out = ExpenseRuleUpdate{RecurringExpenseRule: rule, StaleEntries: stale}
-		return fill(ctx, q, userID)
+		return fill(ctx, q, userID, loc)
 	})
 	if err != nil {
 		return ExpenseRuleUpdate{}, err

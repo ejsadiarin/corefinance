@@ -85,11 +85,10 @@ WHERE user_id = $1 AND recurring_type != 'one-time' AND source_rule_id IS NULL;
 SELECT COUNT(*)::bigint AS legacy_count FROM incomes
 WHERE user_id = $1 AND recurring_type != 'one-time' AND source_rule_id IS NULL;
 
--- Catch-up pass (#7), one user at a time under a per-user lock (#14,
--- ADR-0001). A rule is behind when its watermark (materialized_through, or
--- the day before start_date when nothing has been filled) is earlier than
--- min(end_date, today). Rules that ended while the worker was down are still
--- included. Paused rules are not.
+-- The materialize pass runs one user at a time under a per-user lock (#14,
+-- ADR-0001). It fills each active rule's dates after its watermark
+-- (materialized_through) up to min(end_date, today), including rules that
+-- ended while the worker was down. Paused rules are not filled.
 
 -- Serializes every writer of one user's rule entries (the worker and rule
 -- saves) for the rest of the transaction. Take it before touching any rule
@@ -116,10 +115,6 @@ UPDATE rules SET next_due_at = sqlc.arg(next_due_at)::timestamptz WHERE id = sql
 -- name: GetNextWake :one
 SELECT min(next_due_at)::timestamptz AS next_wake FROM rules
 WHERE is_active = true AND next_due_at > sqlc.arg(now)::timestamptz AND next_due_at < 'infinity';
-
--- A timezone change moves every next occurrence: the next pass recomputes.
--- name: ClearUserNextDue :exec
-UPDATE rules SET next_due_at = NULL WHERE user_id = sqlc.arg(user_id);
 
 -- name: AdvanceRuleWatermark :exec
 UPDATE rules

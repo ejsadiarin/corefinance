@@ -78,21 +78,20 @@ func TestNextDue_EndedRuleIsNeverDueAgain_Integration(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNothingDue)
 }
 
-// Changing the owner's timezone (at the gateway) recomputes their rules'
-// next due time.
+// Changing the owner's timezone (a request carrying a new zone) recomputes
+// their rules' next due time on the next pass.
 func TestNextDue_TimezoneChangeRecomputes_Integration(t *testing.T) {
 	pool, q := newMaterializeTest(t)
 	ctx := context.Background()
 	user := uuid.New()
 	rule := seedExpenseRule(t, ctx, q, user, "weekly", "2026-11-10", nil)
-	_, err := MaterializeDue(ctx, pool, q, testZones, time.Date(2026, 11, 9, 10, 0, 0, 0, time.UTC))
+	zones := SeenZones{Queries: q}
+	_, err := MaterializeDue(ctx, pool, q, zones, time.Date(2026, 11, 9, 10, 0, 0, 0, time.UTC))
 	require.NoError(t, err)
-	assert.Equal(t, "2026-11-10T00:00Z", storedNextDue(t, ctx, pool, rule.ID), "UTC until a timezone is saved")
+	assert.Equal(t, "2026-11-10T00:00Z", storedNextDue(t, ctx, pool, rule.ID), "UTC until a zone is seen")
 
-	// The gateway now says Manila, and the user makes no request: once the
-	// zone is due a re-check, a pass sees the change and recomputes.
-	setTimezone(t, user, "Asia/Manila")
-	_, err = MaterializeDue(ctx, pool, q, testZones, time.Date(2026, 11, 9, 10, 0, 0, 0, time.UTC).Add(ZoneRefreshEvery+time.Minute))
+	require.NoError(t, ObserveTimezone(ctx, pool, user, mustZone(t, "Asia/Manila"), time.Date(2026, 11, 9, 10, 1, 0, 0, time.UTC)))
+	_, err = MaterializeDue(ctx, pool, q, zones, time.Date(2026, 11, 9, 10, 2, 0, 0, time.UTC))
 	require.NoError(t, err)
 	assert.Equal(t, "2026-11-09T16:00Z", storedNextDue(t, ctx, pool, rule.ID))
 }

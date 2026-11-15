@@ -425,29 +425,14 @@ func withMaterializeLock(ctx context.Context, pool *pgxpool.Pool, queries *db.Qu
 // recurring_type='one-time', NULL start/end, source_rule_id set,
 // status='posted'. Returns the rows inserted, and every user's error joined.
 func MaterializeDue(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones Zones, now time.Time) (int, error) {
-	var errs []error
-	// A zone change at the gateway resets the user's next due times, so they
-	// are due below and recomputed in the new zone.
-	check, err := refreshZones(ctx, queries, zones, now)
-	if err != nil {
-		errs = append(errs, err)
-	}
 	users, err := queries.ListUsersDue(ctx, pgtype.Timestamptz{Time: now, Valid: true})
 	if err != nil {
-		return 0, errors.Join(append(errs, fmt.Errorf("list users due: %w", err))...)
+		return 0, fmt.Errorf("list users due: %w", err)
 	}
+	var errs []error
 	inserted := 0
 	for _, user := range users {
-		// The zone comes from the gateway (ADR-0005): if it can't be had,
-		// skip this user rather than guess; the next pass retries.
-		loc, ok, err := check.zoneFor(ctx, zones, user)
-		if err != nil {
-			errs = append(errs, err)
-		}
-		if !ok {
-			continue
-		}
-		n, err := materializeUserTx(ctx, pool, queries, user, loc, now)
+		n, err := materializeUserTx(ctx, pool, queries, zones, user, now)
 		inserted += n
 		if err != nil {
 			errs = append(errs, fmt.Errorf("user %s: %w", user, err))
@@ -456,15 +441,23 @@ func MaterializeDue(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries
 	return inserted, errors.Join(errs...)
 }
 
-func materializeUserTx(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, user uuid.UUID, loc *time.Location, now time.Time) (int, error) {
+// materializeUserTx reads the user's zone once it holds their lock, so a zone
+// recorded meanwhile (which takes the same lock) is committed and seen, and
+// its reset of the next due times isn't overwritten with times in the old
+// zone. A failed read skips the user rather than guess; the next pass retries.
+func materializeUserTx(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones Zones, user uuid.UUID, now time.Time) (int, error) {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("begin: %w", err)
 	}
 	defer tx.Rollback(ctx)
 	q := queries.WithTx(tx)
-	if err := ObserveTimezone(ctx, q, user, loc, now); err != nil {
-		return 0, err
+	if err := q.LockUserMaterialize(ctx, user); err != nil {
+		return 0, fmt.Errorf("lock user materialize: %w", err)
+	}
+	loc, err := zones.Zone(ctx, user)
+	if err != nil {
+		return 0, fmt.Errorf("timezone: %w", err)
 	}
 	n, err := MaterializeUser(ctx, q, user, loc, now)
 	if err != nil {
