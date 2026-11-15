@@ -7,7 +7,7 @@ A personal budget service behind coregateway: users record what they spend and e
 ### Ownership
 
 **Owner**:
-The user a record, category or rule belongs to, known to corefinance only as the identity the gateway asserts. corefinance keeps no other user data: the owner's timezone is the gateway's (coregateway ADR-0005). corefinance remembers only the zone it last saw on a request, for work done without one (the worker).
+The user a record, tag or rule belongs to, known to corefinance only as the identity the gateway asserts. corefinance keeps no other user data: the owner's timezone is the gateway's (coregateway ADR-0005). corefinance remembers only the zone it last saw on a request, for work done without one (the worker).
 _Avoid_: account, member, principal
 
 **Last-seen zone**:
@@ -29,11 +29,15 @@ Money the owner received, on one date. Like an expense, always a single record.
 _Avoid_: earning, revenue, credit, deposit
 
 **Category**:
-An owner's named grouping for expenses or for incomes; the two kinds are kept apart. Removing one hides it rather than deleting the records filed under it.
+One slice of a fixed, system-defined list that a budget record is filed under, at most one per record. Expenses and incomes have separate lists, and owners can't add to either (ADR-0002).
 _Avoid_: tag, type, bucket
 
+**Reimbursement**:
+Income that pays the owner back for something they spent, such as a friend's share of a dinner. It counts in money on hand but not as income in reports.
+_Avoid_: refund, repayment, payback
+
 **Tag**:
-A free label an owner puts on any number of expenses or incomes, across categories.
+A free label an owner creates and puts on any number of expenses or incomes, across categories: people, trips, anything a category doesn't capture.
 _Avoid_: category, label
 
 **Priority**:
