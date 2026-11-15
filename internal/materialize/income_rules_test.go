@@ -27,7 +27,7 @@ func countRuleIncomes(t *testing.T, ctx context.Context, pool *pgxpool.Pool, rul
 
 // The materialize pass skips paused income rules and picks them back up
 // after resume, preserving already-materialized history.
-func TestMaterializeDue_PausedIncomeRuleSkippedThenResumed(t *testing.T) {
+func TestMaterializeDue_PausedIncomeRuleSkippedThenResumed_Integration(t *testing.T) {
 	pool, q := newMaterializeTest(t)
 	ctx := context.Background()
 	userID := uuid.New()

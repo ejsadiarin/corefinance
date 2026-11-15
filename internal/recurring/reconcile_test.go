@@ -167,7 +167,7 @@ func TestEndIncomeRuleInPast_SkipsLaterEntriesByDefault_Integration(t *testing.T
 }
 
 // The handler refuses a choice other than skip or keep, before any write.
-func TestUpdateRuleHandler_RejectsUnknownEntriesAfterEnd(t *testing.T) {
+func TestUpdateRuleHandler_RejectsUnknownStaleEntries(t *testing.T) {
 	h := NewHandler(NewService(&mock.MockQuerier{}))
 	for path, update := range map[string]http.HandlerFunc{
 		"/api/budget/recurring-expenses/": h.UpdateExpenseRule,
