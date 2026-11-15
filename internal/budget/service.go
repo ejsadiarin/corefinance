@@ -224,20 +224,17 @@ func (s *Service) Import(ctx context.Context, userID uuid.UUID, export *BudgetEx
 			newRuleID = exp.SourceRuleID.Bytes
 		}
 		newExp, err := q.CreateExpense(ctx, db.CreateExpenseParams{
-			UserID:        userID,
-			CategoryID:    helper.ToPgUUIDFromUUID(newCatID),
-			Amount:        exp.Amount,
-			Currency:      exp.Currency,
-			Description:   exp.Description,
-			Notes:         exp.Notes,
-			ExpenseDate:   exp.ExpenseDate,
-			RecurringType: exp.RecurringType,
-			Priority:      exp.Priority,
-			Status:        exp.Status,
-			IsDebt:        exp.IsDebt,
-			StartDate:     exp.StartDate,
-			EndDate:       exp.EndDate,
-			SourceRuleID:  helper.ToPgUUIDFromUUID(newRuleID),
+			UserID:       userID,
+			CategoryID:   helper.ToPgUUIDFromUUID(newCatID),
+			Amount:       exp.Amount,
+			Currency:     exp.Currency,
+			Description:  exp.Description,
+			Notes:        exp.Notes,
+			ExpenseDate:  exp.ExpenseDate,
+			Priority:     exp.Priority,
+			Status:       exp.Status,
+			IsDebt:       exp.IsDebt,
+			SourceRuleID: helper.ToPgUUIDFromUUID(newRuleID),
 		})
 		if err != nil {
 			slog.Error("budget.Service.Import: failed to import expenses", "error", err, "user_id", userID)
@@ -259,19 +256,16 @@ func (s *Service) Import(ctx context.Context, userID uuid.UUID, export *BudgetEx
 			newRuleID = inc.SourceRuleID.Bytes
 		}
 		newInc, err := q.CreateIncome(ctx, db.CreateIncomeParams{
-			UserID:        userID,
-			CategoryID:    helper.ToPgUUIDFromUUID(newCatID),
-			Amount:        inc.Amount,
-			Currency:      inc.Currency,
-			Description:   inc.Description,
-			Notes:         inc.Notes,
-			Date:          inc.Date,
-			RecurringType: inc.RecurringType,
-			Priority:      inc.Priority,
-			Status:        inc.Status,
-			StartDate:     inc.StartDate,
-			EndDate:       inc.EndDate,
-			SourceRuleID:  helper.ToPgUUIDFromUUID(newRuleID),
+			UserID:       userID,
+			CategoryID:   helper.ToPgUUIDFromUUID(newCatID),
+			Amount:       inc.Amount,
+			Currency:     inc.Currency,
+			Description:  inc.Description,
+			Notes:        inc.Notes,
+			Date:         inc.Date,
+			Priority:     inc.Priority,
+			Status:       inc.Status,
+			SourceRuleID: helper.ToPgUUIDFromUUID(newRuleID),
 		})
 		if err != nil {
 			slog.Error("budget.Service.Import: failed to import incomes", "error", err, "user_id", userID)

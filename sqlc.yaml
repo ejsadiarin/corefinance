@@ -29,10 +29,11 @@ sql:
               import: "github.com/shopspring/decimal"
               type: "Decimal"
               pointer: true
-          # The rule views carry kind for inserts (#11); their JSON stays as before.
-          - column: "recurring_expense_rules.kind"
+          # A rule's kind is implied by its endpoint and next_due_at is the
+          # worker's schedule (#16); neither is part of the rules' JSON.
+          - column: "rules.kind"
             go_struct_tag: 'json:"-"'
-          - column: "recurring_income_rules.kind"
+          - column: "rules.next_due_at"
             go_struct_tag: 'json:"-"'
           # Inserting transaction id (#13): pgx scans xid8 as uint64. Not part of
           # the entries' JSON; the review feed turns it into an opaque cursor.

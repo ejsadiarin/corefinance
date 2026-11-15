@@ -46,13 +46,13 @@ type StaleEntry struct {
 // ExpenseRuleUpdate is the rule as updated plus its stale entries (empty
 // unless the schedule changed).
 type ExpenseRuleUpdate struct {
-	db.RecurringExpenseRule
+	db.Rule
 	StaleEntries []StaleEntry `json:"stale_entries"`
 }
 
 // IncomeRuleUpdate is the income-rule counterpart of ExpenseRuleUpdate.
 type IncomeRuleUpdate struct {
-	db.RecurringIncomeRule
+	db.Rule
 	StaleEntries []StaleEntry `json:"stale_entries"`
 }
 

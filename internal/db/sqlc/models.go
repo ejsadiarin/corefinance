@@ -11,25 +11,22 @@ import (
 )
 
 type Expense struct {
-	ID            uuid.UUID          `db:"id" json:"id"`
-	UserID        uuid.UUID          `db:"user_id" json:"user_id"`
-	CategoryID    pgtype.UUID        `db:"category_id" json:"category_id"`
-	Amount        decimal.Decimal    `db:"amount" json:"amount"`
-	Currency      string             `db:"currency" json:"currency"`
-	Description   string             `db:"description" json:"description"`
-	Notes         pgtype.Text        `db:"notes" json:"notes"`
-	ExpenseDate   pgtype.Date        `db:"expense_date" json:"expense_date"`
-	RecurringType string             `db:"recurring_type" json:"recurring_type"`
-	Priority      string             `db:"priority" json:"priority"`
-	Status        string             `db:"status" json:"status"`
-	IsDebt        bool               `db:"is_debt" json:"is_debt"`
-	StartDate     pgtype.Date        `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date        `db:"end_date" json:"end_date"`
-	SourceRuleID  pgtype.UUID        `db:"source_rule_id" json:"source_rule_id"`
-	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	UserEditedAt  pgtype.Timestamptz `db:"user_edited_at" json:"user_edited_at"`
-	Txid          uint64             `db:"txid" json:"-"`
+	ID           uuid.UUID          `db:"id" json:"id"`
+	UserID       uuid.UUID          `db:"user_id" json:"user_id"`
+	CategoryID   pgtype.UUID        `db:"category_id" json:"category_id"`
+	Amount       decimal.Decimal    `db:"amount" json:"amount"`
+	Currency     string             `db:"currency" json:"currency"`
+	Description  string             `db:"description" json:"description"`
+	Notes        pgtype.Text        `db:"notes" json:"notes"`
+	ExpenseDate  pgtype.Date        `db:"expense_date" json:"expense_date"`
+	Priority     string             `db:"priority" json:"priority"`
+	Status       string             `db:"status" json:"status"`
+	IsDebt       bool               `db:"is_debt" json:"is_debt"`
+	SourceRuleID pgtype.UUID        `db:"source_rule_id" json:"source_rule_id"`
+	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	UserEditedAt pgtype.Timestamptz `db:"user_edited_at" json:"user_edited_at"`
+	Txid         uint64             `db:"txid" json:"-"`
 }
 
 type ExpenseCategory struct {
@@ -49,24 +46,21 @@ type ExpenseTag struct {
 }
 
 type Income struct {
-	ID            uuid.UUID          `db:"id" json:"id"`
-	UserID        uuid.UUID          `db:"user_id" json:"user_id"`
-	CategoryID    pgtype.UUID        `db:"category_id" json:"category_id"`
-	Amount        decimal.Decimal    `db:"amount" json:"amount"`
-	Currency      string             `db:"currency" json:"currency"`
-	Description   string             `db:"description" json:"description"`
-	Notes         pgtype.Text        `db:"notes" json:"notes"`
-	Date          pgtype.Date        `db:"date" json:"date"`
-	RecurringType string             `db:"recurring_type" json:"recurring_type"`
-	Priority      string             `db:"priority" json:"priority"`
-	Status        string             `db:"status" json:"status"`
-	StartDate     pgtype.Date        `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date        `db:"end_date" json:"end_date"`
-	SourceRuleID  pgtype.UUID        `db:"source_rule_id" json:"source_rule_id"`
-	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	UserEditedAt  pgtype.Timestamptz `db:"user_edited_at" json:"user_edited_at"`
-	Txid          uint64             `db:"txid" json:"-"`
+	ID           uuid.UUID          `db:"id" json:"id"`
+	UserID       uuid.UUID          `db:"user_id" json:"user_id"`
+	CategoryID   pgtype.UUID        `db:"category_id" json:"category_id"`
+	Amount       decimal.Decimal    `db:"amount" json:"amount"`
+	Currency     string             `db:"currency" json:"currency"`
+	Description  string             `db:"description" json:"description"`
+	Notes        pgtype.Text        `db:"notes" json:"notes"`
+	Date         pgtype.Date        `db:"date" json:"date"`
+	Priority     string             `db:"priority" json:"priority"`
+	Status       string             `db:"status" json:"status"`
+	SourceRuleID pgtype.UUID        `db:"source_rule_id" json:"source_rule_id"`
+	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	UserEditedAt pgtype.Timestamptz `db:"user_edited_at" json:"user_edited_at"`
+	Txid         uint64             `db:"txid" json:"-"`
 }
 
 type IncomeCategory struct {
@@ -85,47 +79,9 @@ type IncomeTag struct {
 	TagID    uuid.UUID `db:"tag_id" json:"tag_id"`
 }
 
-type RecurringExpenseRule struct {
-	ID                  uuid.UUID          `db:"id" json:"id"`
-	UserID              uuid.UUID          `db:"user_id" json:"user_id"`
-	Description         string             `db:"description" json:"description"`
-	Amount              decimal.Decimal    `db:"amount" json:"amount"`
-	Currency            string             `db:"currency" json:"currency"`
-	CategoryID          pgtype.UUID        `db:"category_id" json:"category_id"`
-	Notes               pgtype.Text        `db:"notes" json:"notes"`
-	RecurringType       string             `db:"recurring_type" json:"recurring_type"`
-	StartDate           pgtype.Date        `db:"start_date" json:"start_date"`
-	EndDate             pgtype.Date        `db:"end_date" json:"end_date"`
-	Priority            string             `db:"priority" json:"priority"`
-	IsActive            bool               `db:"is_active" json:"is_active"`
-	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	MaterializedThrough pgtype.Date        `db:"materialized_through" json:"materialized_through"`
-	Kind                string             `db:"kind" json:"-"`
-}
-
-type RecurringIncomeRule struct {
-	ID                  uuid.UUID          `db:"id" json:"id"`
-	UserID              uuid.UUID          `db:"user_id" json:"user_id"`
-	Amount              decimal.Decimal    `db:"amount" json:"amount"`
-	Currency            string             `db:"currency" json:"currency"`
-	Description         string             `db:"description" json:"description"`
-	RecurringType       string             `db:"recurring_type" json:"recurring_type"`
-	StartDate           pgtype.Date        `db:"start_date" json:"start_date"`
-	EndDate             pgtype.Date        `db:"end_date" json:"end_date"`
-	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	IsActive            bool               `db:"is_active" json:"is_active"`
-	CategoryID          pgtype.UUID        `db:"category_id" json:"category_id"`
-	Notes               pgtype.Text        `db:"notes" json:"notes"`
-	Priority            string             `db:"priority" json:"priority"`
-	MaterializedThrough pgtype.Date        `db:"materialized_through" json:"materialized_through"`
-	Kind                string             `db:"kind" json:"-"`
-}
-
 type Rule struct {
 	ID                  uuid.UUID          `db:"id" json:"id"`
-	Kind                string             `db:"kind" json:"kind"`
+	Kind                string             `db:"kind" json:"-"`
 	UserID              uuid.UUID          `db:"user_id" json:"user_id"`
 	Description         string             `db:"description" json:"description"`
 	Amount              decimal.Decimal    `db:"amount" json:"amount"`
@@ -140,7 +96,7 @@ type Rule struct {
 	MaterializedThrough pgtype.Date        `db:"materialized_through" json:"materialized_through"`
 	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	NextDueAt           pgtype.Timestamptz `db:"next_due_at" json:"next_due_at"`
+	NextDueAt           pgtype.Timestamptz `db:"next_due_at" json:"-"`
 }
 
 type Tag struct {

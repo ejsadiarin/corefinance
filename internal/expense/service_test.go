@@ -20,8 +20,6 @@ func TestCreate_Success(t *testing.T) {
 	catID := "550e8400-e29b-41d4-a716-446655440000"
 	sourceRuleID := "550e8400-e29b-41d4-a716-446655440001"
 	notes := "lunch money"
-	startDate := "2026-01-01"
-	endDate := "2026-12-31"
 
 	mock := &mock.MockQuerier{
 		CreateExpenseFn: func(ctx context.Context, arg db.CreateExpenseParams) (db.Expense, error) {
@@ -32,12 +30,9 @@ func TestCreate_Success(t *testing.T) {
 			assert.Equal(t, "Food", arg.Description)
 			assert.True(t, arg.Notes.Valid)
 			assert.Equal(t, notes, arg.Notes.String)
-			assert.Equal(t, "recurring", arg.RecurringType)
 			assert.Equal(t, "high", arg.Priority)
 			assert.Equal(t, "active", arg.Status)
 			assert.True(t, arg.IsDebt)
-			assert.True(t, arg.StartDate.Valid)
-			assert.True(t, arg.EndDate.Valid)
 			assert.True(t, arg.SourceRuleID.Valid)
 			return db.Expense{
 				ID:          expenseID,
@@ -51,19 +46,16 @@ func TestCreate_Success(t *testing.T) {
 	svc := NewService(mock)
 
 	result, err := svc.Create(context.Background(), userID, CreateRequest{
-		CategoryID:    &catID,
-		Amount:        42.50,
-		Currency:      "PHP",
-		Description:   "Food",
-		Notes:         &notes,
-		ExpenseDate:   "2026-09-05",
-		RecurringType: "recurring",
-		Priority:      "high",
-		Status:        "active",
-		IsDebt:        true,
-		StartDate:     &startDate,
-		EndDate:       &endDate,
-		SourceRuleID:  &sourceRuleID,
+		CategoryID:   &catID,
+		Amount:       42.50,
+		Currency:     "PHP",
+		Description:  "Food",
+		Notes:        &notes,
+		ExpenseDate:  "2026-09-05",
+		Priority:     "high",
+		Status:       "active",
+		IsDebt:       true,
+		SourceRuleID: &sourceRuleID,
 	})
 
 	require.NoError(t, err)
@@ -179,7 +171,6 @@ func TestList_FiltersPassedThrough(t *testing.T) {
 	catID := "550e8400-e29b-41d4-a716-446655440000"
 	priority := "high"
 	status := "active"
-	recType := "monthly"
 
 	mock := &mock.MockQuerier{
 		ListExpensesFn: func(ctx context.Context, arg db.ListExpensesParams) ([]db.ListExpensesRow, error) {
@@ -189,21 +180,19 @@ func TestList_FiltersPassedThrough(t *testing.T) {
 			assert.NotEqual(t, uuid.Nil, arg.CategoryID)
 			assert.Equal(t, "high", arg.Priority)
 			assert.Equal(t, "active", arg.Status)
-			assert.Equal(t, "monthly", arg.RecurringType)
 			return nil, nil
 		},
 	}
 	svc := NewService(mock)
 
 	_, err := svc.List(context.Background(), userID, ListParams{
-		StartDate:     &startDate,
-		EndDate:       &endDate,
-		CategoryID:    &catID,
-		Priority:      &priority,
-		Status:        &status,
-		RecurringType: &recType,
-		Page:          1,
-		PageSize:      10,
+		StartDate:  &startDate,
+		EndDate:    &endDate,
+		CategoryID: &catID,
+		Priority:   &priority,
+		Status:     &status,
+		Page:       1,
+		PageSize:   10,
 	})
 
 	require.NoError(t, err)
@@ -321,14 +310,13 @@ func TestUpdate_Success(t *testing.T) {
 	svc := NewService(mock)
 
 	result, err := svc.Update(context.Background(), expenseID, userID, UpdateRequest{
-		CategoryID:    &catID,
-		Amount:        99.99,
-		Currency:      "USD",
-		Description:   "Updated",
-		ExpenseDate:   "2026-09-05",
-		RecurringType: "one-time",
-		Priority:      "low",
-		Status:        "active",
+		CategoryID:  &catID,
+		Amount:      99.99,
+		Currency:    "USD",
+		Description: "Updated",
+		ExpenseDate: "2026-09-05",
+		Priority:    "low",
+		Status:      "active",
 	})
 
 	require.NoError(t, err)
@@ -560,8 +548,6 @@ func TestCreate_NilOptionalFields(t *testing.T) {
 		CreateExpenseFn: func(ctx context.Context, arg db.CreateExpenseParams) (db.Expense, error) {
 			assert.False(t, arg.CategoryID.Valid)
 			assert.False(t, arg.Notes.Valid)
-			assert.False(t, arg.StartDate.Valid)
-			assert.False(t, arg.EndDate.Valid)
 			assert.False(t, arg.SourceRuleID.Valid)
 			assert.False(t, arg.IsDebt)
 			return db.Expense{ID: uuid.New()}, nil
@@ -586,8 +572,6 @@ func TestUpdate_NilOptionalFields(t *testing.T) {
 		UpdateExpenseFn: func(ctx context.Context, arg db.UpdateExpenseParams) (db.Expense, error) {
 			assert.False(t, arg.CategoryID.Valid)
 			assert.False(t, arg.Notes.Valid)
-			assert.False(t, arg.StartDate.Valid)
-			assert.False(t, arg.EndDate.Valid)
 			assert.False(t, arg.SourceRuleID.Valid)
 			return db.Expense{ID: expenseID}, nil
 		},

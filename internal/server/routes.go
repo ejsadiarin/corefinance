@@ -143,12 +143,6 @@ func (s *Server) RegisterRoutes() http.Handler {
 			r.Put("/{id}", s.RecurringHandler.UpdateIncomeRule)
 			r.Delete("/{id}", s.RecurringHandler.DeleteIncomeRule)
 		})
-
-		// admin maintenance (gateway gates /admin/* by scope; the handler
-		// re-checks admin scope for direct callers).
-		r.Route("/admin", func(r chi.Router) {
-			r.Post("/backfill", s.AdminHandler.Backfill)
-		})
 	})
 
 	return r

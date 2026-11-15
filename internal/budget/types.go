@@ -11,7 +11,7 @@ type BudgetExport struct {
 	Expenses          []db.Expense                      `json:"expenses"`
 	Incomes           []db.Income                       `json:"incomes"`
 	RecurringExpenses []db.ListRecurringExpenseRulesRow `json:"recurring_expenses"`
-	RecurringIncomes  []db.RecurringIncomeRule          `json:"recurring_incomes"`
+	RecurringIncomes  []db.Rule                         `json:"recurring_incomes"`
 	ExpenseTags       []db.ExpenseTag                   `json:"expense_tags"`
 	IncomeTags        []db.IncomeTag                    `json:"income_tags"`
 }

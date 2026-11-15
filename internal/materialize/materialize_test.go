@@ -21,7 +21,7 @@ func newMaterializeTest(t *testing.T) (*pgxpool.Pool, *db.Queries) {
 	return pool, db.New(pool)
 }
 
-func seedExpenseRule(t *testing.T, ctx context.Context, q *db.Queries, userID uuid.UUID, cadence, start string, end *string) db.RecurringExpenseRule {
+func seedExpenseRule(t *testing.T, ctx context.Context, q *db.Queries, userID uuid.UUID, cadence, start string, end *string) db.Rule {
 	t.Helper()
 	rule, err := q.CreateRecurringExpenseRule(ctx, db.CreateRecurringExpenseRuleParams{
 		UserID:        userID,
@@ -37,7 +37,7 @@ func seedExpenseRule(t *testing.T, ctx context.Context, q *db.Queries, userID uu
 	return rule
 }
 
-func seedIncomeRule(t *testing.T, ctx context.Context, q *db.Queries, userID uuid.UUID, cadence, start string) db.RecurringIncomeRule {
+func seedIncomeRule(t *testing.T, ctx context.Context, q *db.Queries, userID uuid.UUID, cadence, start string) db.Rule {
 	t.Helper()
 	rule, err := q.CreateRecurringIncomeRule(ctx, db.CreateRecurringIncomeRuleParams{
 		UserID:        userID,
@@ -83,16 +83,13 @@ func TestMaterializeDue_DailyCreatesTodaysInstance_Integration(t *testing.T) {
 
 	var got db.Expense
 	err = pool.QueryRow(ctx,
-		`SELECT id, user_id, category_id, amount, currency, description, notes, expense_date, recurring_type, priority, status, is_debt, start_date, end_date, source_rule_id, created_at, updated_at
+		`SELECT id, user_id, category_id, amount, currency, description, notes, expense_date, priority, status, is_debt, source_rule_id, created_at, updated_at
 		 FROM expenses WHERE source_rule_id = $1`, rule.ID).
 		Scan(&got.ID, &got.UserID, &got.CategoryID, &got.Amount, &got.Currency,
-			&got.Description, &got.Notes, &got.ExpenseDate, &got.RecurringType,
-			&got.Priority, &got.Status, &got.IsDebt, &got.StartDate, &got.EndDate,
+			&got.Description, &got.Notes, &got.ExpenseDate,
+			&got.Priority, &got.Status, &got.IsDebt,
 			&got.SourceRuleID, &got.CreatedAt, &got.UpdatedAt)
 	require.NoError(t, err)
-	assert.Equal(t, "one-time", got.RecurringType)
-	assert.False(t, got.StartDate.Valid, "instance start_date must be NULL")
-	assert.False(t, got.EndDate.Valid, "instance end_date must be NULL")
 	assert.True(t, got.SourceRuleID.Valid)
 	assert.Equal(t, rule.ID, uuid.UUID(got.SourceRuleID.Bytes))
 	assert.Equal(t, "posted", got.Status)
@@ -175,239 +172,4 @@ func TestMaterializeDue_MonthlyClamp_Integration(t *testing.T) {
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT max(expense_date) FROM expenses WHERE source_rule_id = $1`, rule.ID).Scan(&expenseDate))
 	assert.True(t, expenseDate.Time.Equal(d("2026-02-28")))
-}
-
-// Legacy weekly income becomes a real rule plus history; the legacy row is
-// flipped to one-time and zero legacy-predicate rows remain.
-func TestBackfillLegacy_WeeklyIncome_Integration(t *testing.T) {
-	pool, q := newMaterializeTest(t)
-	ctx := context.Background()
-	userID := uuid.New()
-	today := d("2026-08-15") // Saturdays: 08-01, 08-08, 08-15
-
-	legacy, err := q.CreateIncome(ctx, db.CreateIncomeParams{
-		UserID:        userID,
-		Amount:        decimal.NewFromFloat(500),
-		Currency:      "PHP",
-		Description:   "allowance",
-		Date:          pgtype.Date{Time: d("2026-08-01"), Valid: true},
-		RecurringType: "weekly",
-		Priority:      "want",
-		Status:        "posted",
-		StartDate:     pgtype.Date{Time: d("2026-08-01"), Valid: true},
-	})
-	require.NoError(t, err)
-
-	before, err := CountLegacyRows(ctx, q)
-	require.NoError(t, err)
-	require.Equal(t, int64(1), before)
-
-	res, err := BackfillLegacy(ctx, pool, q, today)
-	require.NoError(t, err)
-	assert.Equal(t, 1, res.IncomeRules)
-	assert.Equal(t, 2, res.IncomeInstances, "08-08 and 08-15; 08-01 anchor kept")
-
-	rules, err := q.ListRecurringIncomeRules(ctx, userID)
-	require.NoError(t, err)
-	require.Len(t, rules, 1)
-	assert.True(t, decimal.NewFromFloat(500).Equal(rules[0].Amount))
-	assert.Equal(t, "allowance", rules[0].Description)
-	assert.Equal(t, "weekly", rules[0].RecurringType)
-
-	var instanceCount int
-	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM incomes WHERE source_rule_id = $1 AND status = 'posted' AND recurring_type = 'one-time'`,
-		rules[0].ID).Scan(&instanceCount))
-	assert.Equal(t, 2, instanceCount)
-
-	var flipped db.Income
-	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT id, user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id, created_at, updated_at
-		 FROM incomes WHERE id = $1`, legacy.ID).
-		Scan(&flipped.ID, &flipped.UserID, &flipped.CategoryID, &flipped.Amount, &flipped.Currency,
-			&flipped.Description, &flipped.Notes, &flipped.Date, &flipped.RecurringType,
-			&flipped.Priority, &flipped.Status, &flipped.StartDate, &flipped.EndDate,
-			&flipped.SourceRuleID, &flipped.CreatedAt, &flipped.UpdatedAt))
-	assert.Equal(t, "one-time", flipped.RecurringType)
-
-	after, err := CountLegacyRows(ctx, q)
-	require.NoError(t, err)
-	assert.Equal(t, int64(0), after, "zero rows must match the legacy predicate")
-}
-
-// Legacy expense conversion copies category/notes/priority/is_debt into the
-// rule and its history.
-func TestBackfillLegacy_ExpenseCopiesFields_Integration(t *testing.T) {
-	pool, q := newMaterializeTest(t)
-	ctx := context.Background()
-	userID := uuid.New()
-	today := d("2026-09-03")
-
-	cat, err := q.CreateExpenseCategory(ctx, db.CreateExpenseCategoryParams{
-		UserID: userID,
-		Name:   "food",
-	})
-	require.NoError(t, err)
-	notes := "weekly groceries"
-
-	_, err = q.CreateExpense(ctx, db.CreateExpenseParams{
-		UserID:        userID,
-		CategoryID:    pgtype.UUID{Bytes: cat.ID, Valid: true},
-		Amount:        decimal.NewFromFloat(2500),
-		Currency:      "PHP",
-		Description:   "groceries",
-		Notes:         pgtype.Text{String: notes, Valid: true},
-		ExpenseDate:   pgtype.Date{Time: d("2026-09-01"), Valid: true},
-		RecurringType: "weekly",
-		Priority:      "need",
-		Status:        "posted",
-		IsDebt:        true,
-		StartDate:     pgtype.Date{Time: d("2026-09-01"), Valid: true},
-	})
-	require.NoError(t, err)
-
-	res, err := BackfillLegacy(ctx, pool, q, today)
-	require.NoError(t, err)
-	assert.Equal(t, 1, res.ExpenseRules)
-	assert.Equal(t, 0, res.ExpenseInstances, "only 09-01 due by 09-03 and it is the anchor")
-
-	rules, err := q.ListRecurringExpenseRules(ctx, userID)
-	require.NoError(t, err)
-	require.Len(t, rules, 1)
-	assert.Equal(t, "groceries", rules[0].Description)
-	assert.True(t, rules[0].CategoryID.Valid)
-	assert.Equal(t, cat.ID, uuid.UUID(rules[0].CategoryID.Bytes))
-	assert.Equal(t, "need", rules[0].Priority)
-
-	after, err := CountLegacyRows(ctx, q)
-	require.NoError(t, err)
-	assert.Equal(t, int64(0), after)
-}
-
-// Every *ByUser query sees only the given user's rows.
-func TestByUserQueries_ScopeToUser_Integration(t *testing.T) {
-	pool, q := newMaterializeTest(t)
-	_ = pool
-	ctx := context.Background()
-	userA := uuid.New()
-	userB := uuid.New()
-
-	seedExpenseRule(t, ctx, q, userA, "daily", "2026-09-01", nil)
-	seedExpenseRule(t, ctx, q, userB, "daily", "2026-09-01", nil)
-	seedIncomeRule(t, ctx, q, userA, "daily", "2026-09-01")
-
-	expenseA, err := q.ListActiveExpenseRulesByUser(ctx, db.ListActiveExpenseRulesByUserParams{
-		UserID:    userA,
-		StartDate: pgtype.Date{Time: d("2026-09-10"), Valid: true},
-	})
-	require.NoError(t, err)
-	assert.Len(t, expenseA, 1)
-	assert.Equal(t, userA, expenseA[0].UserID)
-
-	incomeA, err := q.ListActiveIncomeRulesByUser(ctx, db.ListActiveIncomeRulesByUserParams{
-		UserID:    userA,
-		StartDate: pgtype.Date{Time: d("2026-09-10"), Valid: true},
-	})
-	require.NoError(t, err)
-	assert.Len(t, incomeA, 1)
-
-	incomeB, err := q.ListActiveIncomeRulesByUser(ctx, db.ListActiveIncomeRulesByUserParams{
-		UserID:    userB,
-		StartDate: pgtype.Date{Time: d("2026-09-10"), Valid: true},
-	})
-	require.NoError(t, err)
-	assert.Empty(t, incomeB)
-
-	seedLegacy := func(userID uuid.UUID) {
-		t.Helper()
-		_, err := q.CreateExpense(ctx, db.CreateExpenseParams{
-			UserID:        userID,
-			Amount:        decimal.NewFromFloat(100),
-			Currency:      "PHP",
-			Description:   "legacy",
-			ExpenseDate:   pgtype.Date{Time: d("2026-09-01"), Valid: true},
-			RecurringType: "weekly",
-			Priority:      "need",
-			Status:        "posted",
-			StartDate:     pgtype.Date{Time: d("2026-09-01"), Valid: true},
-		})
-		require.NoError(t, err)
-		_, err = q.CreateIncome(ctx, db.CreateIncomeParams{
-			UserID:        userID,
-			Amount:        decimal.NewFromFloat(500),
-			Currency:      "PHP",
-			Description:   "legacy",
-			Date:          pgtype.Date{Time: d("2026-09-01"), Valid: true},
-			RecurringType: "weekly",
-			Priority:      "want",
-			Status:        "posted",
-			StartDate:     pgtype.Date{Time: d("2026-09-01"), Valid: true},
-		})
-		require.NoError(t, err)
-	}
-	seedLegacy(userA)
-	seedLegacy(userB)
-
-	legExpA, err := q.ListLegacyExpensesByUser(ctx, userA)
-	require.NoError(t, err)
-	assert.Len(t, legExpA, 1)
-	legIncA, err := q.ListLegacyIncomesByUser(ctx, userA)
-	require.NoError(t, err)
-	assert.Len(t, legIncA, 1)
-
-	expCount, err := q.CountLegacyExpensesByUser(ctx, userA)
-	require.NoError(t, err)
-	assert.Equal(t, int64(1), expCount)
-	incCount, err := q.CountLegacyIncomesByUser(ctx, userB)
-	require.NoError(t, err)
-	assert.Equal(t, int64(1), incCount)
-
-	expA2, incA2, err := CountLegacyRowsForUser(ctx, q, userA)
-	require.NoError(t, err)
-	assert.Equal(t, int64(1), expA2)
-	assert.Equal(t, int64(1), incA2)
-}
-
-// Per-user backfill converts only the target user's legacy rows; another
-// user's rows are untouched.
-func TestBackfillLegacyForUser_ScopesToTargetUser_Integration(t *testing.T) {
-	pool, q := newMaterializeTest(t)
-	ctx := context.Background()
-	userA := uuid.New()
-	userB := uuid.New()
-	today := d("2026-08-15")
-
-	seed := func(userID uuid.UUID) {
-		t.Helper()
-		_, err := q.CreateIncome(ctx, db.CreateIncomeParams{
-			UserID:        userID,
-			Amount:        decimal.NewFromFloat(500),
-			Currency:      "PHP",
-			Description:   "allowance",
-			Date:          pgtype.Date{Time: d("2026-08-01"), Valid: true},
-			RecurringType: "weekly",
-			Priority:      "want",
-			Status:        "posted",
-			StartDate:     pgtype.Date{Time: d("2026-08-01"), Valid: true},
-		})
-		require.NoError(t, err)
-	}
-	seed(userA)
-	seed(userB)
-
-	res, err := BackfillLegacyForUser(ctx, pool, q, userA, today)
-	require.NoError(t, err)
-	assert.Equal(t, 1, res.IncomeRules)
-
-	expA, incA, err := CountLegacyRowsForUser(ctx, q, userA)
-	require.NoError(t, err)
-	assert.Equal(t, int64(0), expA+incA, "target user must converge")
-
-	expB, incB, err := CountLegacyRowsForUser(ctx, q, userB)
-	require.NoError(t, err)
-	assert.Equal(t, int64(1), expB+incB, "other user must be untouched")
-
-	rules, err := q.ListRecurringIncomeRules(ctx, userB)
-	require.NoError(t, err)
-	assert.Empty(t, rules)
 }

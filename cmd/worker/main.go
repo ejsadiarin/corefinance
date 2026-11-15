@@ -25,11 +25,7 @@ import (
 // from corefinance's own database.
 //
 // Flags:
-//   --once      run one materialization pass and exit (one-shot jobs, tests)
-//   --backfill  run one pass of materialize + legacy inline-rule conversion
-//               (D5) and exit; implies --once. Safe to re-run: instance
-//               inserts are ON CONFLICT DO NOTHING and flipped rows no longer
-//               match the legacy predicate.
+//   --once  run one materialization pass and exit (one-shot jobs, tests)
 
 func dsn() string {
 	// NOTE: no search_path handling here by design. Schema scoping lives
@@ -68,32 +64,8 @@ func buildPool() *pgxpool.Pool {
 	return pool
 }
 
-func runOnce(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones materialize.Zones, backfill bool) int {
+func runOnce(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones materialize.Zones) int {
 	today := time.Now()
-	if backfill {
-		res, err := materialize.BackfillLegacy(ctx, pool, queries, today)
-		if err != nil {
-			slog.Error("main.runOnce: backfill failed", "error", err)
-			return 1
-		}
-		legacy, err := materialize.CountLegacyRows(ctx, queries)
-		if err != nil {
-			slog.Error("main.runOnce: legacy verification query failed", "error", err)
-			return 1
-		}
-		slog.Info("main.runOnce: backfill complete",
-			"expense_rules", res.ExpenseRules,
-			"income_rules", res.IncomeRules,
-			"expense_instances", res.ExpenseInstances,
-			"income_instances", res.IncomeInstances,
-			"legacy_rows_remaining", legacy,
-		)
-		if legacy != 0 {
-			slog.Error("main.runOnce: legacy rows remain after backfill", "count", legacy)
-			return 1
-		}
-		return 0
-	}
 	n, err := materialize.MaterializeDue(ctx, pool, queries, zones, today)
 	if err != nil {
 		// Some users were skipped (a failed zone read, a failed write); the
@@ -112,7 +84,6 @@ func runOnce(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones
 
 func main() {
 	once := flag.Bool("once", false, "run one materialization pass and exit")
-	backfill := flag.Bool("backfill", false, "run materialize + legacy backfill once and exit (implies --once)")
 	flag.Parse()
 
 	logger.Setup()
@@ -123,11 +94,8 @@ func main() {
 
 	zones := materialize.SeenZones{Queries: queries}
 
-	if *backfill {
-		os.Exit(runOnce(context.Background(), pool, queries, nil, true))
-	}
 	if *once {
-		os.Exit(runOnce(context.Background(), pool, queries, zones, false))
+		os.Exit(runOnce(context.Background(), pool, queries, zones))
 	}
 
 	// Long-running mode (#16): a pass, then sleep until the earliest rule's
@@ -138,7 +106,7 @@ func main() {
 
 	slog.Info("main: worker started, filling rules as they fall due")
 	for {
-		if code := runOnce(ctx, pool, queries, zones, false); code != 0 {
+		if code := runOnce(ctx, pool, queries, zones); code != 0 {
 			slog.Info("main: retrying skipped users at the next wake")
 		}
 		wait := untilNextWake(ctx, queries, time.Now())

@@ -137,16 +137,6 @@ func ValidatePriority(priority string) error {
 	}
 }
 
-// ValidateRecurringType returns an error if the recurring_type is not one of the allowed values
-func ValidateRecurringType(recurringType string) error {
-	switch recurringType {
-	case "one-time", "daily", "weekly", "monthly", "yearly":
-		return nil
-	default:
-		return fmt.Errorf("recurring_type must be one of: one-time, daily, weekly, monthly, yearly")
-	}
-}
-
 // ValidateStatus returns an error if the status is not one of the allowed values
 func ValidateStatus(status string) error {
 	switch status {

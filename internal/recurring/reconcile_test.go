@@ -60,7 +60,7 @@ func entryStatuses(entries []StaleEntry) []string {
 }
 
 // weeklyExpenseRule seeds a weekly rule with entries on Aug 3, 10 and 17.
-func weeklyExpenseRule(t *testing.T, ctx context.Context, pool *pgxpool.Pool, s *Service, user uuid.UUID) (db.RecurringExpenseRule, UpdateExpenseRuleRequest) {
+func weeklyExpenseRule(t *testing.T, ctx context.Context, pool *pgxpool.Pool, s *Service, user uuid.UUID) (db.Rule, UpdateExpenseRuleRequest) {
 	t.Helper()
 	req := CreateExpenseRuleRequest{
 		Amount: 50, Currency: "PHP", Description: "groceries", RecurringType: "weekly",
@@ -184,7 +184,7 @@ func TestUpdateRuleHandler_RejectsUnknownStaleEntries(t *testing.T) {
 	}
 }
 
-func expenseRuleWith(t *testing.T, ctx context.Context, s *Service, user uuid.UUID, cadence, start string) (db.RecurringExpenseRule, UpdateExpenseRuleRequest) {
+func expenseRuleWith(t *testing.T, ctx context.Context, s *Service, user uuid.UUID, cadence, start string) (db.Rule, UpdateExpenseRuleRequest) {
 	t.Helper()
 	req := CreateExpenseRuleRequest{
 		Amount: 50, Currency: "PHP", Description: "groceries", RecurringType: cadence, StartDate: start, Priority: "need",
@@ -246,7 +246,7 @@ func TestReconcile_EditedEntryIsReportedNotSkipped_Integration(t *testing.T) {
 	edited := entryOn(t, ctx, q, user, rule.ID, rel(-7))
 	_, err := q.UpdateExpense(ctx, db.UpdateExpenseParams{
 		ID: edited.ID, UserID: user, Amount: edited.Amount, Currency: edited.Currency,
-		Description: "groceries (big week)", ExpenseDate: edited.ExpenseDate, RecurringType: "one-time",
+		Description: "groceries (big week)", ExpenseDate: edited.ExpenseDate,
 		Priority: edited.Priority, Status: edited.Status, SourceRuleID: edited.SourceRuleID,
 	})
 	require.NoError(t, err)

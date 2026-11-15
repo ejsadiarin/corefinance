@@ -409,10 +409,11 @@ func (q *Queries) GetTrends(ctx context.Context, arg GetTrendsParams) ([]GetTren
 }
 
 const getUpcomingRecurringExpenses = `-- name: GetUpcomingRecurringExpenses :many
-SELECT r.id, r.user_id, r.description, r.amount, r.currency, r.category_id, r.notes, r.recurring_type, r.start_date, r.end_date, r.priority, r.is_active, r.created_at, r.updated_at, r.materialized_through, r.kind, ec.name AS category_name, ec.color AS category_color
-FROM recurring_expense_rules r
+SELECT r.id, r.kind, r.user_id, r.description, r.amount, r.currency, r.category_id, r.notes, r.recurring_type, r.start_date, r.end_date, r.priority, r.is_active, r.materialized_through, r.created_at, r.updated_at, r.next_due_at, ec.name AS category_name, ec.color AS category_color
+FROM rules r
 LEFT JOIN expense_categories ec ON r.category_id = ec.id
 WHERE r.user_id = $1
+  AND r.kind = 'expense'
   AND r.is_active = true
   AND (r.end_date IS NULL OR r.end_date >= CURRENT_DATE)
 ORDER BY r.created_at ASC
@@ -420,6 +421,7 @@ ORDER BY r.created_at ASC
 
 type GetUpcomingRecurringExpensesRow struct {
 	ID                  uuid.UUID          `db:"id" json:"id"`
+	Kind                string             `db:"kind" json:"-"`
 	UserID              uuid.UUID          `db:"user_id" json:"user_id"`
 	Description         string             `db:"description" json:"description"`
 	Amount              decimal.Decimal    `db:"amount" json:"amount"`
@@ -431,10 +433,10 @@ type GetUpcomingRecurringExpensesRow struct {
 	EndDate             pgtype.Date        `db:"end_date" json:"end_date"`
 	Priority            string             `db:"priority" json:"priority"`
 	IsActive            bool               `db:"is_active" json:"is_active"`
+	MaterializedThrough pgtype.Date        `db:"materialized_through" json:"materialized_through"`
 	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	MaterializedThrough pgtype.Date        `db:"materialized_through" json:"materialized_through"`
-	Kind                string             `db:"kind" json:"-"`
+	NextDueAt           pgtype.Timestamptz `db:"next_due_at" json:"-"`
 	CategoryName        pgtype.Text        `db:"category_name" json:"category_name"`
 	CategoryColor       pgtype.Text        `db:"category_color" json:"category_color"`
 }
@@ -450,6 +452,7 @@ func (q *Queries) GetUpcomingRecurringExpenses(ctx context.Context, userID uuid.
 		var i GetUpcomingRecurringExpensesRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.Kind,
 			&i.UserID,
 			&i.Description,
 			&i.Amount,
@@ -461,10 +464,10 @@ func (q *Queries) GetUpcomingRecurringExpenses(ctx context.Context, userID uuid.
 			&i.EndDate,
 			&i.Priority,
 			&i.IsActive,
+			&i.MaterializedThrough,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.MaterializedThrough,
-			&i.Kind,
+			&i.NextDueAt,
 			&i.CategoryName,
 			&i.CategoryColor,
 		); err != nil {

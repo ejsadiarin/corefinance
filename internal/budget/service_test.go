@@ -130,8 +130,8 @@ func TestService_Export(t *testing.T) {
 			ListRecurringExpenseRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ListRecurringExpenseRulesRow, error) {
 				return []db.ListRecurringExpenseRulesRow{}, nil
 			},
-			ListRecurringIncomeRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.RecurringIncomeRule, error) {
-				return []db.RecurringIncomeRule{}, nil
+			ListRecurringIncomeRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.Rule, error) {
+				return []db.Rule{}, nil
 			},
 			ListAllExpenseTagsByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.ExpenseTag, error) {
 				return []db.ExpenseTag{}, nil
@@ -278,7 +278,7 @@ func TestService_Export(t *testing.T) {
 			ListRecurringExpenseRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ListRecurringExpenseRulesRow, error) {
 				return []db.ListRecurringExpenseRulesRow{}, nil
 			},
-			ListRecurringIncomeRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.RecurringIncomeRule, error) {
+			ListRecurringIncomeRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.Rule, error) {
 				return nil, errors.New("recurring incomes failed")
 			},
 		}
@@ -309,8 +309,8 @@ func TestService_Export(t *testing.T) {
 			ListRecurringExpenseRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ListRecurringExpenseRulesRow, error) {
 				return []db.ListRecurringExpenseRulesRow{}, nil
 			},
-			ListRecurringIncomeRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.RecurringIncomeRule, error) {
-				return []db.RecurringIncomeRule{}, nil
+			ListRecurringIncomeRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.Rule, error) {
+				return []db.Rule{}, nil
 			},
 			ListAllExpenseTagsByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.ExpenseTag, error) {
 				return nil, errors.New("expense tags failed")
@@ -343,8 +343,8 @@ func TestService_Export(t *testing.T) {
 			ListRecurringExpenseRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ListRecurringExpenseRulesRow, error) {
 				return []db.ListRecurringExpenseRulesRow{}, nil
 			},
-			ListRecurringIncomeRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.RecurringIncomeRule, error) {
-				return []db.RecurringIncomeRule{}, nil
+			ListRecurringIncomeRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.Rule, error) {
+				return []db.Rule{}, nil
 			},
 			ListAllExpenseTagsByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.ExpenseTag, error) {
 				return []db.ExpenseTag{}, nil
@@ -397,8 +397,8 @@ func TestService_Export(t *testing.T) {
 			ListRecurringExpenseRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ListRecurringExpenseRulesRow, error) {
 				return []db.ListRecurringExpenseRulesRow{}, nil
 			},
-			ListRecurringIncomeRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.RecurringIncomeRule, error) {
-				return []db.RecurringIncomeRule{}, nil
+			ListRecurringIncomeRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.Rule, error) {
+				return []db.Rule{}, nil
 			},
 			ListAllExpenseTagsByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.ExpenseTag, error) {
 				return []db.ExpenseTag{

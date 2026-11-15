@@ -129,9 +129,10 @@ FROM totals t, category_totals c;
 
 -- name: GetUpcomingRecurringExpenses :many
 SELECT r.*, ec.name AS category_name, ec.color AS category_color
-FROM recurring_expense_rules r
+FROM rules r
 LEFT JOIN expense_categories ec ON r.category_id = ec.id
 WHERE r.user_id = @user_id
+  AND r.kind = 'expense'
   AND r.is_active = true
   AND (r.end_date IS NULL OR r.end_date >= CURRENT_DATE)
 ORDER BY r.created_at ASC;

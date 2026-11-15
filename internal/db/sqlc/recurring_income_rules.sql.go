@@ -14,9 +14,10 @@ import (
 )
 
 const createRecurringIncomeRule = `-- name: CreateRecurringIncomeRule :one
-INSERT INTO recurring_income_rules (user_id, amount, currency, description, recurring_type, start_date, end_date, category_id, notes, priority)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, 'want'))
-RETURNING id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority, materialized_through, kind
+
+INSERT INTO rules (kind, user_id, amount, currency, description, recurring_type, start_date, end_date, category_id, notes, priority)
+VALUES ('income', $1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, 'want'))
+RETURNING id, kind, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, materialized_through, created_at, updated_at, next_due_at
 `
 
 type CreateRecurringIncomeRuleParams struct {
@@ -32,7 +33,9 @@ type CreateRecurringIncomeRuleParams struct {
 	Priority      interface{}     `db:"priority" json:"priority"`
 }
 
-func (q *Queries) CreateRecurringIncomeRule(ctx context.Context, arg CreateRecurringIncomeRuleParams) (RecurringIncomeRule, error) {
+// Income rules: the rules of kind 'income' (ADR-0001). Every query names the
+// kind, so an expense rule's id never matches here.
+func (q *Queries) CreateRecurringIncomeRule(ctx context.Context, arg CreateRecurringIncomeRuleParams) (Rule, error) {
 	row := q.db.QueryRow(ctx, createRecurringIncomeRule,
 		arg.UserID,
 		arg.Amount,
@@ -45,31 +48,32 @@ func (q *Queries) CreateRecurringIncomeRule(ctx context.Context, arg CreateRecur
 		arg.Notes,
 		arg.Priority,
 	)
-	var i RecurringIncomeRule
+	var i Rule
 	err := row.Scan(
 		&i.ID,
+		&i.Kind,
 		&i.UserID,
+		&i.Description,
 		&i.Amount,
 		&i.Currency,
-		&i.Description,
+		&i.CategoryID,
+		&i.Notes,
 		&i.RecurringType,
 		&i.StartDate,
 		&i.EndDate,
+		&i.Priority,
+		&i.IsActive,
+		&i.MaterializedThrough,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.IsActive,
-		&i.CategoryID,
-		&i.Notes,
-		&i.Priority,
-		&i.MaterializedThrough,
-		&i.Kind,
+		&i.NextDueAt,
 	)
 	return i, err
 }
 
 const deleteRecurringIncomeRule = `-- name: DeleteRecurringIncomeRule :exec
-DELETE FROM recurring_income_rules
-WHERE id = $1 AND user_id = $2
+DELETE FROM rules
+WHERE id = $1 AND user_id = $2 AND kind = 'income'
 `
 
 type DeleteRecurringIncomeRuleParams struct {
@@ -83,8 +87,8 @@ func (q *Queries) DeleteRecurringIncomeRule(ctx context.Context, arg DeleteRecur
 }
 
 const getRecurringIncomeRule = `-- name: GetRecurringIncomeRule :one
-SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority, materialized_through, kind FROM recurring_income_rules
-WHERE id = $1 AND user_id = $2
+SELECT id, kind, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, materialized_through, created_at, updated_at, next_due_at FROM rules
+WHERE id = $1 AND user_id = $2 AND kind = 'income'
 `
 
 type GetRecurringIncomeRuleParams struct {
@@ -92,62 +96,64 @@ type GetRecurringIncomeRuleParams struct {
 	UserID uuid.UUID `db:"user_id" json:"user_id"`
 }
 
-func (q *Queries) GetRecurringIncomeRule(ctx context.Context, arg GetRecurringIncomeRuleParams) (RecurringIncomeRule, error) {
+func (q *Queries) GetRecurringIncomeRule(ctx context.Context, arg GetRecurringIncomeRuleParams) (Rule, error) {
 	row := q.db.QueryRow(ctx, getRecurringIncomeRule, arg.ID, arg.UserID)
-	var i RecurringIncomeRule
+	var i Rule
 	err := row.Scan(
 		&i.ID,
+		&i.Kind,
 		&i.UserID,
+		&i.Description,
 		&i.Amount,
 		&i.Currency,
-		&i.Description,
+		&i.CategoryID,
+		&i.Notes,
 		&i.RecurringType,
 		&i.StartDate,
 		&i.EndDate,
+		&i.Priority,
+		&i.IsActive,
+		&i.MaterializedThrough,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.IsActive,
-		&i.CategoryID,
-		&i.Notes,
-		&i.Priority,
-		&i.MaterializedThrough,
-		&i.Kind,
+		&i.NextDueAt,
 	)
 	return i, err
 }
 
 const listRecurringIncomeRules = `-- name: ListRecurringIncomeRules :many
-SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority, materialized_through, kind FROM recurring_income_rules
-WHERE user_id = $1 AND is_active = true
+SELECT id, kind, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, materialized_through, created_at, updated_at, next_due_at FROM rules
+WHERE user_id = $1 AND kind = 'income' AND is_active = true
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListRecurringIncomeRules(ctx context.Context, userID uuid.UUID) ([]RecurringIncomeRule, error) {
+func (q *Queries) ListRecurringIncomeRules(ctx context.Context, userID uuid.UUID) ([]Rule, error) {
 	rows, err := q.db.Query(ctx, listRecurringIncomeRules, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []RecurringIncomeRule{}
+	items := []Rule{}
 	for rows.Next() {
-		var i RecurringIncomeRule
+		var i Rule
 		if err := rows.Scan(
 			&i.ID,
+			&i.Kind,
 			&i.UserID,
+			&i.Description,
 			&i.Amount,
 			&i.Currency,
-			&i.Description,
+			&i.CategoryID,
+			&i.Notes,
 			&i.RecurringType,
 			&i.StartDate,
 			&i.EndDate,
+			&i.Priority,
+			&i.IsActive,
+			&i.MaterializedThrough,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.IsActive,
-			&i.CategoryID,
-			&i.Notes,
-			&i.Priority,
-			&i.MaterializedThrough,
-			&i.Kind,
+			&i.NextDueAt,
 		); err != nil {
 			return nil, err
 		}
@@ -160,38 +166,39 @@ func (q *Queries) ListRecurringIncomeRules(ctx context.Context, userID uuid.UUID
 }
 
 const listRecurringIncomeRulesWithPaused = `-- name: ListRecurringIncomeRulesWithPaused :many
-SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority, materialized_through, kind FROM recurring_income_rules
-WHERE user_id = $1
+SELECT id, kind, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, materialized_through, created_at, updated_at, next_due_at FROM rules
+WHERE user_id = $1 AND kind = 'income'
 ORDER BY created_at DESC
 `
 
 // ListRecurringIncomeRulesWithPaused lists every rule, paused ones too.
-func (q *Queries) ListRecurringIncomeRulesWithPaused(ctx context.Context, userID uuid.UUID) ([]RecurringIncomeRule, error) {
+func (q *Queries) ListRecurringIncomeRulesWithPaused(ctx context.Context, userID uuid.UUID) ([]Rule, error) {
 	rows, err := q.db.Query(ctx, listRecurringIncomeRulesWithPaused, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []RecurringIncomeRule{}
+	items := []Rule{}
 	for rows.Next() {
-		var i RecurringIncomeRule
+		var i Rule
 		if err := rows.Scan(
 			&i.ID,
+			&i.Kind,
 			&i.UserID,
+			&i.Description,
 			&i.Amount,
 			&i.Currency,
-			&i.Description,
+			&i.CategoryID,
+			&i.Notes,
 			&i.RecurringType,
 			&i.StartDate,
 			&i.EndDate,
+			&i.Priority,
+			&i.IsActive,
+			&i.MaterializedThrough,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.IsActive,
-			&i.CategoryID,
-			&i.Notes,
-			&i.Priority,
-			&i.MaterializedThrough,
-			&i.Kind,
+			&i.NextDueAt,
 		); err != nil {
 			return nil, err
 		}
@@ -204,7 +211,7 @@ func (q *Queries) ListRecurringIncomeRulesWithPaused(ctx context.Context, userID
 }
 
 const updateRecurringIncomeRule = `-- name: UpdateRecurringIncomeRule :one
-UPDATE recurring_income_rules
+UPDATE rules
 SET amount = $3, currency = $4, description = $5, recurring_type = $6,
     start_date = $7, end_date = $8,
     category_id = $9, notes = $10,
@@ -218,8 +225,8 @@ SET amount = $3, currency = $4, description = $5, recurring_type = $6,
     END,
     is_active = COALESCE($12, is_active),
     updated_at = now()
-WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority, materialized_through, kind
+WHERE id = $1 AND user_id = $2 AND kind = 'income'
+RETURNING id, kind, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, materialized_through, created_at, updated_at, next_due_at
 `
 
 type UpdateRecurringIncomeRuleParams struct {
@@ -238,7 +245,7 @@ type UpdateRecurringIncomeRuleParams struct {
 	ResumeThrough pgtype.Date     `db:"resume_through" json:"resume_through"`
 }
 
-func (q *Queries) UpdateRecurringIncomeRule(ctx context.Context, arg UpdateRecurringIncomeRuleParams) (RecurringIncomeRule, error) {
+func (q *Queries) UpdateRecurringIncomeRule(ctx context.Context, arg UpdateRecurringIncomeRuleParams) (Rule, error) {
 	row := q.db.QueryRow(ctx, updateRecurringIncomeRule,
 		arg.ID,
 		arg.UserID,
@@ -254,24 +261,25 @@ func (q *Queries) UpdateRecurringIncomeRule(ctx context.Context, arg UpdateRecur
 		arg.IsActive,
 		arg.ResumeThrough,
 	)
-	var i RecurringIncomeRule
+	var i Rule
 	err := row.Scan(
 		&i.ID,
+		&i.Kind,
 		&i.UserID,
+		&i.Description,
 		&i.Amount,
 		&i.Currency,
-		&i.Description,
+		&i.CategoryID,
+		&i.Notes,
 		&i.RecurringType,
 		&i.StartDate,
 		&i.EndDate,
+		&i.Priority,
+		&i.IsActive,
+		&i.MaterializedThrough,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.IsActive,
-		&i.CategoryID,
-		&i.Notes,
-		&i.Priority,
-		&i.MaterializedThrough,
-		&i.Kind,
+		&i.NextDueAt,
 	)
 	return i, err
 }

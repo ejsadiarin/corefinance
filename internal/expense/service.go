@@ -22,20 +22,17 @@ func NewService(queries db.Querier) *Service {
 func (s *Service) Create(ctx context.Context, userID uuid.UUID, req CreateRequest) (db.Expense, error) {
 	slog.Debug("expense.Service.Create", "user_id", userID)
 	return s.queries.CreateExpense(ctx, db.CreateExpenseParams{
-		UserID:        userID,
-		CategoryID:    helper.ToPgUUID(req.CategoryID),
-		Amount:        decimal.NewFromFloat(req.Amount),
-		Currency:      req.Currency,
-		Description:   req.Description,
-		Notes:         helper.ToPgText(req.Notes),
-		ExpenseDate:   helper.ToPgDate(req.ExpenseDate),
-		RecurringType: req.RecurringType,
-		Priority:      req.Priority,
-		Status:        req.Status,
-		IsDebt:        req.IsDebt,
-		StartDate:     helper.ToPgDatePtr(req.StartDate),
-		EndDate:       helper.ToPgDatePtr(req.EndDate),
-		SourceRuleID:  helper.ToPgUUID(req.SourceRuleID),
+		UserID:       userID,
+		CategoryID:   helper.ToPgUUID(req.CategoryID),
+		Amount:       decimal.NewFromFloat(req.Amount),
+		Currency:     req.Currency,
+		Description:  req.Description,
+		Notes:        helper.ToPgText(req.Notes),
+		ExpenseDate:  helper.ToPgDate(req.ExpenseDate),
+		Priority:     req.Priority,
+		Status:       req.Status,
+		IsDebt:       req.IsDebt,
+		SourceRuleID: helper.ToPgUUID(req.SourceRuleID),
 	})
 }
 
@@ -57,15 +54,14 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID, params ListParams)
 		pageSize = 50
 	}
 	return s.queries.ListExpenses(ctx, db.ListExpensesParams{
-		UserID:        userID,
-		StartDate:     helper.ToPgDatePtr(params.StartDate),
-		EndDate:       helper.ToPgDatePtr(params.EndDate),
-		CategoryID:    helper.ToUUID(params.CategoryID),
-		Priority:      helper.StrVal(params.Priority),
-		Status:        helper.StrVal(params.Status),
-		RecurringType: helper.StrVal(params.RecurringType),
-		PageLimit:     pageSize,
-		PageOffset:    (page - 1) * pageSize,
+		UserID:     userID,
+		StartDate:  helper.ToPgDatePtr(params.StartDate),
+		EndDate:    helper.ToPgDatePtr(params.EndDate),
+		CategoryID: helper.ToUUID(params.CategoryID),
+		Priority:   helper.StrVal(params.Priority),
+		Status:     helper.StrVal(params.Status),
+		PageLimit:  pageSize,
+		PageOffset: (page - 1) * pageSize,
 	})
 }
 
@@ -95,21 +91,18 @@ func (s *Service) Search(ctx context.Context, userID uuid.UUID, params SearchPar
 func (s *Service) Update(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateRequest) (db.Expense, error) {
 	slog.Debug("expense.Service.Update", "id", id, "user_id", userID)
 	return s.queries.UpdateExpense(ctx, db.UpdateExpenseParams{
-		ID:            id,
-		UserID:        userID,
-		CategoryID:    helper.ToPgUUID(req.CategoryID),
-		Amount:        decimal.NewFromFloat(req.Amount),
-		Currency:      req.Currency,
-		Description:   req.Description,
-		Notes:         helper.ToPgText(req.Notes),
-		ExpenseDate:   helper.ToPgDate(req.ExpenseDate),
-		RecurringType: req.RecurringType,
-		Priority:      req.Priority,
-		Status:        req.Status,
-		IsDebt:        req.IsDebt,
-		StartDate:     helper.ToPgDatePtr(req.StartDate),
-		EndDate:       helper.ToPgDatePtr(req.EndDate),
-		SourceRuleID:  helper.ToPgUUID(req.SourceRuleID),
+		ID:           id,
+		UserID:       userID,
+		CategoryID:   helper.ToPgUUID(req.CategoryID),
+		Amount:       decimal.NewFromFloat(req.Amount),
+		Currency:     req.Currency,
+		Description:  req.Description,
+		Notes:        helper.ToPgText(req.Notes),
+		ExpenseDate:  helper.ToPgDate(req.ExpenseDate),
+		Priority:     req.Priority,
+		Status:       req.Status,
+		IsDebt:       req.IsDebt,
+		SourceRuleID: helper.ToPgUUID(req.SourceRuleID),
 	})
 }
 

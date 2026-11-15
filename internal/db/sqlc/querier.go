@@ -16,23 +16,22 @@ type Querier interface {
 	AddTagToExpense(ctx context.Context, arg AddTagToExpenseParams) error
 	AddTagToIncome(ctx context.Context, arg AddTagToIncomeParams) error
 	// The watermark only moves forward: GREATEST ignores a NULL current value.
-	AdvanceExpenseRuleWatermark(ctx context.Context, arg AdvanceExpenseRuleWatermarkParams) error
-	AdvanceIncomeRuleWatermark(ctx context.Context, arg AdvanceIncomeRuleWatermarkParams) error
 	AdvanceRuleWatermark(ctx context.Context, arg AdvanceRuleWatermarkParams) error
 	CheckSkippedExpense(ctx context.Context, arg CheckSkippedExpenseParams) (bool, error)
 	CheckSkippedIncome(ctx context.Context, arg CheckSkippedIncomeParams) (bool, error)
-	CountLegacyExpenses(ctx context.Context) (int64, error)
-	CountLegacyExpensesByUser(ctx context.Context, userID uuid.UUID) (int64, error)
-	CountLegacyIncomes(ctx context.Context) (int64, error)
-	CountLegacyIncomesByUser(ctx context.Context, userID uuid.UUID) (int64, error)
 	CreateExpense(ctx context.Context, arg CreateExpenseParams) (Expense, error)
 	CreateExpenseCategory(ctx context.Context, arg CreateExpenseCategoryParams) (ExpenseCategory, error)
+	// Rule-entry inserts (ADR-0001). The materialize pass is their only caller.
 	CreateExpenseInstance(ctx context.Context, arg CreateExpenseInstanceParams) (int64, error)
 	CreateIncome(ctx context.Context, arg CreateIncomeParams) (Income, error)
 	CreateIncomeCategory(ctx context.Context, arg CreateIncomeCategoryParams) (IncomeCategory, error)
 	CreateIncomeInstance(ctx context.Context, arg CreateIncomeInstanceParams) (int64, error)
-	CreateRecurringExpenseRule(ctx context.Context, arg CreateRecurringExpenseRuleParams) (RecurringExpenseRule, error)
-	CreateRecurringIncomeRule(ctx context.Context, arg CreateRecurringIncomeRuleParams) (RecurringIncomeRule, error)
+	// Expense rules: the rules of kind 'expense' (ADR-0001). Every query names
+	// the kind, so an income rule's id never matches here.
+	CreateRecurringExpenseRule(ctx context.Context, arg CreateRecurringExpenseRuleParams) (Rule, error)
+	// Income rules: the rules of kind 'income' (ADR-0001). Every query names the
+	// kind, so an expense rule's id never matches here.
+	CreateRecurringIncomeRule(ctx context.Context, arg CreateRecurringIncomeRuleParams) (Rule, error)
 	CreateTag(ctx context.Context, arg CreateTagParams) (Tag, error)
 	DeleteExpense(ctx context.Context, arg DeleteExpenseParams) error
 	DeleteExpenseCategory(ctx context.Context, arg DeleteExpenseCategoryParams) error
@@ -41,8 +40,6 @@ type Querier interface {
 	DeleteRecurringExpenseRule(ctx context.Context, arg DeleteRecurringExpenseRuleParams) error
 	DeleteRecurringIncomeRule(ctx context.Context, arg DeleteRecurringIncomeRuleParams) error
 	DeleteTag(ctx context.Context, arg DeleteTagParams) error
-	FlipLegacyExpenseToOneTime(ctx context.Context, id uuid.UUID) error
-	FlipLegacyIncomeToOneTime(ctx context.Context, id uuid.UUID) error
 	GetCategoryBreakdown(ctx context.Context, arg GetCategoryBreakdownParams) ([]GetCategoryBreakdownRow, error)
 	GetCurrentTotalMoney(ctx context.Context, userID uuid.UUID) (decimal.Decimal, error)
 	GetExpense(ctx context.Context, arg GetExpenseParams) (GetExpenseRow, error)
@@ -62,7 +59,7 @@ type Querier interface {
 	// The earliest next occurrence still to come, if any (NULL when none).
 	GetNextWake(ctx context.Context, now pgtype.Timestamptz) (pgtype.Timestamptz, error)
 	GetRecurringExpenseRule(ctx context.Context, arg GetRecurringExpenseRuleParams) (GetRecurringExpenseRuleRow, error)
-	GetRecurringIncomeRule(ctx context.Context, arg GetRecurringIncomeRuleParams) (RecurringIncomeRule, error)
+	GetRecurringIncomeRule(ctx context.Context, arg GetRecurringIncomeRuleParams) (Rule, error)
 	GetSavingsRate(ctx context.Context, arg GetSavingsRateParams) (GetSavingsRateRow, error)
 	// The zone a request's token last carried per user (#18, coregateway
 	// ADR-0005): background work dates entries in it, and a change recomputes
@@ -77,12 +74,6 @@ type Querier interface {
 	GetTotalIncomesByDateRange(ctx context.Context, arg GetTotalIncomesByDateRangeParams) (decimal.Decimal, error)
 	GetTrends(ctx context.Context, arg GetTrendsParams) ([]GetTrendsRow, error)
 	GetUpcomingRecurringExpenses(ctx context.Context, userID uuid.UUID) ([]GetUpcomingRecurringExpensesRow, error)
-	// Worker materialization queries (D3/D4/D5): active-rule selection, idempotent
-	// instance inserts, and legacy inline-rule backfill support.
-	ListActiveExpenseRules(ctx context.Context, startDate pgtype.Date) ([]RecurringExpenseRule, error)
-	ListActiveExpenseRulesByUser(ctx context.Context, arg ListActiveExpenseRulesByUserParams) ([]RecurringExpenseRule, error)
-	ListActiveIncomeRules(ctx context.Context, startDate pgtype.Date) ([]RecurringIncomeRule, error)
-	ListActiveIncomeRulesByUser(ctx context.Context, arg ListActiveIncomeRulesByUserParams) ([]RecurringIncomeRule, error)
 	ListAllExpenseTagsByUser(ctx context.Context, userID uuid.UUID) ([]ExpenseTag, error)
 	ListAllExpensesByUser(ctx context.Context, userID uuid.UUID) ([]Expense, error)
 	ListAllIncomeTagsByUser(ctx context.Context, userID uuid.UUID) ([]IncomeTag, error)
@@ -97,17 +88,13 @@ type Querier interface {
 	// The caller's incomes among the given ids; ids that don't exist or
 	// belong to someone else are simply absent.
 	ListIncomesByIDs(ctx context.Context, arg ListIncomesByIDsParams) ([]ListIncomesByIDsRow, error)
-	ListLegacyExpenses(ctx context.Context) ([]Expense, error)
-	ListLegacyExpensesByUser(ctx context.Context, userID uuid.UUID) ([]Expense, error)
-	ListLegacyIncomes(ctx context.Context) ([]Income, error)
-	ListLegacyIncomesByUser(ctx context.Context, userID uuid.UUID) ([]Income, error)
 	ListRecurringExpenseRules(ctx context.Context, userID uuid.UUID) ([]ListRecurringExpenseRulesRow, error)
 	// ListRecurringExpenseRulesWithPaused lists every rule, paused ones too, so
 	// the web can show a paused rule and resume it.
 	ListRecurringExpenseRulesWithPaused(ctx context.Context, userID uuid.UUID) ([]ListRecurringExpenseRulesWithPausedRow, error)
-	ListRecurringIncomeRules(ctx context.Context, userID uuid.UUID) ([]RecurringIncomeRule, error)
+	ListRecurringIncomeRules(ctx context.Context, userID uuid.UUID) ([]Rule, error)
 	// ListRecurringIncomeRulesWithPaused lists every rule, paused ones too.
-	ListRecurringIncomeRulesWithPaused(ctx context.Context, userID uuid.UUID) ([]RecurringIncomeRule, error)
+	ListRecurringIncomeRulesWithPaused(ctx context.Context, userID uuid.UUID) ([]Rule, error)
 	// Rule-created entries for review (#8): the expenses and incomes the worker
 	// (or a rule write) created, newest-inserted first. Every filter is optional.
 	// created_since compares the insert time, so entries back-filled with older
@@ -155,8 +142,8 @@ type Querier interface {
 	UpdateExpenseCategory(ctx context.Context, arg UpdateExpenseCategoryParams) (ExpenseCategory, error)
 	UpdateIncome(ctx context.Context, arg UpdateIncomeParams) (Income, error)
 	UpdateIncomeCategory(ctx context.Context, arg UpdateIncomeCategoryParams) (IncomeCategory, error)
-	UpdateRecurringExpenseRule(ctx context.Context, arg UpdateRecurringExpenseRuleParams) (RecurringExpenseRule, error)
-	UpdateRecurringIncomeRule(ctx context.Context, arg UpdateRecurringIncomeRuleParams) (RecurringIncomeRule, error)
+	UpdateRecurringExpenseRule(ctx context.Context, arg UpdateRecurringExpenseRuleParams) (Rule, error)
+	UpdateRecurringIncomeRule(ctx context.Context, arg UpdateRecurringIncomeRuleParams) (Rule, error)
 	UpdateTag(ctx context.Context, arg UpdateTagParams) (Tag, error)
 }
 
