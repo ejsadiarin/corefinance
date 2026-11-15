@@ -2,6 +2,57 @@
 
 Financial management microservice for Core. Handles expenses, incomes, categories, tags, recurring rules, and analytics.
 
+It runs behind [coregateway](https://github.com/ejsadiarin/coregateway/blob/rewrite-v2/README.md), which signs every request it
+forwards; corefinance never sees a client directly. Two programs ship from
+this repo: the API (`cmd/api`, port 6969) and the worker (`cmd/worker`),
+which writes rule entries as they fall due (ADR-0001).
+
+## Quick start
+
+**The easy way: run it with everything else.** From a coregateway checkout,
+its `local-up` target builds and starts corefinance, its worker, the gateway, the
+other services and the dashboard, with their own Postgres. See coregateway's
+[Quick start](https://github.com/ejsadiarin/coregateway/blob/rewrite-v2/README.md#quick-start-the-whole-stack-locally).
+
+**Run this repo's code against that stack.** With coregateway's `local-up` target
+running, a native corefinance can use the same database and gateway. Put
+this in `.env`:
+
+```sh
+DATABASE_URL=postgresql://corefinance_role:cfpw@localhost:25432/coredb?sslmode=disable
+MIGRATION_URL=postgresql://neondb_owner:owner@localhost:25432/coredb?sslmode=disable&options=-c%20search_path%3Dcorefinance
+JWT_JWKS_URL=http://localhost:28080/.well-known/jwks.json
+PORT=16969
+ENV=development
+```
+
+```sh
+make run                   # the API on :16969
+go run ./cmd/worker        # the worker; add --once for one pass
+```
+
+The stack's gateway keeps sending dashboard traffic to its own corefinance
+container, so use this to run code against real tables (and for the tests
+below), not to replace the container.
+
+## Production prerequisites
+
+- **Database:** the `corefinance` schema and `corefinance_role` in Neon's
+  `coredb`, created once with `internal/db/bootstrap.sql`, then the
+  migrations. The steps, including the order relative to the gateway, are
+  in coregateway's [Setting up Neon](https://github.com/ejsadiarin/coregateway/blob/rewrite-v2/README.md#setting-up-neon).
+- **The gateway:** running and reachable at `JWT_JWKS_URL`. corefinance
+  refuses to start without its signing keys.
+- **`.env`:** copy `.env.example`; `DATABASE_URL` (pooled host,
+  `corefinance_role`), `MIGRATION_URL` (direct host, `neondb_owner`) and
+  `JWT_JWKS_URL` are required.
+- **Two images:** `Dockerfile.corefinance-api` and
+  `Dockerfile.corefinance-cron-worker`. Run `make migrate-up` before
+  deploying a new image; nothing migrates at start.
+
+No other accounts are needed. The user's timezone comes from the gateway's
+token (coregateway ADR-0005).
+
 ## Project Structure
 
 ```
@@ -25,9 +76,11 @@ internal/db/bootstrap.sql     — one-time role/grants bootstrap (not a migratio
 
 | Variable | Description |
 |---|---|
+| `DATABASE_URL` | Runtime connection: pooled host, `corefinance_role`, no `search_path` |
+| `MIGRATION_URL` | Migrations only: direct host, `neondb_owner`, `options=-c search_path=corefinance` |
 | `PORT` | Server port (default: `6969`) |
 | `ENV` | `development` for debug logs, anything else for production |
-| `DB_HOST` | PostgreSQL host |
+| `DB_HOST` | PostgreSQL host (the `DB_*` variables are used only when `DATABASE_URL` is empty) |
 | `DB_PORT` | PostgreSQL port |
 | `DB_DATABASE` | Database name |
 | `DB_USERNAME` | Database user |
@@ -83,20 +136,18 @@ All requests (except listed public paths) require a gateway-minted internal
 JWT (`Authorization: Bearer ...`, Ed25519, verified against the gateway
 JWKS). `X-User-ID` is stripped on every request and never trusted.
 
-## Requirements
-
-- Go 1.26+
-- PostgreSQL with `corefinance` schema
-- [sqlc](https://sqlc.dev) for code generation
-
 ## Development
 
-```sh
-# Run
-go run cmd/api/main.go
+Go 1.26+, with [sqlc](https://sqlc.dev) and
+[goose](https://github.com/pressly/goose) installed. Docker is needed for
+the integration tests.
 
-# Generate sqlc code
-sqlc generate
+```sh
+make run              # the API (make dev: live reload, needs air)
+make sqlc             # after editing SQL in internal/db/queries/
+make migrate-status   # what MIGRATION_URL has applied
+make migrate-up
+make help             # every target
 ```
 
 ## Testing
