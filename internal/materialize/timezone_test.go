@@ -72,7 +72,7 @@ func mustZone(t *testing.T, name string) *time.Location {
 }
 
 // Resuming a paused rule: the watermark is the day before the owner's date,
-// so the catch-up pass fills the owner's today onward.
+// so the materialize pass fills the owner's today onward.
 func TestResumeThrough_UsesOwnersDate(t *testing.T) {
 	manila, err := time.LoadLocation("Asia/Manila")
 	require.NoError(t, err)

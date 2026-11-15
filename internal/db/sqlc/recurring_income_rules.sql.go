@@ -209,7 +209,7 @@ SET amount = $3, currency = $4, description = $5, recurring_type = $6,
     start_date = $7, end_date = $8,
     category_id = $9, notes = $10,
     priority = COALESCE($11, priority),
-    -- Resuming a paused rule (#7): skip the paused stretch so the catch-up
+    -- Resuming a paused rule (#7): skip the paused stretch so the materialize
     -- pass doesn't fill it. RHS columns are the pre-update values.
     materialized_through = CASE
         WHEN NOT is_active AND $12::bool

@@ -302,7 +302,7 @@ func insertRuleEntry(ctx context.Context, q db.Querier, r db.Rule, d time.Time) 
 
 // materializeHistory inserts one instance row per due date bounded by
 // start..min(end, today) for every active rule. Used by the backfill path
-// (D5 Phase 1) to converge history; the regular pass uses catchUp.
+// (D5 Phase 1) to converge history; the regular pass is MaterializeUser.
 func materializeHistory(ctx context.Context, q *db.Queries, today time.Time) (expenseN, incomeN int, err error) {
 	todayPg := pgDate(today)
 

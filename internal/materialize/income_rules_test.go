@@ -25,7 +25,7 @@ func countRuleIncomes(t *testing.T, ctx context.Context, pool *pgxpool.Pool, rul
 	return n
 }
 
-// The daily worker pass skips paused income rules and picks them back up
+// The materialize pass skips paused income rules and picks them back up
 // after resume, preserving already-materialized history.
 func TestMaterializeDue_PausedIncomeRuleSkippedThenResumed(t *testing.T) {
 	pool, q := newMaterializeTest(t)
