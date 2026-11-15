@@ -24,8 +24,8 @@ type MockQuerier struct {
 	CreateIncomeFn                        func(ctx context.Context, arg db.CreateIncomeParams) (db.Income, error)
 	CreateIncomeCategoryFn                func(ctx context.Context, arg db.CreateIncomeCategoryParams) (db.IncomeCategory, error)
 	CreateIncomeInstanceFn                func(ctx context.Context, arg db.CreateIncomeInstanceParams) (int64, error)
-	CreateRecurringExpenseRuleFn          func(ctx context.Context, arg db.CreateRecurringExpenseRuleParams) (db.RecurringExpenseRule, error)
-	CreateRecurringIncomeRuleFn           func(ctx context.Context, arg db.CreateRecurringIncomeRuleParams) (db.RecurringIncomeRule, error)
+	CreateRecurringExpenseRuleFn          func(ctx context.Context, arg db.CreateRecurringExpenseRuleParams) (db.Rule, error)
+	CreateRecurringIncomeRuleFn           func(ctx context.Context, arg db.CreateRecurringIncomeRuleParams) (db.Rule, error)
 	CreateTagFn                           func(ctx context.Context, arg db.CreateTagParams) (db.Tag, error)
 	DeleteExpenseFn                       func(ctx context.Context, arg db.DeleteExpenseParams) error
 	DeleteExpenseCategoryFn               func(ctx context.Context, arg db.DeleteExpenseCategoryParams) error
@@ -61,7 +61,7 @@ type MockQuerier struct {
 	GetIncomeOccurrencesFn                func(ctx context.Context, arg db.GetIncomeOccurrencesParams) ([]db.Income, error)
 	GetMonthOverMonthTrendsFn             func(ctx context.Context, arg db.GetMonthOverMonthTrendsParams) ([]db.GetMonthOverMonthTrendsRow, error)
 	GetRecurringExpenseRuleFn             func(ctx context.Context, arg db.GetRecurringExpenseRuleParams) (db.GetRecurringExpenseRuleRow, error)
-	GetRecurringIncomeRuleFn              func(ctx context.Context, arg db.GetRecurringIncomeRuleParams) (db.RecurringIncomeRule, error)
+	GetRecurringIncomeRuleFn              func(ctx context.Context, arg db.GetRecurringIncomeRuleParams) (db.Rule, error)
 	GetSavingsRateFn                      func(ctx context.Context, arg db.GetSavingsRateParams) (db.GetSavingsRateRow, error)
 	GetSpendingVelocityFn                 func(ctx context.Context, arg db.GetSpendingVelocityParams) (db.GetSpendingVelocityRow, error)
 	GetSummaryFn                          func(ctx context.Context, arg db.GetSummaryParams) (db.GetSummaryRow, error)
@@ -83,9 +83,9 @@ type MockQuerier struct {
 	ListExpensesByIDsFn                   func(ctx context.Context, arg db.ListExpensesByIDsParams) ([]db.ListExpensesByIDsRow, error)
 	ListIncomesByIDsFn                    func(ctx context.Context, arg db.ListIncomesByIDsParams) ([]db.ListIncomesByIDsRow, error)
 	ListRecurringExpenseRulesFn           func(ctx context.Context, userID uuid.UUID) ([]db.ListRecurringExpenseRulesRow, error)
-	ListRecurringIncomeRulesFn            func(ctx context.Context, userID uuid.UUID) ([]db.RecurringIncomeRule, error)
+	ListRecurringIncomeRulesFn            func(ctx context.Context, userID uuid.UUID) ([]db.Rule, error)
 	ListRecurringExpenseRulesWithPausedFn func(ctx context.Context, userID uuid.UUID) ([]db.ListRecurringExpenseRulesWithPausedRow, error)
-	ListRecurringIncomeRulesWithPausedFn  func(ctx context.Context, userID uuid.UUID) ([]db.RecurringIncomeRule, error)
+	ListRecurringIncomeRulesWithPausedFn  func(ctx context.Context, userID uuid.UUID) ([]db.Rule, error)
 	ListTagsFn                            func(ctx context.Context, userID uuid.UUID) ([]db.Tag, error)
 	RemoveTagFromExpenseFn                func(ctx context.Context, arg db.RemoveTagFromExpenseParams) error
 	RemoveTagFromIncomeFn                 func(ctx context.Context, arg db.RemoveTagFromIncomeParams) error
@@ -96,8 +96,8 @@ type MockQuerier struct {
 	UpdateExpenseCategoryFn               func(ctx context.Context, arg db.UpdateExpenseCategoryParams) (db.ExpenseCategory, error)
 	UpdateIncomeFn                        func(ctx context.Context, arg db.UpdateIncomeParams) (db.Income, error)
 	UpdateIncomeCategoryFn                func(ctx context.Context, arg db.UpdateIncomeCategoryParams) (db.IncomeCategory, error)
-	UpdateRecurringExpenseRuleFn          func(ctx context.Context, arg db.UpdateRecurringExpenseRuleParams) (db.RecurringExpenseRule, error)
-	UpdateRecurringIncomeRuleFn           func(ctx context.Context, arg db.UpdateRecurringIncomeRuleParams) (db.RecurringIncomeRule, error)
+	UpdateRecurringExpenseRuleFn          func(ctx context.Context, arg db.UpdateRecurringExpenseRuleParams) (db.Rule, error)
+	UpdateRecurringIncomeRuleFn           func(ctx context.Context, arg db.UpdateRecurringIncomeRuleParams) (db.Rule, error)
 	UpdateTagFn                           func(ctx context.Context, arg db.UpdateTagParams) (db.Tag, error)
 }
 
@@ -145,11 +145,11 @@ func (m *MockQuerier) CreateIncomeInstance(ctx context.Context, arg db.CreateInc
 	return m.CreateIncomeInstanceFn(ctx, arg)
 }
 
-func (m *MockQuerier) CreateRecurringExpenseRule(ctx context.Context, arg db.CreateRecurringExpenseRuleParams) (db.RecurringExpenseRule, error) {
+func (m *MockQuerier) CreateRecurringExpenseRule(ctx context.Context, arg db.CreateRecurringExpenseRuleParams) (db.Rule, error) {
 	return m.CreateRecurringExpenseRuleFn(ctx, arg)
 }
 
-func (m *MockQuerier) CreateRecurringIncomeRule(ctx context.Context, arg db.CreateRecurringIncomeRuleParams) (db.RecurringIncomeRule, error) {
+func (m *MockQuerier) CreateRecurringIncomeRule(ctx context.Context, arg db.CreateRecurringIncomeRuleParams) (db.Rule, error) {
 	return m.CreateRecurringIncomeRuleFn(ctx, arg)
 }
 
@@ -236,9 +236,9 @@ func (m *MockQuerier) GetRecurringExpenseRule(ctx context.Context, arg db.GetRec
 
 // GetRecurringIncomeRule defaults to an open-ended rule (see
 // GetRecurringExpenseRule).
-func (m *MockQuerier) GetRecurringIncomeRule(ctx context.Context, arg db.GetRecurringIncomeRuleParams) (db.RecurringIncomeRule, error) {
+func (m *MockQuerier) GetRecurringIncomeRule(ctx context.Context, arg db.GetRecurringIncomeRuleParams) (db.Rule, error) {
 	if m.GetRecurringIncomeRuleFn == nil {
-		return db.RecurringIncomeRule{ID: arg.ID, UserID: arg.UserID}, nil
+		return db.Rule{ID: arg.ID, UserID: arg.UserID}, nil
 	}
 	return m.GetRecurringIncomeRuleFn(ctx, arg)
 }
@@ -327,7 +327,7 @@ func (m *MockQuerier) ListRecurringExpenseRules(ctx context.Context, userID uuid
 	return m.ListRecurringExpenseRulesFn(ctx, userID)
 }
 
-func (m *MockQuerier) ListRecurringIncomeRules(ctx context.Context, userID uuid.UUID) ([]db.RecurringIncomeRule, error) {
+func (m *MockQuerier) ListRecurringIncomeRules(ctx context.Context, userID uuid.UUID) ([]db.Rule, error) {
 	return m.ListRecurringIncomeRulesFn(ctx, userID)
 }
 
@@ -335,7 +335,7 @@ func (m *MockQuerier) ListRecurringExpenseRulesWithPaused(ctx context.Context, u
 	return m.ListRecurringExpenseRulesWithPausedFn(ctx, userID)
 }
 
-func (m *MockQuerier) ListRecurringIncomeRulesWithPaused(ctx context.Context, userID uuid.UUID) ([]db.RecurringIncomeRule, error) {
+func (m *MockQuerier) ListRecurringIncomeRulesWithPaused(ctx context.Context, userID uuid.UUID) ([]db.Rule, error) {
 	return m.ListRecurringIncomeRulesWithPausedFn(ctx, userID)
 }
 
@@ -379,11 +379,11 @@ func (m *MockQuerier) UpdateIncomeCategory(ctx context.Context, arg db.UpdateInc
 	return m.UpdateIncomeCategoryFn(ctx, arg)
 }
 
-func (m *MockQuerier) UpdateRecurringExpenseRule(ctx context.Context, arg db.UpdateRecurringExpenseRuleParams) (db.RecurringExpenseRule, error) {
+func (m *MockQuerier) UpdateRecurringExpenseRule(ctx context.Context, arg db.UpdateRecurringExpenseRuleParams) (db.Rule, error) {
 	return m.UpdateRecurringExpenseRuleFn(ctx, arg)
 }
 
-func (m *MockQuerier) UpdateRecurringIncomeRule(ctx context.Context, arg db.UpdateRecurringIncomeRuleParams) (db.RecurringIncomeRule, error) {
+func (m *MockQuerier) UpdateRecurringIncomeRule(ctx context.Context, arg db.UpdateRecurringIncomeRuleParams) (db.Rule, error) {
 	return m.UpdateRecurringIncomeRuleFn(ctx, arg)
 }
 

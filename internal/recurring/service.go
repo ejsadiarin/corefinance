@@ -97,9 +97,9 @@ func lockOwner(ctx context.Context, q db.Querier, userID uuid.UUID) error {
 
 // --- Income Rules ---
 
-func (s *Service) CreateIncomeRule(ctx context.Context, userID uuid.UUID, req CreateIncomeRuleRequest) (db.RecurringIncomeRule, error) {
+func (s *Service) CreateIncomeRule(ctx context.Context, userID uuid.UUID, req CreateIncomeRuleRequest) (db.Rule, error) {
 	slog.Debug("recurring.Service.CreateIncomeRule", "user_id", userID)
-	var rule db.RecurringIncomeRule
+	var rule db.Rule
 	err := s.inTx(ctx, func(q db.Querier) error {
 		loc, err := lockOwnerInZone(ctx, q, userID)
 		if err != nil {
@@ -124,22 +124,22 @@ func (s *Service) CreateIncomeRule(ctx context.Context, userID uuid.UUID, req Cr
 		return fill(ctx, q, userID, loc)
 	})
 	if err != nil {
-		return db.RecurringIncomeRule{}, err
+		return db.Rule{}, err
 	}
 	return rule, nil
 }
 
-func (s *Service) ListIncomeRules(ctx context.Context, userID uuid.UUID) ([]db.RecurringIncomeRule, error) {
+func (s *Service) ListIncomeRules(ctx context.Context, userID uuid.UUID) ([]db.Rule, error) {
 	slog.Debug("recurring.Service.ListIncomeRules", "user_id", userID)
 	return s.queries.ListRecurringIncomeRules(ctx, userID)
 }
 
 // ListIncomeRulesWithPaused lists every income rule, paused ones too.
-func (s *Service) ListIncomeRulesWithPaused(ctx context.Context, userID uuid.UUID) ([]db.RecurringIncomeRule, error) {
+func (s *Service) ListIncomeRulesWithPaused(ctx context.Context, userID uuid.UUID) ([]db.Rule, error) {
 	return s.queries.ListRecurringIncomeRulesWithPaused(ctx, userID)
 }
 
-func (s *Service) GetIncomeRule(ctx context.Context, id uuid.UUID, userID uuid.UUID) (db.RecurringIncomeRule, error) {
+func (s *Service) GetIncomeRule(ctx context.Context, id uuid.UUID, userID uuid.UUID) (db.Rule, error) {
 	slog.Debug("recurring.Service.GetIncomeRule", "id", id, "user_id", userID)
 	return s.queries.GetRecurringIncomeRule(ctx, db.GetRecurringIncomeRuleParams{
 		ID:     id,
@@ -199,7 +199,7 @@ func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 		if err := noBackfill(ctx, q, rule.ID, was, now, yesterday); err != nil {
 			return err
 		}
-		out = IncomeRuleUpdate{RecurringIncomeRule: rule, StaleEntries: stale}
+		out = IncomeRuleUpdate{Rule: rule, StaleEntries: stale}
 		return fill(ctx, q, userID, loc)
 	})
 	if err != nil {
@@ -218,9 +218,9 @@ func (s *Service) DeleteIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 
 // --- Expense Rules ---
 
-func (s *Service) CreateExpenseRule(ctx context.Context, userID uuid.UUID, req CreateExpenseRuleRequest) (db.RecurringExpenseRule, error) {
+func (s *Service) CreateExpenseRule(ctx context.Context, userID uuid.UUID, req CreateExpenseRuleRequest) (db.Rule, error) {
 	slog.Debug("recurring.Service.CreateExpenseRule", "user_id", userID)
-	var rule db.RecurringExpenseRule
+	var rule db.Rule
 	err := s.inTx(ctx, func(q db.Querier) error {
 		loc, err := lockOwnerInZone(ctx, q, userID)
 		if err != nil {
@@ -245,7 +245,7 @@ func (s *Service) CreateExpenseRule(ctx context.Context, userID uuid.UUID, req C
 		return fill(ctx, q, userID, loc)
 	})
 	if err != nil {
-		return db.RecurringExpenseRule{}, err
+		return db.Rule{}, err
 	}
 	return rule, nil
 }
@@ -310,7 +310,7 @@ func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uu
 		if err := noBackfill(ctx, q, rule.ID, was, now, yesterday); err != nil {
 			return err
 		}
-		out = ExpenseRuleUpdate{RecurringExpenseRule: rule, StaleEntries: stale}
+		out = ExpenseRuleUpdate{Rule: rule, StaleEntries: stale}
 		return fill(ctx, q, userID, loc)
 	})
 	if err != nil {

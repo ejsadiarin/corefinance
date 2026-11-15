@@ -60,7 +60,7 @@ func entryStatuses(entries []StaleEntry) []string {
 }
 
 // weeklyExpenseRule seeds a weekly rule with entries on Aug 3, 10 and 17.
-func weeklyExpenseRule(t *testing.T, ctx context.Context, pool *pgxpool.Pool, s *Service, user uuid.UUID) (db.RecurringExpenseRule, UpdateExpenseRuleRequest) {
+func weeklyExpenseRule(t *testing.T, ctx context.Context, pool *pgxpool.Pool, s *Service, user uuid.UUID) (db.Rule, UpdateExpenseRuleRequest) {
 	t.Helper()
 	req := CreateExpenseRuleRequest{
 		Amount: 50, Currency: "PHP", Description: "groceries", RecurringType: "weekly",
@@ -184,7 +184,7 @@ func TestUpdateRuleHandler_RejectsUnknownStaleEntries(t *testing.T) {
 	}
 }
 
-func expenseRuleWith(t *testing.T, ctx context.Context, s *Service, user uuid.UUID, cadence, start string) (db.RecurringExpenseRule, UpdateExpenseRuleRequest) {
+func expenseRuleWith(t *testing.T, ctx context.Context, s *Service, user uuid.UUID, cadence, start string) (db.Rule, UpdateExpenseRuleRequest) {
 	t.Helper()
 	req := CreateExpenseRuleRequest{
 		Amount: 50, Currency: "PHP", Description: "groceries", RecurringType: cadence, StartDate: start, Priority: "need",

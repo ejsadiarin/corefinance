@@ -21,7 +21,7 @@ func newMaterializeTest(t *testing.T) (*pgxpool.Pool, *db.Queries) {
 	return pool, db.New(pool)
 }
 
-func seedExpenseRule(t *testing.T, ctx context.Context, q *db.Queries, userID uuid.UUID, cadence, start string, end *string) db.RecurringExpenseRule {
+func seedExpenseRule(t *testing.T, ctx context.Context, q *db.Queries, userID uuid.UUID, cadence, start string, end *string) db.Rule {
 	t.Helper()
 	rule, err := q.CreateRecurringExpenseRule(ctx, db.CreateRecurringExpenseRuleParams{
 		UserID:        userID,
@@ -37,7 +37,7 @@ func seedExpenseRule(t *testing.T, ctx context.Context, q *db.Queries, userID uu
 	return rule
 }
 
-func seedIncomeRule(t *testing.T, ctx context.Context, q *db.Queries, userID uuid.UUID, cadence, start string) db.RecurringIncomeRule {
+func seedIncomeRule(t *testing.T, ctx context.Context, q *db.Queries, userID uuid.UUID, cadence, start string) db.Rule {
 	t.Helper()
 	rule, err := q.CreateRecurringIncomeRule(ctx, db.CreateRecurringIncomeRuleParams{
 		UserID:        userID,

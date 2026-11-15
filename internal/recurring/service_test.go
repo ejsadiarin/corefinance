@@ -21,7 +21,7 @@ func TestRecurringService_CreateIncomeRule(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		mock := &mock.MockQuerier{
-			CreateRecurringIncomeRuleFn: func(ctx context.Context, arg db.CreateRecurringIncomeRuleParams) (db.RecurringIncomeRule, error) {
+			CreateRecurringIncomeRuleFn: func(ctx context.Context, arg db.CreateRecurringIncomeRuleParams) (db.Rule, error) {
 				assert.Equal(t, userID, arg.UserID)
 				assert.True(t, arg.Amount.Equal(decimal.NewFromFloat(5000.50)))
 				assert.Equal(t, "PHP", arg.Currency)
@@ -29,7 +29,7 @@ func TestRecurringService_CreateIncomeRule(t *testing.T) {
 				assert.Equal(t, "monthly", arg.RecurringType)
 				assert.True(t, arg.StartDate.Valid)
 				assert.False(t, arg.EndDate.Valid)
-				return db.RecurringIncomeRule{
+				return db.Rule{
 					ID:     ruleID,
 					UserID: userID,
 					Amount: decimal.NewFromFloat(5000.50),
@@ -55,9 +55,9 @@ func TestRecurringService_CreateIncomeRule(t *testing.T) {
 	t.Run("with end date", func(t *testing.T) {
 		endDate := "2026-12-31"
 		mock := &mock.MockQuerier{
-			CreateRecurringIncomeRuleFn: func(ctx context.Context, arg db.CreateRecurringIncomeRuleParams) (db.RecurringIncomeRule, error) {
+			CreateRecurringIncomeRuleFn: func(ctx context.Context, arg db.CreateRecurringIncomeRuleParams) (db.Rule, error) {
 				assert.True(t, arg.EndDate.Valid)
-				return db.RecurringIncomeRule{ID: ruleID}, nil
+				return db.Rule{ID: ruleID}, nil
 			},
 		}
 		svc := NewService(mock)
@@ -74,8 +74,8 @@ func TestRecurringService_CreateIncomeRule(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		mock := &mock.MockQuerier{
-			CreateRecurringIncomeRuleFn: func(ctx context.Context, arg db.CreateRecurringIncomeRuleParams) (db.RecurringIncomeRule, error) {
-				return db.RecurringIncomeRule{}, errors.New("db error")
+			CreateRecurringIncomeRuleFn: func(ctx context.Context, arg db.CreateRecurringIncomeRuleParams) (db.Rule, error) {
+				return db.Rule{}, errors.New("db error")
 			},
 		}
 		svc := NewService(mock)
@@ -95,9 +95,9 @@ func TestRecurringService_ListIncomeRules(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		mock := &mock.MockQuerier{
-			ListRecurringIncomeRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.RecurringIncomeRule, error) {
+			ListRecurringIncomeRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.Rule, error) {
 				assert.Equal(t, userID, uid)
-				return []db.RecurringIncomeRule{
+				return []db.Rule{
 					{ID: uuid.New(), Description: "Salary"},
 					{ID: uuid.New(), Description: "Freelance"},
 				}, nil
@@ -111,8 +111,8 @@ func TestRecurringService_ListIncomeRules(t *testing.T) {
 
 	t.Run("empty", func(t *testing.T) {
 		mock := &mock.MockQuerier{
-			ListRecurringIncomeRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.RecurringIncomeRule, error) {
-				return []db.RecurringIncomeRule{}, nil
+			ListRecurringIncomeRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.Rule, error) {
+				return []db.Rule{}, nil
 			},
 		}
 		svc := NewService(mock)
@@ -123,7 +123,7 @@ func TestRecurringService_ListIncomeRules(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		mock := &mock.MockQuerier{
-			ListRecurringIncomeRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.RecurringIncomeRule, error) {
+			ListRecurringIncomeRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.Rule, error) {
 				return nil, errors.New("db error")
 			},
 		}
@@ -139,10 +139,10 @@ func TestRecurringService_GetIncomeRule(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		mock := &mock.MockQuerier{
-			GetRecurringIncomeRuleFn: func(ctx context.Context, arg db.GetRecurringIncomeRuleParams) (db.RecurringIncomeRule, error) {
+			GetRecurringIncomeRuleFn: func(ctx context.Context, arg db.GetRecurringIncomeRuleParams) (db.Rule, error) {
 				assert.Equal(t, ruleID, arg.ID)
 				assert.Equal(t, userID, arg.UserID)
-				return db.RecurringIncomeRule{
+				return db.Rule{
 					ID:          ruleID,
 					Description: "Salary",
 					Amount:      decimal.NewFromFloat(5000),
@@ -157,8 +157,8 @@ func TestRecurringService_GetIncomeRule(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		mock := &mock.MockQuerier{
-			GetRecurringIncomeRuleFn: func(ctx context.Context, arg db.GetRecurringIncomeRuleParams) (db.RecurringIncomeRule, error) {
-				return db.RecurringIncomeRule{}, errors.New("not found")
+			GetRecurringIncomeRuleFn: func(ctx context.Context, arg db.GetRecurringIncomeRuleParams) (db.Rule, error) {
+				return db.Rule{}, errors.New("not found")
 			},
 		}
 		svc := NewService(mock)
@@ -173,12 +173,12 @@ func TestRecurringService_UpdateIncomeRule(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		mock := &mock.MockQuerier{
-			UpdateRecurringIncomeRuleFn: func(ctx context.Context, arg db.UpdateRecurringIncomeRuleParams) (db.RecurringIncomeRule, error) {
+			UpdateRecurringIncomeRuleFn: func(ctx context.Context, arg db.UpdateRecurringIncomeRuleParams) (db.Rule, error) {
 				assert.Equal(t, ruleID, arg.ID)
 				assert.Equal(t, userID, arg.UserID)
 				assert.Equal(t, "6000", arg.Amount.String())
 				assert.Equal(t, "Updated Salary", arg.Description)
-				return db.RecurringIncomeRule{
+				return db.Rule{
 					ID:          ruleID,
 					Description: "Updated Salary",
 					Amount:      decimal.NewFromFloat(6000),
@@ -199,8 +199,8 @@ func TestRecurringService_UpdateIncomeRule(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		mock := &mock.MockQuerier{
-			UpdateRecurringIncomeRuleFn: func(ctx context.Context, arg db.UpdateRecurringIncomeRuleParams) (db.RecurringIncomeRule, error) {
-				return db.RecurringIncomeRule{}, errors.New("db error")
+			UpdateRecurringIncomeRuleFn: func(ctx context.Context, arg db.UpdateRecurringIncomeRuleParams) (db.Rule, error) {
+				return db.Rule{}, errors.New("db error")
 			},
 		}
 		svc := NewService(mock)
@@ -231,9 +231,9 @@ func TestRecurringService_UpdateIncomeRuleIsActive(t *testing.T) {
 
 	t.Run("pause persists", func(t *testing.T) {
 		mock := &mock.MockQuerier{
-			UpdateRecurringIncomeRuleFn: func(ctx context.Context, arg db.UpdateRecurringIncomeRuleParams) (db.RecurringIncomeRule, error) {
+			UpdateRecurringIncomeRuleFn: func(ctx context.Context, arg db.UpdateRecurringIncomeRuleParams) (db.Rule, error) {
 				assert.Equal(t, pgtype.Bool{Bool: false, Valid: true}, arg.IsActive)
-				return db.RecurringIncomeRule{ID: ruleID, IsActive: false}, nil
+				return db.Rule{ID: ruleID, IsActive: false}, nil
 			},
 		}
 		svc := NewService(mock)
@@ -246,9 +246,9 @@ func TestRecurringService_UpdateIncomeRuleIsActive(t *testing.T) {
 
 	t.Run("resume persists", func(t *testing.T) {
 		mock := &mock.MockQuerier{
-			UpdateRecurringIncomeRuleFn: func(ctx context.Context, arg db.UpdateRecurringIncomeRuleParams) (db.RecurringIncomeRule, error) {
+			UpdateRecurringIncomeRuleFn: func(ctx context.Context, arg db.UpdateRecurringIncomeRuleParams) (db.Rule, error) {
 				assert.Equal(t, pgtype.Bool{Bool: true, Valid: true}, arg.IsActive)
-				return db.RecurringIncomeRule{ID: ruleID, IsActive: true}, nil
+				return db.Rule{ID: ruleID, IsActive: true}, nil
 			},
 		}
 		svc := NewService(mock)
@@ -261,9 +261,9 @@ func TestRecurringService_UpdateIncomeRuleIsActive(t *testing.T) {
 
 	t.Run("omitted preserves state", func(t *testing.T) {
 		mock := &mock.MockQuerier{
-			UpdateRecurringIncomeRuleFn: func(ctx context.Context, arg db.UpdateRecurringIncomeRuleParams) (db.RecurringIncomeRule, error) {
+			UpdateRecurringIncomeRuleFn: func(ctx context.Context, arg db.UpdateRecurringIncomeRuleParams) (db.Rule, error) {
 				assert.Equal(t, pgtype.Bool{Valid: false}, arg.IsActive)
-				return db.RecurringIncomeRule{ID: ruleID, IsActive: true}, nil
+				return db.Rule{ID: ruleID, IsActive: true}, nil
 			},
 		}
 		svc := NewService(mock)
@@ -310,7 +310,7 @@ func TestRecurringService_CreateExpenseRule(t *testing.T) {
 		catID := uuid.New().String()
 		notes := "Monthly bills"
 		mock := &mock.MockQuerier{
-			CreateRecurringExpenseRuleFn: func(ctx context.Context, arg db.CreateRecurringExpenseRuleParams) (db.RecurringExpenseRule, error) {
+			CreateRecurringExpenseRuleFn: func(ctx context.Context, arg db.CreateRecurringExpenseRuleParams) (db.Rule, error) {
 				assert.Equal(t, userID, arg.UserID)
 				assert.Equal(t, "1500.75", arg.Amount.String())
 				assert.Equal(t, "PHP", arg.Currency)
@@ -320,7 +320,7 @@ func TestRecurringService_CreateExpenseRule(t *testing.T) {
 				assert.True(t, arg.CategoryID.Valid)
 				assert.True(t, arg.Notes.Valid)
 				assert.Equal(t, "Monthly bills", arg.Notes.String)
-				return db.RecurringExpenseRule{
+				return db.Rule{
 					ID:          ruleID,
 					UserID:      userID,
 					Description: "Rent",
@@ -345,11 +345,11 @@ func TestRecurringService_CreateExpenseRule(t *testing.T) {
 
 	t.Run("success without optional fields", func(t *testing.T) {
 		mock := &mock.MockQuerier{
-			CreateRecurringExpenseRuleFn: func(ctx context.Context, arg db.CreateRecurringExpenseRuleParams) (db.RecurringExpenseRule, error) {
+			CreateRecurringExpenseRuleFn: func(ctx context.Context, arg db.CreateRecurringExpenseRuleParams) (db.Rule, error) {
 				assert.False(t, arg.CategoryID.Valid)
 				assert.False(t, arg.Notes.Valid)
 				assert.False(t, arg.EndDate.Valid)
-				return db.RecurringExpenseRule{ID: ruleID}, nil
+				return db.Rule{ID: ruleID}, nil
 			},
 		}
 		svc := NewService(mock)
@@ -366,8 +366,8 @@ func TestRecurringService_CreateExpenseRule(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		mock := &mock.MockQuerier{
-			CreateRecurringExpenseRuleFn: func(ctx context.Context, arg db.CreateRecurringExpenseRuleParams) (db.RecurringExpenseRule, error) {
-				return db.RecurringExpenseRule{}, errors.New("db error")
+			CreateRecurringExpenseRuleFn: func(ctx context.Context, arg db.CreateRecurringExpenseRuleParams) (db.Rule, error) {
+				return db.Rule{}, errors.New("db error")
 			},
 		}
 		svc := NewService(mock)
@@ -428,7 +428,7 @@ func TestRecurringService_UpdateExpenseRule(t *testing.T) {
 		notes := "Updated notes"
 		isActive := true
 		mock := &mock.MockQuerier{
-			UpdateRecurringExpenseRuleFn: func(ctx context.Context, arg db.UpdateRecurringExpenseRuleParams) (db.RecurringExpenseRule, error) {
+			UpdateRecurringExpenseRuleFn: func(ctx context.Context, arg db.UpdateRecurringExpenseRuleParams) (db.Rule, error) {
 				assert.Equal(t, ruleID, arg.ID)
 				assert.Equal(t, userID, arg.UserID)
 				assert.Equal(t, "2000", arg.Amount.String())
@@ -436,7 +436,7 @@ func TestRecurringService_UpdateExpenseRule(t *testing.T) {
 				assert.Equal(t, "need", arg.Priority)
 				assert.True(t, arg.CategoryID.Valid)
 				assert.True(t, arg.Notes.Valid)
-				return db.RecurringExpenseRule{
+				return db.Rule{
 					ID:          ruleID,
 					Description: "Updated Rent",
 					Amount:      decimal.NewFromFloat(2000),
@@ -461,8 +461,8 @@ func TestRecurringService_UpdateExpenseRule(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		mock := &mock.MockQuerier{
-			UpdateRecurringExpenseRuleFn: func(ctx context.Context, arg db.UpdateRecurringExpenseRuleParams) (db.RecurringExpenseRule, error) {
-				return db.RecurringExpenseRule{}, errors.New("db error")
+			UpdateRecurringExpenseRuleFn: func(ctx context.Context, arg db.UpdateRecurringExpenseRuleParams) (db.Rule, error) {
+				return db.Rule{}, errors.New("db error")
 			},
 		}
 		svc := NewService(mock)
@@ -495,9 +495,9 @@ func TestRecurringService_UpdateExpenseRuleIsActive(t *testing.T) {
 
 	t.Run("pause persists", func(t *testing.T) {
 		mock := &mock.MockQuerier{
-			UpdateRecurringExpenseRuleFn: func(ctx context.Context, arg db.UpdateRecurringExpenseRuleParams) (db.RecurringExpenseRule, error) {
+			UpdateRecurringExpenseRuleFn: func(ctx context.Context, arg db.UpdateRecurringExpenseRuleParams) (db.Rule, error) {
 				assert.Equal(t, pgtype.Bool{Bool: false, Valid: true}, arg.IsActive)
-				return db.RecurringExpenseRule{ID: ruleID, IsActive: false}, nil
+				return db.Rule{ID: ruleID, IsActive: false}, nil
 			},
 		}
 		svc := NewService(mock)
@@ -510,9 +510,9 @@ func TestRecurringService_UpdateExpenseRuleIsActive(t *testing.T) {
 
 	t.Run("resume persists", func(t *testing.T) {
 		mock := &mock.MockQuerier{
-			UpdateRecurringExpenseRuleFn: func(ctx context.Context, arg db.UpdateRecurringExpenseRuleParams) (db.RecurringExpenseRule, error) {
+			UpdateRecurringExpenseRuleFn: func(ctx context.Context, arg db.UpdateRecurringExpenseRuleParams) (db.Rule, error) {
 				assert.Equal(t, pgtype.Bool{Bool: true, Valid: true}, arg.IsActive)
-				return db.RecurringExpenseRule{ID: ruleID, IsActive: true}, nil
+				return db.Rule{ID: ruleID, IsActive: true}, nil
 			},
 		}
 		svc := NewService(mock)
@@ -525,9 +525,9 @@ func TestRecurringService_UpdateExpenseRuleIsActive(t *testing.T) {
 
 	t.Run("omitted preserves state", func(t *testing.T) {
 		mock := &mock.MockQuerier{
-			UpdateRecurringExpenseRuleFn: func(ctx context.Context, arg db.UpdateRecurringExpenseRuleParams) (db.RecurringExpenseRule, error) {
+			UpdateRecurringExpenseRuleFn: func(ctx context.Context, arg db.UpdateRecurringExpenseRuleParams) (db.Rule, error) {
 				assert.Equal(t, pgtype.Bool{Valid: false}, arg.IsActive)
-				return db.RecurringExpenseRule{ID: ruleID, IsActive: true}, nil
+				return db.Rule{ID: ruleID, IsActive: true}, nil
 			},
 		}
 		svc := NewService(mock)

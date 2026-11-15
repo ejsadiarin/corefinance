@@ -129,7 +129,7 @@ func TestCreateIncomeRule_PriorityDefaultsToWant_Integration(t *testing.T) {
 	var priority string
 	rule := seedIncomeRule(t, ctx, q, uuid.New(), "daily", "2026-09-01")
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT priority FROM recurring_income_rules WHERE id = $1`, rule.ID).Scan(&priority))
+		`SELECT priority FROM rules WHERE id = $1`, rule.ID).Scan(&priority))
 	assert.Equal(t, "want", priority)
 }
 

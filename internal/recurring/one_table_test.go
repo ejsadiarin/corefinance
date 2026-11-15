@@ -14,7 +14,7 @@ import (
 )
 
 // Expense and income rules live in one rules table (#11); the rule endpoints
-// keep their JSON.
+// keep their JSON and each sees only its own kind (#10).
 func TestRulesShareOneTable_Integration(t *testing.T) {
 	ctx := context.Background()
 	pool := testutil.SetupTestDB(t)
@@ -50,5 +50,17 @@ func TestRulesShareOneTable_Integration(t *testing.T) {
 		b, err := json.Marshal(v)
 		require.NoError(t, err)
 		assert.NotContains(t, string(b), `"kind"`, "rule JSON is unchanged")
+		assert.NotContains(t, string(b), `"next_due_at"`, "rule JSON is unchanged")
 	}
+
+	// A rule of the other kind is not found, and deleting it through the
+	// wrong endpoint leaves it in place.
+	_, err = s.GetExpenseRule(ctx, inc.ID, user)
+	assert.Error(t, err, "an income rule is not an expense rule")
+	_, err = s.GetIncomeRule(ctx, exp.ID, user)
+	assert.Error(t, err, "an expense rule is not an income rule")
+	require.NoError(t, s.DeleteExpenseRule(ctx, inc.ID, user))
+	require.NoError(t, s.DeleteIncomeRule(ctx, exp.ID, user))
+	assert.Equal(t, "expense", kindOf(exp.ID))
+	assert.Equal(t, "income", kindOf(inc.ID))
 }

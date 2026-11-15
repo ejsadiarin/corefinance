@@ -21,7 +21,7 @@ func pd(s string) pgtype.Date { return pgtype.Date{Time: d(s), Valid: true} }
 
 func setExpenseWatermark(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ruleID uuid.UUID, through string) {
 	t.Helper()
-	_, err := pool.Exec(ctx, `UPDATE recurring_expense_rules SET materialized_through = $2 WHERE id = $1`, ruleID, d(through))
+	_, err := pool.Exec(ctx, `UPDATE rules SET materialized_through = $2 WHERE id = $1`, ruleID, d(through))
 	require.NoError(t, err)
 }
 

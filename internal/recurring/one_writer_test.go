@@ -116,7 +116,7 @@ func TestSavingRuleDuringWorkerPassMakesNoDuplicates_Integration(t *testing.T) {
 	start := time.Now().UTC().AddDate(0, 0, -30).Format(time.DateOnly)
 
 	var wg sync.WaitGroup
-	var rule db.RecurringExpenseRule
+	var rule db.Rule
 	var createErr error
 	wg.Add(2)
 	go func() {
