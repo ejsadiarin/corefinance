@@ -37,7 +37,7 @@ UPDATE expenses
 SET category_id = $3, amount = $4, currency = $5, description = $6, notes = $7,
     expense_date = $8, recurring_type = $9, priority = $10, status = $11,
     is_debt = $12, start_date = $13, end_date = $14, source_rule_id = $15,
-    updated_at = now()
+    updated_at = now(), user_edited_at = now()
 WHERE id = $1 AND user_id = $2
 RETURNING *;
 
@@ -47,7 +47,7 @@ WHERE id = $1 AND user_id = $2;
 
 -- name: SkipExpense :exec
 UPDATE expenses
-SET status = 'skipped', updated_at = now()
+SET status = 'skipped', updated_at = now(), user_edited_at = now()
 WHERE id = $1 AND user_id = $2;
 
 -- name: CheckSkippedExpense :one

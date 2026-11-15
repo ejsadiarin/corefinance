@@ -29,8 +29,10 @@ type UpdateIncomeRuleRequest struct {
 	StartDate     string   `json:"start_date"`
 	EndDate       *string  `json:"end_date,omitempty"`
 	IsActive      *bool    `json:"is_active,omitempty"`
-	// EntriesAfterEnd is "skip" (default) or "keep": what happens to entries
-	// the rule created after an end date moved into the past (#5).
+	// StaleEntries is "skip" (default) or "keep": what happens to untouched
+	// entries a schedule change leaves behind (#15).
+	StaleEntries string `json:"stale_entries,omitempty"`
+	// EntriesAfterEnd is the #5 name for StaleEntries, still accepted.
 	EntriesAfterEnd string `json:"entries_after_end,omitempty"`
 }
 
@@ -57,8 +59,10 @@ type UpdateExpenseRuleRequest struct {
 	EndDate       *string  `json:"end_date,omitempty"`
 	Priority      string   `json:"priority"`
 	IsActive      *bool    `json:"is_active,omitempty"`
-	// EntriesAfterEnd is "skip" (default) or "keep": what happens to entries
-	// the rule created after an end date moved into the past (#5).
+	// StaleEntries is "skip" (default) or "keep": what happens to untouched
+	// entries a schedule change leaves behind (#15).
+	StaleEntries string `json:"stale_entries,omitempty"`
+	// EntriesAfterEnd is the #5 name for StaleEntries, still accepted.
 	EntriesAfterEnd string `json:"entries_after_end,omitempty"`
 }
 
@@ -73,4 +77,12 @@ type IncomeRuleResponse struct {
 	EndDate       *string         `json:"end_date,omitempty"`
 	CreatedAt     string          `json:"created_at"`
 	UpdatedAt     string          `json:"updated_at"`
+}
+
+// staleChoice is the caller's stale_entries choice, or its #5 name.
+func staleChoice(stale, afterEnd string) string {
+	if stale != "" {
+		return stale
+	}
+	return afterEnd
 }

@@ -71,7 +71,7 @@ func (f fixture) incomeRule(t *testing.T, user uuid.UUID, cadence, start string)
 // pass runs the worker as of the given date.
 func (f fixture) pass(t *testing.T, today string) {
 	t.Helper()
-	_, err := materialize.MaterializeDue(context.Background(), f.pool, f.q, day(today))
+	_, err := materialize.MaterializeDue(context.Background(), f.pool, f.q, materialize.FixedZones{}, day(today))
 	require.NoError(t, err)
 }
 

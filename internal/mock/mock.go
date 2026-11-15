@@ -47,14 +47,22 @@ type MockQuerier struct {
 	GetExpenseStatsByCategoryFn           func(ctx context.Context, arg db.GetExpenseStatsByCategoryParams) ([]db.GetExpenseStatsByCategoryRow, error)
 	GetFiftyThirtyTwentyFn                func(ctx context.Context, arg db.GetFiftyThirtyTwentyParams) (db.GetFiftyThirtyTwentyRow, error)
 	GetIncomeFn                           func(ctx context.Context, arg db.GetIncomeParams) (db.GetIncomeRow, error)
-	ListExpenseRuleEntriesAfterEndFn      func(ctx context.Context, arg db.ListExpenseRuleEntriesAfterEndParams) ([]db.ListExpenseRuleEntriesAfterEndRow, error)
-	ListIncomeRuleEntriesAfterEndFn       func(ctx context.Context, arg db.ListIncomeRuleEntriesAfterEndParams) ([]db.ListIncomeRuleEntriesAfterEndRow, error)
-	SkipExpenseRuleEntriesAfterEndFn      func(ctx context.Context, arg db.SkipExpenseRuleEntriesAfterEndParams) ([]db.SkipExpenseRuleEntriesAfterEndRow, error)
-	SkipIncomeRuleEntriesAfterEndFn       func(ctx context.Context, arg db.SkipIncomeRuleEntriesAfterEndParams) ([]db.SkipIncomeRuleEntriesAfterEndRow, error)
 	ListRuleEntriesFn                     func(ctx context.Context, arg db.ListRuleEntriesParams) ([]db.ListRuleEntriesRow, error)
-	GetUserSettingsFn                     func(ctx context.Context, userID uuid.UUID) (db.UserSetting, error)
-	ListUserTimezonesFn                   func(ctx context.Context) ([]db.ListUserTimezonesRow, error)
-	PutUserSettingsFn                     func(ctx context.Context, arg db.PutUserSettingsParams) (db.UserSetting, error)
+	GetFeedHorizonFn                      func(ctx context.Context) (uint64, error)
+	ListRuleEntriesFeedFn                 func(ctx context.Context, arg db.ListRuleEntriesFeedParams) ([]db.ListRuleEntriesFeedRow, error)
+	LockUserMaterializeFn                 func(ctx context.Context, userID uuid.UUID) error
+	AdvanceRuleWatermarkFn                func(ctx context.Context, arg db.AdvanceRuleWatermarkParams) error
+	ListRuleEntriesToReconcileFn          func(ctx context.Context, arg db.ListRuleEntriesToReconcileParams) ([]db.ListRuleEntriesToReconcileRow, error)
+	GetSeenTimezoneFn                     func(ctx context.Context, userID uuid.UUID) (string, error)
+	RecordUserTimezoneFn                  func(ctx context.Context, arg db.RecordUserTimezoneParams) (bool, error)
+	SkipExpenseEntriesFn                  func(ctx context.Context, arg db.SkipExpenseEntriesParams) error
+	SkipIncomeEntriesFn                   func(ctx context.Context, arg db.SkipIncomeEntriesParams) error
+	MarkExpenseEntriesKeptFn              func(ctx context.Context, arg db.MarkExpenseEntriesKeptParams) error
+	MarkIncomeEntriesKeptFn               func(ctx context.Context, arg db.MarkIncomeEntriesKeptParams) error
+	SetRuleNextDueFn                      func(ctx context.Context, arg db.SetRuleNextDueParams) error
+	ListUsersDueFn                        func(ctx context.Context, now pgtype.Timestamptz) ([]uuid.UUID, error)
+	ListUserActiveRulesFn                 func(ctx context.Context, userID uuid.UUID) ([]db.Rule, error)
+	GetNextWakeFn                         func(ctx context.Context, now pgtype.Timestamptz) (pgtype.Timestamptz, error)
 	GetIncomeCategoryFn                   func(ctx context.Context, arg db.GetIncomeCategoryParams) (db.IncomeCategory, error)
 	GetIncomeOccurrencesFn                func(ctx context.Context, arg db.GetIncomeOccurrencesParams) ([]db.Income, error)
 	GetMonthOverMonthTrendsFn             func(ctx context.Context, arg db.GetMonthOverMonthTrendsParams) ([]db.GetMonthOverMonthTrendsRow, error)
@@ -70,8 +78,6 @@ type MockQuerier struct {
 	GetTotalIncomesByDateRangeFn          func(ctx context.Context, arg db.GetTotalIncomesByDateRangeParams) (decimal.Decimal, error)
 	GetTrendsFn                           func(ctx context.Context, arg db.GetTrendsParams) ([]db.GetTrendsRow, error)
 	GetUpcomingRecurringExpensesFn        func(ctx context.Context, userID uuid.UUID) ([]db.GetUpcomingRecurringExpensesRow, error)
-	ListExpenseRulesBehindFn              func(ctx context.Context, today pgtype.Date) ([]db.RecurringExpenseRule, error)
-	ListIncomeRulesBehindFn               func(ctx context.Context, today pgtype.Date) ([]db.RecurringIncomeRule, error)
 	AdvanceExpenseRuleWatermarkFn         func(ctx context.Context, arg db.AdvanceExpenseRuleWatermarkParams) error
 	AdvanceIncomeRuleWatermarkFn          func(ctx context.Context, arg db.AdvanceIncomeRuleWatermarkParams) error
 	ListActiveExpenseRulesFn              func(ctx context.Context, startDate pgtype.Date) ([]db.RecurringExpenseRule, error)
@@ -260,7 +266,7 @@ func (m *MockQuerier) GetMonthOverMonthTrends(ctx context.Context, arg db.GetMon
 }
 
 // GetRecurringExpenseRule defaults to an open-ended rule, which a rule
-// update reads to compare end dates (#5).
+// update reads to compare schedules (#15).
 func (m *MockQuerier) GetRecurringExpenseRule(ctx context.Context, arg db.GetRecurringExpenseRuleParams) (db.GetRecurringExpenseRuleRow, error) {
 	if m.GetRecurringExpenseRuleFn == nil {
 		return db.GetRecurringExpenseRuleRow{ID: arg.ID, UserID: arg.UserID}, nil
@@ -315,14 +321,6 @@ func (m *MockQuerier) GetTrends(ctx context.Context, arg db.GetTrendsParams) ([]
 
 func (m *MockQuerier) GetUpcomingRecurringExpenses(ctx context.Context, userID uuid.UUID) ([]db.GetUpcomingRecurringExpensesRow, error) {
 	return m.GetUpcomingRecurringExpensesFn(ctx, userID)
-}
-
-func (m *MockQuerier) ListExpenseRulesBehind(ctx context.Context, today pgtype.Date) ([]db.RecurringExpenseRule, error) {
-	return m.ListExpenseRulesBehindFn(ctx, today)
-}
-
-func (m *MockQuerier) ListIncomeRulesBehind(ctx context.Context, today pgtype.Date) ([]db.RecurringIncomeRule, error) {
-	return m.ListIncomeRulesBehindFn(ctx, today)
 }
 
 func (m *MockQuerier) AdvanceExpenseRuleWatermark(ctx context.Context, arg db.AdvanceExpenseRuleWatermarkParams) error {
@@ -473,59 +471,130 @@ func (m *MockQuerier) UpdateTag(ctx context.Context, arg db.UpdateTagParams) (db
 	return m.UpdateTagFn(ctx, arg)
 }
 
-// GetUserSettings defaults to "no settings saved" so tests that don't care
-// about the user's timezone needn't stub it.
-func (m *MockQuerier) GetUserSettings(ctx context.Context, userID uuid.UUID) (db.UserSetting, error) {
-	if m.GetUserSettingsFn == nil {
-		return db.UserSetting{}, pgx.ErrNoRows
-	}
-	return m.GetUserSettingsFn(ctx, userID)
-}
-
-func (m *MockQuerier) ListUserTimezones(ctx context.Context) ([]db.ListUserTimezonesRow, error) {
-	return m.ListUserTimezonesFn(ctx)
-}
-
-func (m *MockQuerier) PutUserSettings(ctx context.Context, arg db.PutUserSettingsParams) (db.UserSetting, error) {
-	return m.PutUserSettingsFn(ctx, arg)
-}
-
-// ListExpenseRuleEntriesAfterEnd defaults to no entries.
-func (m *MockQuerier) ListExpenseRuleEntriesAfterEnd(ctx context.Context, arg db.ListExpenseRuleEntriesAfterEndParams) ([]db.ListExpenseRuleEntriesAfterEndRow, error) {
-	if m.ListExpenseRuleEntriesAfterEndFn == nil {
-		return nil, nil
-	}
-	return m.ListExpenseRuleEntriesAfterEndFn(ctx, arg)
-}
-
-// ListIncomeRuleEntriesAfterEnd defaults to no entries.
-func (m *MockQuerier) ListIncomeRuleEntriesAfterEnd(ctx context.Context, arg db.ListIncomeRuleEntriesAfterEndParams) ([]db.ListIncomeRuleEntriesAfterEndRow, error) {
-	if m.ListIncomeRuleEntriesAfterEndFn == nil {
-		return nil, nil
-	}
-	return m.ListIncomeRuleEntriesAfterEndFn(ctx, arg)
-}
-
-// SkipExpenseRuleEntriesAfterEnd defaults to no entries.
-func (m *MockQuerier) SkipExpenseRuleEntriesAfterEnd(ctx context.Context, arg db.SkipExpenseRuleEntriesAfterEndParams) ([]db.SkipExpenseRuleEntriesAfterEndRow, error) {
-	if m.SkipExpenseRuleEntriesAfterEndFn == nil {
-		return nil, nil
-	}
-	return m.SkipExpenseRuleEntriesAfterEndFn(ctx, arg)
-}
-
-// SkipIncomeRuleEntriesAfterEnd defaults to no entries.
-func (m *MockQuerier) SkipIncomeRuleEntriesAfterEnd(ctx context.Context, arg db.SkipIncomeRuleEntriesAfterEndParams) ([]db.SkipIncomeRuleEntriesAfterEndRow, error) {
-	if m.SkipIncomeRuleEntriesAfterEndFn == nil {
-		return nil, nil
-	}
-	return m.SkipIncomeRuleEntriesAfterEndFn(ctx, arg)
-}
-
 // ListRuleEntries defaults to no entries.
 func (m *MockQuerier) ListRuleEntries(ctx context.Context, arg db.ListRuleEntriesParams) ([]db.ListRuleEntriesRow, error) {
 	if m.ListRuleEntriesFn == nil {
 		return nil, nil
 	}
 	return m.ListRuleEntriesFn(ctx, arg)
+}
+
+// GetFeedHorizon defaults to 0: nothing is past the horizon.
+func (m *MockQuerier) GetFeedHorizon(ctx context.Context) (uint64, error) {
+	if m.GetFeedHorizonFn == nil {
+		return 0, nil
+	}
+	return m.GetFeedHorizonFn(ctx)
+}
+
+// ListRuleEntriesFeed defaults to no entries.
+func (m *MockQuerier) ListRuleEntriesFeed(ctx context.Context, arg db.ListRuleEntriesFeedParams) ([]db.ListRuleEntriesFeedRow, error) {
+	if m.ListRuleEntriesFeedFn == nil {
+		return nil, nil
+	}
+	return m.ListRuleEntriesFeedFn(ctx, arg)
+}
+
+// LockUserMaterialize defaults to taking the lock.
+func (m *MockQuerier) LockUserMaterialize(ctx context.Context, userID uuid.UUID) error {
+	if m.LockUserMaterializeFn == nil {
+		return nil
+	}
+	return m.LockUserMaterializeFn(ctx, userID)
+}
+
+// AdvanceRuleWatermark defaults to succeeding.
+func (m *MockQuerier) AdvanceRuleWatermark(ctx context.Context, arg db.AdvanceRuleWatermarkParams) error {
+	if m.AdvanceRuleWatermarkFn == nil {
+		return nil
+	}
+	return m.AdvanceRuleWatermarkFn(ctx, arg)
+}
+
+// ListRuleEntriesToReconcile defaults to no entries.
+func (m *MockQuerier) ListRuleEntriesToReconcile(ctx context.Context, arg db.ListRuleEntriesToReconcileParams) ([]db.ListRuleEntriesToReconcileRow, error) {
+	if m.ListRuleEntriesToReconcileFn == nil {
+		return nil, nil
+	}
+	return m.ListRuleEntriesToReconcileFn(ctx, arg)
+}
+
+// SkipExpenseEntries defaults to succeeding.
+func (m *MockQuerier) SkipExpenseEntries(ctx context.Context, arg db.SkipExpenseEntriesParams) error {
+	if m.SkipExpenseEntriesFn == nil {
+		return nil
+	}
+	return m.SkipExpenseEntriesFn(ctx, arg)
+}
+
+// SkipIncomeEntries defaults to succeeding.
+func (m *MockQuerier) SkipIncomeEntries(ctx context.Context, arg db.SkipIncomeEntriesParams) error {
+	if m.SkipIncomeEntriesFn == nil {
+		return nil
+	}
+	return m.SkipIncomeEntriesFn(ctx, arg)
+}
+
+// MarkExpenseEntriesKept defaults to succeeding.
+func (m *MockQuerier) MarkExpenseEntriesKept(ctx context.Context, arg db.MarkExpenseEntriesKeptParams) error {
+	if m.MarkExpenseEntriesKeptFn == nil {
+		return nil
+	}
+	return m.MarkExpenseEntriesKeptFn(ctx, arg)
+}
+
+// MarkIncomeEntriesKept defaults to succeeding.
+func (m *MockQuerier) MarkIncomeEntriesKept(ctx context.Context, arg db.MarkIncomeEntriesKeptParams) error {
+	if m.MarkIncomeEntriesKeptFn == nil {
+		return nil
+	}
+	return m.MarkIncomeEntriesKeptFn(ctx, arg)
+}
+
+// ListUsersDue defaults to nobody.
+func (m *MockQuerier) ListUsersDue(ctx context.Context, now pgtype.Timestamptz) ([]uuid.UUID, error) {
+	if m.ListUsersDueFn == nil {
+		return nil, nil
+	}
+	return m.ListUsersDueFn(ctx, now)
+}
+
+// ListUserActiveRules defaults to no rules.
+func (m *MockQuerier) ListUserActiveRules(ctx context.Context, userID uuid.UUID) ([]db.Rule, error) {
+	if m.ListUserActiveRulesFn == nil {
+		return nil, nil
+	}
+	return m.ListUserActiveRulesFn(ctx, userID)
+}
+
+// GetNextWake defaults to nothing due.
+func (m *MockQuerier) GetNextWake(ctx context.Context, now pgtype.Timestamptz) (pgtype.Timestamptz, error) {
+	if m.GetNextWakeFn == nil {
+		return pgtype.Timestamptz{}, nil
+	}
+	return m.GetNextWakeFn(ctx, now)
+}
+
+// SetRuleNextDue defaults to succeeding.
+func (m *MockQuerier) SetRuleNextDue(ctx context.Context, arg db.SetRuleNextDueParams) error {
+	if m.SetRuleNextDueFn == nil {
+		return nil
+	}
+	return m.SetRuleNextDueFn(ctx, arg)
+}
+
+// GetSeenTimezone defaults to "never seen".
+func (m *MockQuerier) GetSeenTimezone(ctx context.Context, userID uuid.UUID) (string, error) {
+	if m.GetSeenTimezoneFn == nil {
+		return "", pgx.ErrNoRows
+	}
+	return m.GetSeenTimezoneFn(ctx, userID)
+}
+
+// RecordUserTimezone defaults to recording an unchanged zone.
+func (m *MockQuerier) RecordUserTimezone(ctx context.Context, arg db.RecordUserTimezoneParams) (bool, error) {
+	if m.RecordUserTimezoneFn == nil {
+		return false, nil
+	}
+	return m.RecordUserTimezoneFn(ctx, arg)
 }

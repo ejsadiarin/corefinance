@@ -18,6 +18,7 @@ type Querier interface {
 	// The watermark only moves forward: GREATEST ignores a NULL current value.
 	AdvanceExpenseRuleWatermark(ctx context.Context, arg AdvanceExpenseRuleWatermarkParams) error
 	AdvanceIncomeRuleWatermark(ctx context.Context, arg AdvanceIncomeRuleWatermarkParams) error
+	AdvanceRuleWatermark(ctx context.Context, arg AdvanceRuleWatermarkParams) error
 	CheckSkippedExpense(ctx context.Context, arg CheckSkippedExpenseParams) (bool, error)
 	CheckSkippedIncome(ctx context.Context, arg CheckSkippedIncomeParams) (bool, error)
 	CountLegacyExpenses(ctx context.Context) (int64, error)
@@ -47,6 +48,10 @@ type Querier interface {
 	GetExpense(ctx context.Context, arg GetExpenseParams) (GetExpenseRow, error)
 	GetExpenseCategory(ctx context.Context, arg GetExpenseCategoryParams) (ExpenseCategory, error)
 	GetExpenseStatsByCategory(ctx context.Context, arg GetExpenseStatsByCategoryParams) ([]GetExpenseStatsByCategoryRow, error)
+	// Review feed (#13): every transaction before the horizon has finished, so
+	// the feed never returns a cursor that a later commit could land behind.
+	// Read the horizon once per page and pass it to ListRuleEntriesFeed.
+	GetFeedHorizon(ctx context.Context) (uint64, error)
 	GetFiftyThirtyTwenty(ctx context.Context, arg GetFiftyThirtyTwentyParams) (GetFiftyThirtyTwentyRow, error)
 	GetIncome(ctx context.Context, arg GetIncomeParams) (GetIncomeRow, error)
 	GetIncomeCategory(ctx context.Context, arg GetIncomeCategoryParams) (IncomeCategory, error)
@@ -54,9 +59,15 @@ type Querier interface {
 	// source_rule_id set, so the link, not the type, marks an occurrence.
 	GetIncomeOccurrences(ctx context.Context, arg GetIncomeOccurrencesParams) ([]Income, error)
 	GetMonthOverMonthTrends(ctx context.Context, arg GetMonthOverMonthTrendsParams) ([]GetMonthOverMonthTrendsRow, error)
+	// The earliest next occurrence still to come, if any (NULL when none).
+	GetNextWake(ctx context.Context, now pgtype.Timestamptz) (pgtype.Timestamptz, error)
 	GetRecurringExpenseRule(ctx context.Context, arg GetRecurringExpenseRuleParams) (GetRecurringExpenseRuleRow, error)
 	GetRecurringIncomeRule(ctx context.Context, arg GetRecurringIncomeRuleParams) (RecurringIncomeRule, error)
 	GetSavingsRate(ctx context.Context, arg GetSavingsRateParams) (GetSavingsRateRow, error)
+	// The zone a request's token last carried per user (#18, coregateway
+	// ADR-0005): background work dates entries in it, and a change recomputes
+	// the user's next due times.
+	GetSeenTimezone(ctx context.Context, userID uuid.UUID) (string, error)
 	GetSpendingVelocity(ctx context.Context, arg GetSpendingVelocityParams) (GetSpendingVelocityRow, error)
 	GetSummary(ctx context.Context, arg GetSummaryParams) (GetSummaryRow, error)
 	GetTag(ctx context.Context, arg GetTagParams) (Tag, error)
@@ -66,8 +77,6 @@ type Querier interface {
 	GetTotalIncomesByDateRange(ctx context.Context, arg GetTotalIncomesByDateRangeParams) (decimal.Decimal, error)
 	GetTrends(ctx context.Context, arg GetTrendsParams) ([]GetTrendsRow, error)
 	GetUpcomingRecurringExpenses(ctx context.Context, userID uuid.UUID) ([]GetUpcomingRecurringExpensesRow, error)
-	// Per-user settings (#9).
-	GetUserSettings(ctx context.Context, userID uuid.UUID) (UserSetting, error)
 	// Worker materialization queries (D3/D4/D5): active-rule selection, idempotent
 	// instance inserts, and legacy inline-rule backfill support.
 	ListActiveExpenseRules(ctx context.Context, startDate pgtype.Date) ([]RecurringExpenseRule, error)
@@ -79,22 +88,11 @@ type Querier interface {
 	ListAllIncomeTagsByUser(ctx context.Context, userID uuid.UUID) ([]IncomeTag, error)
 	ListAllIncomesByUser(ctx context.Context, userID uuid.UUID) ([]Income, error)
 	ListExpenseCategories(ctx context.Context, userID uuid.UUID) ([]ExpenseCategory, error)
-	// Ending a rule in the past (#5): the rule's entries dated after the new end
-	// date and up to the old one (NULL: no old end), not already skipped.
-	ListExpenseRuleEntriesAfterEnd(ctx context.Context, arg ListExpenseRuleEntriesAfterEndParams) ([]ListExpenseRuleEntriesAfterEndRow, error)
-	// Catch-up pass (#7): rules with due dates the worker hasn't filled yet.
-	// A rule is behind when its watermark (materialized_through, or the day before
-	// start_date when nothing has been filled) is earlier than min(end_date, today).
-	// Rules that ended while the worker was down are still included. Paused rules
-	// are not.
-	ListExpenseRulesBehind(ctx context.Context, today pgtype.Date) ([]RecurringExpenseRule, error)
 	ListExpenses(ctx context.Context, arg ListExpensesParams) ([]ListExpensesRow, error)
 	// The caller's expenses among the given ids; ids that don't exist or
 	// belong to someone else are simply absent.
 	ListExpensesByIDs(ctx context.Context, arg ListExpensesByIDsParams) ([]ListExpensesByIDsRow, error)
 	ListIncomeCategories(ctx context.Context, userID uuid.UUID) ([]IncomeCategory, error)
-	ListIncomeRuleEntriesAfterEnd(ctx context.Context, arg ListIncomeRuleEntriesAfterEndParams) ([]ListIncomeRuleEntriesAfterEndRow, error)
-	ListIncomeRulesBehind(ctx context.Context, today pgtype.Date) ([]RecurringIncomeRule, error)
 	ListIncomes(ctx context.Context, arg ListIncomesParams) ([]ListIncomesRow, error)
 	// The caller's incomes among the given ids; ids that don't exist or
 	// belong to someone else are simply absent.
@@ -115,16 +113,44 @@ type Querier interface {
 	// created_since compares the insert time, so entries back-filled with older
 	// dates still show up as new.
 	ListRuleEntries(ctx context.Context, arg ListRuleEntriesParams) ([]ListRuleEntriesRow, error)
+	ListRuleEntriesFeed(ctx context.Context, arg ListRuleEntriesFeedParams) ([]ListRuleEntriesFeedRow, error)
+	// Reconciling a rule's entries after a schedule change (#15, ADR-0001): the
+	// rule's entries that aren't skipped, with whether the user edited them.
+	ListRuleEntriesToReconcile(ctx context.Context, arg ListRuleEntriesToReconcileParams) ([]ListRuleEntriesToReconcileRow, error)
 	ListTags(ctx context.Context, userID uuid.UUID) ([]Tag, error)
-	ListUserTimezones(ctx context.Context) ([]ListUserTimezonesRow, error)
-	PutUserSettings(ctx context.Context, arg PutUserSettingsParams) (UserSetting, error)
+	ListUserActiveRules(ctx context.Context, userID uuid.UUID) ([]Rule, error)
+	// Next-due scheduling (#16): users with an active rule whose next occurrence
+	// has started, or whose next_due_at hasn't been computed yet.
+	ListUsersDue(ctx context.Context, now pgtype.Timestamptz) ([]uuid.UUID, error)
+	// The materialize pass runs one user at a time under a per-user lock (#14,
+	// ADR-0001). It fills each active rule's dates after its watermark
+	// (materialized_through) up to min(end_date, today), including rules that
+	// ended while the worker was down. Paused rules are not filled.
+	// Serializes every writer of one user's rule entries (the worker and rule
+	// saves) for the rest of the transaction. Take it before touching any rule
+	// row, so writers always lock in the same order.
+	LockUserMaterialize(ctx context.Context, userID uuid.UUID) error
+	// Keeping a stale entry is the user's decision, so it counts as an edit:
+	// a later schedule change reports it for review instead of skipping it.
+	MarkExpenseEntriesKept(ctx context.Context, arg MarkExpenseEntriesKeptParams) error
+	MarkIncomeEntriesKept(ctx context.Context, arg MarkIncomeEntriesKeptParams) error
+	// Records a zone seen at seen_at and, in the same statement, clears the
+	// user's next due times when it differs from the one before (each is
+	// midnight in the old zone; the next pass recomputes them). One statement,
+	// so a change can't be recorded without its schedule being reset. Take
+	// LockUserMaterialize first in the same transaction: it updates the user's
+	// rule rows, and rule saves lock in that order.
+	RecordUserTimezone(ctx context.Context, arg RecordUserTimezoneParams) (bool, error)
 	RemoveTagFromExpense(ctx context.Context, arg RemoveTagFromExpenseParams) error
 	RemoveTagFromIncome(ctx context.Context, arg RemoveTagFromIncomeParams) error
 	SearchExpenses(ctx context.Context, arg SearchExpensesParams) ([]SearchExpensesRow, error)
+	SetRuleNextDue(ctx context.Context, arg SetRuleNextDueParams) error
 	SkipExpense(ctx context.Context, arg SkipExpenseParams) error
-	SkipExpenseRuleEntriesAfterEnd(ctx context.Context, arg SkipExpenseRuleEntriesAfterEndParams) ([]SkipExpenseRuleEntriesAfterEndRow, error)
+	// A rule's ids live in one of the two tables; each statement touches only
+	// its own. Skipping keeps user_edited_at: the rule skipped it, not the user.
+	SkipExpenseEntries(ctx context.Context, arg SkipExpenseEntriesParams) error
 	SkipIncome(ctx context.Context, arg SkipIncomeParams) error
-	SkipIncomeRuleEntriesAfterEnd(ctx context.Context, arg SkipIncomeRuleEntriesAfterEndParams) ([]SkipIncomeRuleEntriesAfterEndRow, error)
+	SkipIncomeEntries(ctx context.Context, arg SkipIncomeEntriesParams) error
 	UpdateExpense(ctx context.Context, arg UpdateExpenseParams) (Expense, error)
 	UpdateExpenseCategory(ctx context.Context, arg UpdateExpenseCategoryParams) (ExpenseCategory, error)
 	UpdateIncome(ctx context.Context, arg UpdateIncomeParams) (Income, error)

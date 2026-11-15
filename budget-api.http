@@ -453,26 +453,18 @@ GET {{baseUrl}}/api/budget/rule-entries?created_since=2026-11-01T00:00:00Z&page_
 Authorization: Bearer {{jwt}}
 
 
-### ============================================
-### Settings
-### ============================================
+### "What's new" feed of rule entries
+# Returns {entries, next}. Pass next back as after; the first call omits it.
+# Unlike created_since, it never skips an entry from a pass that commits late.
 
-
-### Get Settings (saved=false means the UTC default)
-
-GET {{baseUrl}}/api/budget/settings HTTP/1.1
+GET {{baseUrl}}/api/budget/rule-entries/feed?after=&page_size=50 HTTP/1.1
 Authorization: Bearer {{jwt}}
 
 
-### Save Timezone (rule entries are dated in it)
-
-PUT {{baseUrl}}/api/budget/settings HTTP/1.1
-Authorization: Bearer {{jwt}}
-Content-Type: application/json
-
-{
-  "timezone": "Asia/Manila"
-}
+### Timezone
+# Rule entries are dated in the user's timezone, which the gateway owns
+# (coregateway ADR-0005): set it with PUT /api/users/{id}/timezone at the
+# gateway. corefinance reads it from the internal token's tz claim.
 
 
 ### ============================================
@@ -662,10 +654,13 @@ Authorization: Bearer {{jwt}}
 }
 
 
-### End a Recurring Expense Rule in the Past
-# Entries the rule created after the new end date come back in
-# entries_after_end. "skip" (the default) skips them; "keep" leaves them.
-# Nothing is deleted.
+### Change a Recurring Expense Rule's Schedule (here: end it in the past)
+# Changing start_date, recurring_type or end_date reconciles the entries the
+# rule already created: the ones the new schedule no longer produces come back
+# in stale_entries. Untouched ones are skipped ("skip", the default) or kept
+# ("keep"); ones the user edited are kept with needs_review: true. Nothing is
+# deleted, and no entries are added before today. entries_after_end is the
+# older name for stale_entries and is still accepted.
 
 PUT {{baseUrl}}/api/budget/recurring-expenses/{expense_rule_id} HTTP/1.1
 Content-Type: application/json
@@ -679,7 +674,7 @@ Authorization: Bearer {{jwt}}
   "start_date": "2026-01-01",
   "end_date": "2026-03-15",
   "priority": "need",
-  "entries_after_end": "skip"
+  "stale_entries": "skip"
 }
 
 

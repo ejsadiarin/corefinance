@@ -61,11 +61,21 @@ All routes are prefixed with `/budget`.
 | | `/trends/month-over-month` | Month-over-month comparison |
 | | `/priority-groups` | Reference data (need/want/savings) |
 | | `/rule-entries` | Entries recurring rules created (expenses and incomes), newest-inserted first; filters `rule_id`, `start_date`/`end_date`, `created_since` (RFC 3339), paged with `page`/`page_size` |
-| | `/settings` | `GET`/`PUT` the user's timezone (IANA, e.g. `Asia/Manila`); rule entries are dated in it, unset keeps UTC |
+| | `/rule-entries/feed` | "What's new" feed of rule entries: `{entries, next}`; pass `next` back as `after`, with the same filters (`rule_id`, `start_date`/`end_date`): a cursor is only valid with the filters that produced it. Never skips an entry from a pass that commits late (prefer it over `created_since`) |
 | | `/remaining` | Current month budget remaining |
 | | `/export` | Export all budget data as JSON |
 | | `/import` | Import budget data (with ID remapping) |
 | `/` | `/health` | Health check (pgxpool ping + stats) |
+
+## Timezone
+
+Rule entries are dated in the user's timezone, which the gateway owns
+(coregateway ADR-0005) and sends in the internal token's `tz` claim. Each
+request records the zone its token carries as the user's last-seen zone
+(`user_timezones`); a change recomputes the user's rule schedule. A token
+without `tz` records nothing and uses the last-seen zone. The worker has no
+token: it uses the last-seen zone too. A user no token has carried a zone for
+is on UTC. corefinance never calls the gateway.
 
 ## Auth
 

@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 
+	"github.com/ejsadiarin/corefinance/internal/auth"
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/helper"
 	"github.com/ejsadiarin/corefinance/internal/materialize"
@@ -49,52 +50,82 @@ func (s *Service) inTx(ctx context.Context, fn func(q db.Querier) error) error {
 	return tx.Commit(ctx)
 }
 
-// syncExpenseInstance materializes today's instance for a single expense rule
-// right after a rule write. Fail-open by design: errors are logged and the
-// rule write stays authoritative — the next worker pass converges.
-func (s *Service) syncExpenseInstance(ctx context.Context, rule db.RecurringExpenseRule) {
-	n, err := materialize.MaterializeExpenseRuleToday(ctx, s.queries, rule, time.Now())
+// fill runs the owner's materialize pass in q's transaction (#14, ADR-0001):
+// the one writer of rule entries, the same code the worker runs. Rule saves
+// call lockOwner first, so they take the owner's lock before any rule row,
+// in the same order the worker does.
+func fill(ctx context.Context, q db.Querier, userID uuid.UUID, loc *time.Location) error {
+	n, err := materialize.MaterializeUser(ctx, q, userID, loc, time.Now())
 	if err != nil {
-		slog.Error("recurring.Service sync expense instance failed", "rule_id", rule.ID, "error", err)
-		return
+		return fmt.Errorf("fill rule entries: %w", err)
 	}
 	if n > 0 {
-		slog.Info("recurring.Service synced today's expense instance", "rule_id", rule.ID)
+		slog.Info("recurring.fill: filled rule entries", "user_id", userID, "inserted", n)
 	}
+	return nil
 }
 
-// syncIncomeInstance is the income-rule counterpart of syncExpenseInstance.
-func (s *Service) syncIncomeInstance(ctx context.Context, rule db.RecurringIncomeRule) {
-	n, err := materialize.MaterializeIncomeRuleToday(ctx, s.queries, rule, time.Now())
+// ownerZone is the rule owner's timezone (coregateway ADR-0005): the zone in
+// the request's internal token (rule writes are always the caller's own), or,
+// for a token without one, the zone last seen for the owner (UTC if none).
+func ownerZone(ctx context.Context, q db.Querier, userID uuid.UUID) (*time.Location, error) {
+	if tz := auth.TimezoneFromContext(ctx); tz != "" {
+		return materialize.LoadZone(tz), nil
+	}
+	loc, err := materialize.SeenZones{Queries: q}.Zone(ctx, userID)
 	if err != nil {
-		slog.Error("recurring.Service sync income instance failed", "rule_id", rule.ID, "error", err)
-		return
+		return nil, fmt.Errorf("owner timezone: %w", err)
 	}
-	if n > 0 {
-		slog.Info("recurring.Service synced today's income instance", "rule_id", rule.ID)
+	return loc, nil
+}
+
+// lockOwnerInZone takes the owner's lock and then reads their zone, so a zone
+// recorded concurrently is either already committed or waits for this save.
+func lockOwnerInZone(ctx context.Context, q db.Querier, userID uuid.UUID) (*time.Location, error) {
+	if err := lockOwner(ctx, q, userID); err != nil {
+		return nil, err
 	}
+	return ownerZone(ctx, q, userID)
+}
+
+func lockOwner(ctx context.Context, q db.Querier, userID uuid.UUID) error {
+	if err := q.LockUserMaterialize(ctx, userID); err != nil {
+		return fmt.Errorf("lock rule owner: %w", err)
+	}
+	return nil
 }
 
 // --- Income Rules ---
 
 func (s *Service) CreateIncomeRule(ctx context.Context, userID uuid.UUID, req CreateIncomeRuleRequest) (db.RecurringIncomeRule, error) {
 	slog.Debug("recurring.Service.CreateIncomeRule", "user_id", userID)
-	rule, err := s.queries.CreateRecurringIncomeRule(ctx, db.CreateRecurringIncomeRuleParams{
-		UserID:        userID,
-		Amount:        decimal.NewFromFloat(req.Amount),
-		Currency:      req.Currency,
-		Description:   req.Description,
-		RecurringType: req.RecurringType,
-		StartDate:     helper.ToPgDate(req.StartDate),
-		EndDate:       helper.ToPgDatePtr(req.EndDate),
-		CategoryID:    helper.ToPgUUID(req.CategoryID),
-		Notes:         helper.ToPgText(req.Notes),
-		Priority:      optionalPriority(req.Priority),
+	var rule db.RecurringIncomeRule
+	err := s.inTx(ctx, func(q db.Querier) error {
+		loc, err := lockOwnerInZone(ctx, q, userID)
+		if err != nil {
+			return err
+		}
+		r, err := q.CreateRecurringIncomeRule(ctx, db.CreateRecurringIncomeRuleParams{
+			UserID:        userID,
+			Amount:        decimal.NewFromFloat(req.Amount),
+			Currency:      req.Currency,
+			Description:   req.Description,
+			RecurringType: req.RecurringType,
+			StartDate:     helper.ToPgDate(req.StartDate),
+			EndDate:       helper.ToPgDatePtr(req.EndDate),
+			CategoryID:    helper.ToPgUUID(req.CategoryID),
+			Notes:         helper.ToPgText(req.Notes),
+			Priority:      optionalPriority(req.Priority),
+		})
+		if err != nil {
+			return err
+		}
+		rule = r
+		return fill(ctx, q, userID, loc)
 	})
 	if err != nil {
 		return db.RecurringIncomeRule{}, err
 	}
-	s.syncIncomeInstance(ctx, rule)
 	return rule, nil
 }
 
@@ -116,26 +147,31 @@ func (s *Service) GetIncomeRule(ctx context.Context, id uuid.UUID, userID uuid.U
 	})
 }
 
-// UpdateIncomeRule updates the rule and, when its end date moves earlier,
-// reports the entries it created after the new end date and skips them unless
-// req.EntriesAfterEnd is "keep" (#5).
+// UpdateIncomeRule updates the rule and, when its schedule changes,
+// reconciles the entries it created against the new schedule (#15): stale
+// untouched entries are skipped unless req says "keep", edited ones are
+// reported for review.
 func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateIncomeRuleRequest) (IncomeRuleUpdate, error) {
 	slog.Debug("recurring.Service.UpdateIncomeRule", "id", id, "user_id", userID)
-	if err := validEntriesAfterEnd(req.EntriesAfterEnd); err != nil {
+	choice := staleChoice(req.StaleEntries, req.EntriesAfterEnd)
+	if err := validStaleChoice(choice); err != nil {
 		return IncomeRuleUpdate{}, err
 	}
 	var out IncomeRuleUpdate
-	// The rule and its entries change together: if skipping fails, the end
-	// date isn't saved either, so a retry still sees it move (#5).
+	// The rule and its entries change together: if reconciling fails, the
+	// schedule change isn't saved either, so a retry still sees it (#15).
 	err := s.inTx(ctx, func(q db.Querier) error {
+		loc, err := lockOwnerInZone(ctx, q, userID)
+		if err != nil {
+			return err
+		}
 		old, err := q.GetRecurringIncomeRule(ctx, db.GetRecurringIncomeRuleParams{ID: id, UserID: userID})
 		if err != nil {
 			return err
 		}
-		resumeThrough, err := materialize.ResumeThrough(ctx, q, userID, time.Now())
-		if err != nil {
-			return err
-		}
+		// The day before the owner's today: where a resumed rule, or one
+		// whose schedule changed, carries on from.
+		yesterday := materialize.ResumeThrough(loc, time.Now())
 		rule, err := q.UpdateRecurringIncomeRule(ctx, db.UpdateRecurringIncomeRuleParams{
 			ID:            id,
 			UserID:        userID,
@@ -149,22 +185,26 @@ func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 			Notes:         helper.ToPgText(req.Notes),
 			Priority:      optionalPriority(req.Priority),
 			IsActive:      helper.ToPgBool(req.IsActive),
-			ResumeThrough: resumeThrough,
+			ResumeThrough: yesterday,
 		})
 		if err != nil {
 			return err
 		}
-		entries, err := incomeEntriesAfterEnd(ctx, q, rule, old.EndDate, req.EntriesAfterEnd)
+		was := schedule{start: old.StartDate, cadence: old.RecurringType, end: old.EndDate}
+		now := schedule{start: rule.StartDate, cadence: rule.RecurringType, end: rule.EndDate}
+		stale, err := reconcile(ctx, q, userID, rule.ID, was, now, choice)
 		if err != nil {
 			return err
 		}
-		out = IncomeRuleUpdate{RecurringIncomeRule: rule, EntriesAfterEnd: entries}
-		return nil
+		if err := noBackfill(ctx, q, rule.ID, was, now, yesterday); err != nil {
+			return err
+		}
+		out = IncomeRuleUpdate{RecurringIncomeRule: rule, StaleEntries: stale}
+		return fill(ctx, q, userID, loc)
 	})
 	if err != nil {
 		return IncomeRuleUpdate{}, err
 	}
-	s.syncIncomeInstance(ctx, out.RecurringIncomeRule)
 	return out, nil
 }
 
@@ -180,22 +220,33 @@ func (s *Service) DeleteIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 
 func (s *Service) CreateExpenseRule(ctx context.Context, userID uuid.UUID, req CreateExpenseRuleRequest) (db.RecurringExpenseRule, error) {
 	slog.Debug("recurring.Service.CreateExpenseRule", "user_id", userID)
-	rule, err := s.queries.CreateRecurringExpenseRule(ctx, db.CreateRecurringExpenseRuleParams{
-		UserID:        userID,
-		Description:   req.Description,
-		Amount:        decimal.NewFromFloat(req.Amount),
-		Currency:      req.Currency,
-		CategoryID:    helper.ToPgUUID(req.CategoryID),
-		Notes:         helper.ToPgText(req.Notes),
-		RecurringType: req.RecurringType,
-		StartDate:     helper.ToPgDate(req.StartDate),
-		EndDate:       helper.ToPgDatePtr(req.EndDate),
-		Priority:      req.Priority,
+	var rule db.RecurringExpenseRule
+	err := s.inTx(ctx, func(q db.Querier) error {
+		loc, err := lockOwnerInZone(ctx, q, userID)
+		if err != nil {
+			return err
+		}
+		r, err := q.CreateRecurringExpenseRule(ctx, db.CreateRecurringExpenseRuleParams{
+			UserID:        userID,
+			Description:   req.Description,
+			Amount:        decimal.NewFromFloat(req.Amount),
+			Currency:      req.Currency,
+			CategoryID:    helper.ToPgUUID(req.CategoryID),
+			Notes:         helper.ToPgText(req.Notes),
+			RecurringType: req.RecurringType,
+			StartDate:     helper.ToPgDate(req.StartDate),
+			EndDate:       helper.ToPgDatePtr(req.EndDate),
+			Priority:      req.Priority,
+		})
+		if err != nil {
+			return err
+		}
+		rule = r
+		return fill(ctx, q, userID, loc)
 	})
 	if err != nil {
 		return db.RecurringExpenseRule{}, err
 	}
-	s.syncExpenseInstance(ctx, rule)
 	return rule, nil
 }
 
@@ -207,26 +258,31 @@ func (s *Service) GetExpenseRule(ctx context.Context, id uuid.UUID, userID uuid.
 	})
 }
 
-// UpdateExpenseRule updates the rule and, when its end date moves earlier,
-// reports the entries it created after the new end date and skips them unless
-// req.EntriesAfterEnd is "keep" (#5).
+// UpdateExpenseRule updates the rule and, when its schedule changes,
+// reconciles the entries it created against the new schedule (#15): stale
+// untouched entries are skipped unless req says "keep", edited ones are
+// reported for review.
 func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateExpenseRuleRequest) (ExpenseRuleUpdate, error) {
 	slog.Debug("recurring.Service.UpdateExpenseRule", "id", id, "user_id", userID)
-	if err := validEntriesAfterEnd(req.EntriesAfterEnd); err != nil {
+	choice := staleChoice(req.StaleEntries, req.EntriesAfterEnd)
+	if err := validStaleChoice(choice); err != nil {
 		return ExpenseRuleUpdate{}, err
 	}
 	var out ExpenseRuleUpdate
-	// The rule and its entries change together: if skipping fails, the end
-	// date isn't saved either, so a retry still sees it move (#5).
+	// The rule and its entries change together: if reconciling fails, the
+	// schedule change isn't saved either, so a retry still sees it (#15).
 	err := s.inTx(ctx, func(q db.Querier) error {
+		loc, err := lockOwnerInZone(ctx, q, userID)
+		if err != nil {
+			return err
+		}
 		old, err := q.GetRecurringExpenseRule(ctx, db.GetRecurringExpenseRuleParams{ID: id, UserID: userID})
 		if err != nil {
 			return err
 		}
-		resumeThrough, err := materialize.ResumeThrough(ctx, q, userID, time.Now())
-		if err != nil {
-			return err
-		}
+		// The day before the owner's today: where a resumed rule, or one
+		// whose schedule changed, carries on from.
+		yesterday := materialize.ResumeThrough(loc, time.Now())
 		rule, err := q.UpdateRecurringExpenseRule(ctx, db.UpdateRecurringExpenseRuleParams{
 			ID:            id,
 			UserID:        userID,
@@ -240,22 +296,26 @@ func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uu
 			EndDate:       helper.ToPgDatePtr(req.EndDate),
 			Priority:      req.Priority,
 			IsActive:      helper.ToPgBool(req.IsActive),
-			ResumeThrough: resumeThrough,
+			ResumeThrough: yesterday,
 		})
 		if err != nil {
 			return err
 		}
-		entries, err := expenseEntriesAfterEnd(ctx, q, rule, old.EndDate, req.EntriesAfterEnd)
+		was := schedule{start: old.StartDate, cadence: old.RecurringType, end: old.EndDate}
+		now := schedule{start: rule.StartDate, cadence: rule.RecurringType, end: rule.EndDate}
+		stale, err := reconcile(ctx, q, userID, rule.ID, was, now, choice)
 		if err != nil {
 			return err
 		}
-		out = ExpenseRuleUpdate{RecurringExpenseRule: rule, EntriesAfterEnd: entries}
-		return nil
+		if err := noBackfill(ctx, q, rule.ID, was, now, yesterday); err != nil {
+			return err
+		}
+		out = ExpenseRuleUpdate{RecurringExpenseRule: rule, StaleEntries: stale}
+		return fill(ctx, q, userID, loc)
 	})
 	if err != nil {
 		return ExpenseRuleUpdate{}, err
 	}
-	s.syncExpenseInstance(ctx, out.RecurringExpenseRule)
 	return out, nil
 }
 

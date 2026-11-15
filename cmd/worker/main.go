@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -19,6 +20,10 @@ import (
 	_ "github.com/joho/godotenv/autoload"
 )
 
+// Env: DATABASE_URL (or DB_*). Entries are dated in each user's last-seen
+// timezone (the zone their last request's token carried; UTC if none), read
+// from corefinance's own database.
+//
 // Flags:
 //   --once      run one materialization pass and exit (one-shot jobs, tests)
 //   --backfill  run one pass of materialize + legacy inline-rule conversion
@@ -48,35 +53,35 @@ func dsn() string {
 func buildPool() *pgxpool.Pool {
 	config, err := pgxpool.ParseConfig(dsn())
 	if err != nil {
-		slog.Error("failed to parse pool config", "error", err)
+		slog.Error("main.buildPool: failed to parse pool config", "error", err)
 		panic(err)
 	}
 	pool, err := pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {
-		slog.Error("unable to create pgxpool", "error", err)
+		slog.Error("main.buildPool: unable to create pgxpool", "error", err)
 		panic(err)
 	}
 	if err := pool.Ping(context.Background()); err != nil {
-		slog.Error("unable to ping database", "error", err)
+		slog.Error("main.buildPool: unable to ping database", "error", err)
 		panic(err)
 	}
 	return pool
 }
 
-func runOnce(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, backfill bool) int {
+func runOnce(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones materialize.Zones, backfill bool) int {
 	today := time.Now()
 	if backfill {
 		res, err := materialize.BackfillLegacy(ctx, pool, queries, today)
 		if err != nil {
-			slog.Error("backfill failed", "error", err)
+			slog.Error("main.runOnce: backfill failed", "error", err)
 			return 1
 		}
 		legacy, err := materialize.CountLegacyRows(ctx, queries)
 		if err != nil {
-			slog.Error("legacy verification query failed", "error", err)
+			slog.Error("main.runOnce: legacy verification query failed", "error", err)
 			return 1
 		}
-		slog.Info("backfill complete",
+		slog.Info("main.runOnce: backfill complete",
 			"expense_rules", res.ExpenseRules,
 			"income_rules", res.IncomeRules,
 			"expense_instances", res.ExpenseInstances,
@@ -84,17 +89,24 @@ func runOnce(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, backf
 			"legacy_rows_remaining", legacy,
 		)
 		if legacy != 0 {
-			slog.Error("legacy rows remain after backfill", "count", legacy)
+			slog.Error("main.runOnce: legacy rows remain after backfill", "count", legacy)
 			return 1
 		}
 		return 0
 	}
-	n, err := materialize.MaterializeDue(ctx, pool, queries, today)
+	n, err := materialize.MaterializeDue(ctx, pool, queries, zones, today)
 	if err != nil {
-		slog.Error("materialize failed", "error", err)
+		// Some users were skipped (a failed zone read, a failed write); the
+		// rest were filled, and the skipped ones are retried next pass.
+		slog.Warn("main.runOnce: materialize pass skipped some users", "inserted", n, "error", err)
 		return 1
 	}
-	slog.Info("materialize pass complete", "inserted", n)
+	// Passes run at least once a minute; only ones that did something are news.
+	if n > 0 {
+		slog.Info("main.runOnce: materialize pass complete", "inserted", n)
+	} else {
+		slog.Debug("main.runOnce: materialize pass complete", "inserted", n)
+	}
 	return 0
 }
 
@@ -109,36 +121,48 @@ func main() {
 	defer pool.Close()
 	queries := db.New(pool)
 
+	zones := materialize.SeenZones{Queries: queries}
+
 	if *backfill {
-		os.Exit(runOnce(context.Background(), pool, queries, true))
+		os.Exit(runOnce(context.Background(), pool, queries, nil, true))
 	}
 	if *once {
-		os.Exit(runOnce(context.Background(), pool, queries, false))
+		os.Exit(runOnce(context.Background(), pool, queries, zones, false))
 	}
 
-	// Long-running mode: one pass at startup, then every hour on a stdlib ticker.
+	// Long-running mode (#16): a pass, then sleep until the earliest rule's
+	// next occurrence starts, checking at least once a minute so rules saved
+	// in the meantime (by the API, in another process) are never late by more.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if code := runOnce(ctx, pool, queries, false); code != 0 {
-		slog.Error("initial materialize pass failed, continuing with schedule")
-	}
-
-	ticker := time.NewTicker(time.Hour)
-	defer ticker.Stop()
-	slog.Info("worker started, hourly materialization scheduled")
+	slog.Info("main: worker started, filling rules as they fall due")
 	for {
+		if code := runOnce(ctx, pool, queries, zones, false); code != 0 {
+			slog.Info("main: retrying skipped users at the next wake")
+		}
+		wait := untilNextWake(ctx, queries, time.Now())
 		select {
 		case <-ctx.Done():
-			slog.Info("worker shutting down")
+			slog.Info("main: worker shutting down")
 			return
-		case t := <-ticker.C:
-			n, err := materialize.MaterializeDue(ctx, pool, queries, t)
-			if err != nil {
-				slog.Error("scheduled materialize failed", "error", err)
-				continue
-			}
-			slog.Info("scheduled materialize pass complete", "inserted", n)
+		case <-time.After(wait):
 		}
 	}
+}
+
+// maxSleep caps how long the worker sleeps between passes.
+const maxSleep = time.Minute
+
+// untilNextWake is how long to sleep before the next pass: until the earliest
+// next occurrence, at least a second and at most maxSleep.
+func untilNextWake(ctx context.Context, queries *db.Queries, now time.Time) time.Duration {
+	wake, err := materialize.NextWake(ctx, queries, now)
+	if err != nil {
+		if !errors.Is(err, materialize.ErrNothingDue) {
+			slog.Error("main.untilNextWake: next wake lookup failed", "error", err)
+		}
+		return maxSleep
+	}
+	return min(max(wake.Sub(now), time.Second), maxSleep)
 }

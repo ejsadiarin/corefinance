@@ -13,6 +13,9 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/coder/websocket"
+
+	"github.com/ejsadiarin/corefinance/internal/auth"
+	"github.com/ejsadiarin/corefinance/internal/materialize"
 )
 
 func (s *Server) RegisterRoutes() http.Handler {
@@ -34,15 +37,13 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// /priority-groups stays public (reference data, no user scope).
 	r.Route("/api/budget", func(r chi.Router) {
 		r.Use(s.Verifier.Middleware)
+		r.Use(s.observeTimezone)
 		// priority groups (reference data)
 		r.Get("/priority-groups", s.BudgetHandler.PriorityGroups)
 
-		// Per-user settings (#9): the timezone rule entries are dated in.
-		r.Get("/settings", s.SettingsHandler.Get)
-		r.Put("/settings", s.SettingsHandler.Put)
-
 		// Rule-created entries for review (#8).
 		r.Get("/rule-entries", s.RuleEntryHandler.List)
+		r.Get("/rule-entries/feed", s.RuleEntryHandler.Feed)
 
 		// expense categories
 		r.Route("/expense-categories", func(r chi.Router) {
@@ -239,5 +240,29 @@ func slogMiddleware(next http.Handler) http.Handler {
 			"duration", time.Since(start).String(),
 			"request_id", middleware.GetReqID(r.Context()),
 		)
+	})
+}
+
+// observeTimezone records the zone in the request's token (coregateway
+// ADR-0005) for the user it is about: the target of a targeted read,
+// otherwise the caller. Background work dates that user's entries in it, and
+// a change recomputes their rules' next due times (#16, #18). Best effort: a
+// failure is logged and the request goes on; the next request records it.
+func (s *Server) observeTimezone(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		userID, ok := auth.UserIDFromContext(ctx)
+		if target, targeted := auth.ActAsFromContext(ctx); targeted {
+			userID, ok = target, true
+		}
+		// A token without tz (minted before the gateway sent it) says nothing
+		// about the user's zone: don't record it, or old and new tokens would
+		// flip the schedule back and forth. The last-seen zone stands.
+		if tz := auth.TimezoneFromContext(ctx); ok && tz != "" {
+			if err := materialize.ObserveTimezone(ctx, s.Pool, userID, materialize.LoadZone(tz), time.Now()); err != nil {
+				slog.Error("server.observeTimezone: failed", "error", err, "user_id", userID)
+			}
+		}
+		next.ServeHTTP(w, r)
 	})
 }

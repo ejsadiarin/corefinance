@@ -20,7 +20,7 @@ WHERE r.id = $1 AND r.user_id = $2;
 UPDATE recurring_expense_rules
 SET description = $3, amount = $4, currency = $5, category_id = $6, notes = $7,
     recurring_type = $8, start_date = $9, end_date = $10, priority = $11,
-    -- Resuming a paused rule (#7): skip the paused stretch so the catch-up
+    -- Resuming a paused rule (#7): skip the paused stretch so the materialize
     -- pass doesn't fill it. RHS columns are the pre-update values.
     materialized_through = CASE
         WHEN NOT is_active AND sqlc.narg(is_active)::bool

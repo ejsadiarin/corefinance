@@ -85,27 +85,41 @@ WHERE user_id = $1 AND recurring_type != 'one-time' AND source_rule_id IS NULL;
 SELECT COUNT(*)::bigint AS legacy_count FROM incomes
 WHERE user_id = $1 AND recurring_type != 'one-time' AND source_rule_id IS NULL;
 
--- Catch-up pass (#7): rules with due dates the worker hasn't filled yet.
--- A rule is behind when its watermark (materialized_through, or the day before
--- start_date when nothing has been filled) is earlier than min(end_date, today).
--- Rules that ended while the worker was down are still included. Paused rules
--- are not.
+-- The materialize pass runs one user at a time under a per-user lock (#14,
+-- ADR-0001). It fills each active rule's dates after its watermark
+-- (materialized_through) up to min(end_date, today), including rules that
+-- ended while the worker was down. Paused rules are not filled.
 
--- name: ListExpenseRulesBehind :many
-SELECT * FROM recurring_expense_rules
+-- Serializes every writer of one user's rule entries (the worker and rule
+-- saves) for the rest of the transaction. Take it before touching any rule
+-- row, so writers always lock in the same order.
+-- name: LockUserMaterialize :exec
+SELECT pg_advisory_xact_lock(hashtext('corefinance-materialize'), hashtext(sqlc.arg(user_id)::uuid::text));
+
+-- Next-due scheduling (#16): users with an active rule whose next occurrence
+-- has started, or whose next_due_at hasn't been computed yet.
+-- name: ListUsersDue :many
+SELECT DISTINCT user_id FROM rules
 WHERE is_active = true
-  AND start_date <= sqlc.arg(today)::date
-  AND COALESCE(materialized_through, start_date - 1)
-      < LEAST(COALESCE(end_date, sqlc.arg(today)::date), sqlc.arg(today)::date)
+  AND (next_due_at IS NULL OR next_due_at <= sqlc.arg(now)::timestamptz);
+
+-- name: ListUserActiveRules :many
+SELECT * FROM rules
+WHERE user_id = sqlc.arg(user_id) AND is_active = true
 ORDER BY start_date ASC, id ASC;
 
--- name: ListIncomeRulesBehind :many
-SELECT * FROM recurring_income_rules
-WHERE is_active = true
-  AND start_date <= sqlc.arg(today)::date
-  AND COALESCE(materialized_through, start_date - 1)
-      < LEAST(COALESCE(end_date, sqlc.arg(today)::date), sqlc.arg(today)::date)
-ORDER BY start_date ASC, id ASC;
+-- name: SetRuleNextDue :exec
+UPDATE rules SET next_due_at = sqlc.arg(next_due_at)::timestamptz WHERE id = sqlc.arg(id);
+
+-- The earliest next occurrence still to come, if any (NULL when none).
+-- name: GetNextWake :one
+SELECT min(next_due_at)::timestamptz AS next_wake FROM rules
+WHERE is_active = true AND next_due_at > sqlc.arg(now)::timestamptz AND next_due_at < 'infinity';
+
+-- name: AdvanceRuleWatermark :exec
+UPDATE rules
+SET materialized_through = GREATEST(materialized_through, sqlc.arg(through)::date)
+WHERE id = sqlc.arg(id);
 
 -- The watermark only moves forward: GREATEST ignores a NULL current value.
 -- name: AdvanceExpenseRuleWatermark :exec
@@ -118,37 +132,34 @@ UPDATE recurring_income_rules
 SET materialized_through = GREATEST(materialized_through, sqlc.arg(through)::date)
 WHERE id = sqlc.arg(id);
 
--- Ending a rule in the past (#5): the rule's entries dated after the new end
--- date and up to the old one (NULL: no old end), not already skipped.
-
--- name: ListExpenseRuleEntriesAfterEnd :many
-SELECT id, expense_date AS date, status FROM expenses
-WHERE user_id = sqlc.arg(user_id) AND source_rule_id = sqlc.arg(rule_id)
-  AND expense_date > sqlc.arg(after_end)::date
-  AND (sqlc.narg(old_end)::date IS NULL OR expense_date <= sqlc.narg(old_end)::date)
-  AND status != 'skipped'
-ORDER BY expense_date;
-
--- name: SkipExpenseRuleEntriesAfterEnd :many
-UPDATE expenses SET status = 'skipped', updated_at = now()
-WHERE user_id = sqlc.arg(user_id) AND source_rule_id = sqlc.arg(rule_id)
-  AND expense_date > sqlc.arg(after_end)::date
-  AND (sqlc.narg(old_end)::date IS NULL OR expense_date <= sqlc.narg(old_end)::date)
-  AND status != 'skipped'
-RETURNING id, expense_date AS date, status;
-
--- name: ListIncomeRuleEntriesAfterEnd :many
-SELECT id, date, status FROM incomes
-WHERE user_id = sqlc.arg(user_id) AND source_rule_id = sqlc.arg(rule_id)
-  AND date > sqlc.arg(after_end)::date
-  AND (sqlc.narg(old_end)::date IS NULL OR date <= sqlc.narg(old_end)::date)
-  AND status != 'skipped'
+-- Reconciling a rule's entries after a schedule change (#15, ADR-0001): the
+-- rule's entries that aren't skipped, with whether the user edited them.
+-- name: ListRuleEntriesToReconcile :many
+SELECT id, date, status, user_edited_at FROM (
+    SELECT id, expense_date AS date, status, user_edited_at FROM expenses
+    WHERE user_id = sqlc.arg(owner)::uuid AND source_rule_id = sqlc.arg(rule_id)::uuid AND status != 'skipped'
+    UNION ALL
+    SELECT id, date, status, user_edited_at FROM incomes
+    WHERE user_id = sqlc.arg(owner)::uuid AND source_rule_id = sqlc.arg(rule_id)::uuid AND status != 'skipped'
+) entries
 ORDER BY date;
 
--- name: SkipIncomeRuleEntriesAfterEnd :many
+-- A rule's ids live in one of the two tables; each statement touches only
+-- its own. Skipping keeps user_edited_at: the rule skipped it, not the user.
+-- name: SkipExpenseEntries :exec
+UPDATE expenses SET status = 'skipped', updated_at = now()
+WHERE user_id = sqlc.arg(user_id) AND id = ANY(sqlc.arg(ids)::uuid[]);
+
+-- name: SkipIncomeEntries :exec
 UPDATE incomes SET status = 'skipped', updated_at = now()
-WHERE user_id = sqlc.arg(user_id) AND source_rule_id = sqlc.arg(rule_id)
-  AND date > sqlc.arg(after_end)::date
-  AND (sqlc.narg(old_end)::date IS NULL OR date <= sqlc.narg(old_end)::date)
-  AND status != 'skipped'
-RETURNING id, date, status;
+WHERE user_id = sqlc.arg(user_id) AND id = ANY(sqlc.arg(ids)::uuid[]);
+
+-- Keeping a stale entry is the user's decision, so it counts as an edit:
+-- a later schedule change reports it for review instead of skipping it.
+-- name: MarkExpenseEntriesKept :exec
+UPDATE expenses SET user_edited_at = now(), updated_at = now()
+WHERE user_id = sqlc.arg(user_id) AND id = ANY(sqlc.arg(ids)::uuid[]);
+
+-- name: MarkIncomeEntriesKept :exec
+UPDATE incomes SET user_edited_at = now(), updated_at = now()
+WHERE user_id = sqlc.arg(user_id) AND id = ANY(sqlc.arg(ids)::uuid[]);

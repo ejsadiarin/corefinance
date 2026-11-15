@@ -47,6 +47,9 @@ type Entry struct {
 	Status       string          `json:"status"`
 	CreatedAt    time.Time       `json:"created_at"`
 	UpdatedAt    time.Time       `json:"updated_at"`
+	// UserEditedAt is when the user last edited or skipped the entry; null
+	// while it is as the rule created it (#12).
+	UserEditedAt *time.Time `json:"user_edited_at"`
 }
 
 type Handler struct {
@@ -88,7 +91,15 @@ func toEntry(r db.ListRuleEntriesRow) Entry {
 		Status:       r.Status,
 		CreatedAt:    r.CreatedAt.Time,
 		UpdatedAt:    r.UpdatedAt.Time,
+		UserEditedAt: nullableTime(r.UserEditedAt),
 	}
+}
+
+func nullableTime(t pgtype.Timestamptz) *time.Time {
+	if !t.Valid {
+		return nil
+	}
+	return &t.Time
 }
 
 // parseDate reads an optional YYYY-MM-DD query parameter.

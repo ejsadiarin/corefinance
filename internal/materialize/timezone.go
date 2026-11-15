@@ -8,50 +8,99 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 )
 
-// latestZone is the furthest-ahead UTC offset in use (Pacific/Kiritimati):
-// no user's date is later than now's date here, so it bounds which rules a
-// pass needs to look at before each user's own date is known.
-var latestZone = time.FixedZone("UTC+14", 14*60*60)
+// The user's timezone decides which date "today" is for their rules (#9).
+// The gateway owns it (coregateway ADR-0005) and sends it in the internal
+// token's tz claim. corefinance records the last zone a token carried per
+// user (user_timezones); background work, which has no token, uses that
+// last-seen zone, and UTC for a user no token has carried one for yet.
 
-// userDate is the calendar date at now in the IANA zone tz, as UTC midnight
-// (the form rule dates come back from Postgres in). An empty or unknown zone
-// keeps the server clock's date.
-func userDate(now time.Time, tz string) time.Time {
-	if tz != "" {
-		if loc, err := time.LoadLocation(tz); err == nil {
-			now = now.In(loc)
-		}
+// Zones gives a user's timezone. An error means it can't be read right now:
+// the caller skips that user rather than guess.
+type Zones interface {
+	Zone(ctx context.Context, userID uuid.UUID) (*time.Location, error)
+}
+
+// LoadZone is the IANA zone tz, or UTC when tz is empty or unknown (a zone
+// this build's tzdata lacks).
+func LoadZone(tz string) *time.Location {
+	if tz == "" {
+		return time.UTC
 	}
-	y, m, d := now.Date()
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		return time.UTC
+	}
+	return loc
+}
+
+// SeenZones is the Zones the worker uses: each user's last-seen zone, UTC
+// when none has been seen.
+type SeenZones struct {
+	Queries db.Querier
+}
+
+func (z SeenZones) Zone(ctx context.Context, userID uuid.UUID) (*time.Location, error) {
+	tz, err := z.Queries.GetSeenTimezone(ctx, userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return time.UTC, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get seen timezone: %w", err)
+	}
+	return LoadZone(tz), nil
+}
+
+// FixedZones is a Zones from a map of user to IANA zone; users not in it are
+// on UTC. For tests.
+type FixedZones map[uuid.UUID]string
+
+func (z FixedZones) Zone(_ context.Context, userID uuid.UUID) (*time.Location, error) {
+	return LoadZone(z[userID]), nil
+}
+
+// dateIn is the calendar date at now in loc, as UTC midnight (the form rule
+// dates come back from Postgres in).
+func dateIn(now time.Time, loc *time.Location) time.Time {
+	y, m, d := now.In(loc).Date()
 	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 }
 
-// UserToday is the user's date at now: in their saved timezone, or the
-// server clock's date when they haven't saved one.
-func UserToday(ctx context.Context, q db.Querier, userID uuid.UUID, now time.Time) (time.Time, error) {
-	s, err := q.GetUserSettings(ctx, userID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return userDate(now, ""), nil
+// ObserveTimezone records the zone a request's token carried for the user,
+// seen at now. The common case, an unchanged zone, is one read outside any
+// transaction. A new zone is recorded in a short transaction that takes the
+// user's materialize lock first, since recording it resets the user's next
+// due times (#16): a writer that touches the user's rules always takes that
+// lock before any rule row, so this can't deadlock with a rule save.
+func ObserveTimezone(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, loc *time.Location, now time.Time) error {
+	seen, err := db.New(pool).GetSeenTimezone(ctx, userID)
+	if err == nil && seen == loc.String() {
+		return nil
 	}
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("get seen timezone: %w", err)
+	}
+	tx, err := pool.Begin(ctx)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("get user settings: %w", err)
+		return fmt.Errorf("begin record timezone: %w", err)
 	}
-	return userDate(now, s.Timezone), nil
-}
-
-// userTimezones maps every user who saved a timezone to it.
-func userTimezones(ctx context.Context, q db.Querier) (map[uuid.UUID]string, error) {
-	rows, err := q.ListUserTimezones(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("list user timezones: %w", err)
+	defer tx.Rollback(ctx)
+	q := db.New(tx)
+	if err := q.LockUserMaterialize(ctx, userID); err != nil {
+		return fmt.Errorf("lock user materialize: %w", err)
 	}
-	out := make(map[uuid.UUID]string, len(rows))
-	for _, r := range rows {
-		out[r.UserID] = r.Timezone
+	if _, err := q.RecordUserTimezone(ctx, db.RecordUserTimezoneParams{
+		Owner: userID, Timezone: loc.String(), SeenAt: pgtype.Timestamptz{Time: now, Valid: true},
+	}); err != nil {
+		return fmt.Errorf("record user timezone: %w", err)
 	}
-	return out, nil
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit record timezone: %w", err)
+	}
+	return nil
 }

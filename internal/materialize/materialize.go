@@ -5,6 +5,7 @@ package materialize
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -80,45 +81,10 @@ func daysBetween(a, b time.Time) int {
 	return int(b.Sub(a).Hours() / 24)
 }
 
-// IsDue reports whether today is an occurrence of a rule starting at start
-// with the given cadence (daily/weekly/monthly/yearly stepping from start).
-// Monthly uses same day-of-month clamped to month end (Jan 31 -> Feb 28);
-// yearly clamps Feb 29 to Feb 28 in non-leap years. Unknown cadences are
-// never due.
-func IsDue(start time.Time, cadence string, today time.Time) bool {
-	start, today = truncateDate(start), truncateDate(today)
-	if today.Before(start) {
-		return false
-	}
-	switch cadence {
-	case "daily":
-		return true
-	case "weekly":
-		return daysBetween(start, today)%7 == 0
-	case "monthly":
-		y, m, _ := today.Date()
-		day := start.Day()
-		if last := daysIn(y, m); day > last {
-			day = last
-		}
-		return today.Day() == day
-	case "yearly":
-		if today.Month() != start.Month() {
-			return false
-		}
-		day := start.Day()
-		if last := daysIn(today.Year(), start.Month()); day > last {
-			day = last
-		}
-		return today.Day() == day
-	}
-	return false
-}
-
 // DueDates returns every occurrence date of a rule with the given start,
 // cadence (daily/weekly/monthly/yearly), optional end, bounded above by
-// today: start..min(end, today). Used for history backfill; the daily pass
-// uses IsDue instead. Unknown cadences yield no dates.
+// today: start..min(end, today). The materialize pass, reconcile and the
+// legacy backfill all build on it. Unknown cadences yield no dates.
 func DueDates(start time.Time, cadence string, end *time.Time, today time.Time) []time.Time {
 	start = truncateDate(start)
 	bound := truncateDate(today)
@@ -160,6 +126,39 @@ func DueDates(start time.Time, cadence string, end *time.Time, today time.Time) 
 	return out
 }
 
+// NextDueDate is the rule's first occurrence after `after`, if it has one
+// before its end. It steps straight to the right occurrence instead of
+// listing every date since the start, since it runs for every rule a pass
+// touches.
+func NextDueDate(start time.Time, cadence string, end *time.Time, after time.Time) (time.Time, bool) {
+	start, after = truncateDate(start), truncateDate(after)
+	var d time.Time
+	switch {
+	case after.Before(start):
+		d = start
+	case cadence == "daily":
+		d = after.AddDate(0, 0, 1)
+	case cadence == "weekly":
+		d = start.AddDate(0, 0, (daysBetween(start, after)/7+1)*7)
+	case cadence == "monthly":
+		i := (after.Year()-start.Year())*12 + int(after.Month()-start.Month())
+		for d = addMonthsClamped(start, i); !d.After(after); d = addMonthsClamped(start, i) {
+			i++
+		}
+	case cadence == "yearly":
+		i := after.Year() - start.Year()
+		for d = addYearsClamped(start, i); !d.After(after); d = addYearsClamped(start, i) {
+			i++
+		}
+	default:
+		return time.Time{}, false
+	}
+	if end != nil && d.After(truncateDate(*end)) {
+		return time.Time{}, false
+	}
+	return d, true
+}
+
 // MaxDatesPerRulePass bounds how many dates one pass fills for a single rule.
 // A long outage (or a daily rule with a years-old start and no watermark)
 // fills in over several passes instead of one huge transaction; the
@@ -195,87 +194,115 @@ func PendingDates(start time.Time, cadence string, watermark, end pgtype.Date, t
 	return dates, bound
 }
 
-// catchUp fills every active rule from its watermark (materialized_through)
-// to min(end_date, today) and moves the watermark forward. Missed days while
-// the worker was down are filled on the next pass; rules that ended in the
-// meantime still get their last entries. The watermark never moves backward,
-// so an entry the user deleted is not recreated, and inserts are
-// ON CONFLICT DO NOTHING, so entries the user edited or skipped are untouched.
+// MaterializeUser fills one user's rules (#14, ADR-0001): every active rule
+// gets its due dates after its watermark (materialized_through) up to
+// min(end_date, today), where today is the date at now in the user's zone
+// loc, and the watermark moves forward. Missed days while the worker was
+// down are filled on the next pass; rules that ended in the meantime still
+// get their last entries. The watermark never moves backward, so an entry the user deleted
+// is not recreated, and inserts are ON CONFLICT DO NOTHING, so entries the
+// user edited or skipped are untouched.
 //
-// "today" is each rule owner's date at now (#9): their saved timezone, or the
-// server clock's date when they haven't saved one. Rules are listed up to the
-// latest date anywhere and each is then bounded by its owner's date.
-func catchUp(ctx context.Context, q *db.Queries, now time.Time) (expenseN, incomeN int, err error) {
-	zones, err := userTimezones(ctx, q)
-	if err != nil {
-		return 0, 0, err
+// It is the only writer of rule entries: the worker runs it per user, and a
+// rule save runs it for the rule's owner. q must be inside a transaction; it
+// takes the user's lock for the rest of it. Returns the rows inserted.
+func MaterializeUser(ctx context.Context, q db.Querier, userID uuid.UUID, loc *time.Location, now time.Time) (int, error) {
+	if err := q.LockUserMaterialize(ctx, userID); err != nil {
+		return 0, fmt.Errorf("lock user materialize: %w", err)
 	}
-	horizon := pgDate(userDate(now.In(latestZone), ""))
-
-	expenseRules, err := q.ListExpenseRulesBehind(ctx, horizon)
+	today := dateIn(now, loc)
+	rules, err := q.ListUserActiveRules(ctx, userID)
 	if err != nil {
-		return 0, 0, fmt.Errorf("list expense rules behind: %w", err)
+		return 0, fmt.Errorf("list active rules: %w", err)
 	}
-	for _, r := range expenseRules {
-		today := userDate(now, zones[r.UserID])
+	inserted := 0
+	for _, r := range rules {
 		dates, through := PendingDates(r.StartDate.Time, r.RecurringType, r.MaterializedThrough, r.EndDate, today, MaxDatesPerRulePass)
 		for _, d := range dates {
-			n, err := q.CreateExpenseInstance(ctx, db.CreateExpenseInstanceParams{
-				UserID:       r.UserID,
-				CategoryID:   r.CategoryID,
-				Amount:       r.Amount,
-				Currency:     r.Currency,
-				Description:  r.Description,
-				Notes:        r.Notes,
-				ExpenseDate:  pgDate(d),
-				Priority:     r.Priority,
-				IsDebt:       false,
-				SourceRuleID: pgtype.UUID{Bytes: r.ID, Valid: true},
-			})
+			n, err := insertRuleEntry(ctx, q, r, d)
 			if err != nil {
-				return expenseN, incomeN, fmt.Errorf("create expense instance: %w", err)
+				return inserted, err
 			}
-			expenseN += int(n)
+			inserted += int(n)
 		}
-		if err := q.AdvanceExpenseRuleWatermark(ctx, db.AdvanceExpenseRuleWatermarkParams{ID: r.ID, Through: pgDate(through)}); err != nil {
-			return expenseN, incomeN, fmt.Errorf("advance expense rule watermark: %w", err)
+		filled := r.MaterializedThrough
+		if !filled.Valid || through.After(truncateDate(filled.Time)) {
+			if err := q.AdvanceRuleWatermark(ctx, db.AdvanceRuleWatermarkParams{ID: r.ID, Through: pgDate(through)}); err != nil {
+				return inserted, fmt.Errorf("advance rule watermark: %w", err)
+			}
+			filled = pgDate(through)
+		}
+		if err := q.SetRuleNextDue(ctx, db.SetRuleNextDueParams{ID: r.ID, NextDueAt: nextDueAt(r, filled, loc)}); err != nil {
+			return inserted, fmt.Errorf("set rule next due: %w", err)
 		}
 	}
+	return inserted, nil
+}
 
-	incomeRules, err := q.ListIncomeRulesBehind(ctx, horizon)
+// nextDueAt is when the rule's next unfilled occurrence starts in loc, or
+// infinity once the rule has no more occurrences.
+func nextDueAt(r db.Rule, filled pgtype.Date, loc *time.Location) pgtype.Timestamptz {
+	after := truncateDate(r.StartDate.Time).AddDate(0, 0, -1)
+	if filled.Valid && truncateDate(filled.Time).After(after) {
+		after = truncateDate(filled.Time)
+	}
+	d, ok := NextDueDate(r.StartDate.Time, r.RecurringType, pgTimeOrNil(r.EndDate), after)
+	if !ok {
+		return pgtype.Timestamptz{InfinityModifier: pgtype.Infinity, Valid: true}
+	}
+	y, m, day := d.Date()
+	return pgtype.Timestamptz{Time: time.Date(y, m, day, 0, 0, 0, 0, loc), Valid: true}
+}
+
+// ErrNothingDue is NextWake's answer when no active rule has an occurrence
+// still to come.
+var ErrNothingDue = errors.New("no rule is due")
+
+// NextWake is when the earliest active rule's next occurrence starts, after
+// now: the worker sleeps until then (#16).
+func NextWake(ctx context.Context, q db.Querier, now time.Time) (time.Time, error) {
+	t, err := q.GetNextWake(ctx, pgtype.Timestamptz{Time: now, Valid: true})
 	if err != nil {
-		return expenseN, incomeN, fmt.Errorf("list income rules behind: %w", err)
+		return time.Time{}, fmt.Errorf("next wake: %w", err)
 	}
-	for _, r := range incomeRules {
-		today := userDate(now, zones[r.UserID])
-		dates, through := PendingDates(r.StartDate.Time, r.RecurringType, r.MaterializedThrough, r.EndDate, today, MaxDatesPerRulePass)
-		for _, d := range dates {
-			n, err := q.CreateIncomeInstance(ctx, db.CreateIncomeInstanceParams{
-				UserID:       r.UserID,
-				CategoryID:   r.CategoryID,
-				Amount:       r.Amount,
-				Currency:     r.Currency,
-				Description:  r.Description,
-				Notes:        r.Notes,
-				Date:         pgDate(d),
-				Priority:     r.Priority,
-				SourceRuleID: pgtype.UUID{Bytes: r.ID, Valid: true},
-			})
-			if err != nil {
-				return expenseN, incomeN, fmt.Errorf("create income instance: %w", err)
-			}
-			incomeN += int(n)
-		}
-		if err := q.AdvanceIncomeRuleWatermark(ctx, db.AdvanceIncomeRuleWatermarkParams{ID: r.ID, Through: pgDate(through)}); err != nil {
-			return expenseN, incomeN, fmt.Errorf("advance income rule watermark: %w", err)
-		}
+	if !t.Valid {
+		return time.Time{}, ErrNothingDue
 	}
-	return expenseN, incomeN, nil
+	return t.Time, nil
+}
+
+// insertRuleEntry creates the rule's entry for date d in the table for its
+// kind; an existing entry for that rule and date is left alone.
+func insertRuleEntry(ctx context.Context, q db.Querier, r db.Rule, d time.Time) (int64, error) {
+	source := pgtype.UUID{Bytes: r.ID, Valid: true}
+	switch r.Kind {
+	case "expense":
+		n, err := q.CreateExpenseInstance(ctx, db.CreateExpenseInstanceParams{
+			UserID: r.UserID, CategoryID: r.CategoryID, Amount: r.Amount, Currency: r.Currency,
+			Description: r.Description, Notes: r.Notes, ExpenseDate: pgDate(d), Priority: r.Priority,
+			IsDebt: false, SourceRuleID: source,
+		})
+		if err != nil {
+			return 0, fmt.Errorf("create expense instance: %w", err)
+		}
+		return n, nil
+	case "income":
+		n, err := q.CreateIncomeInstance(ctx, db.CreateIncomeInstanceParams{
+			UserID: r.UserID, CategoryID: r.CategoryID, Amount: r.Amount, Currency: r.Currency,
+			Description: r.Description, Notes: r.Notes, Date: pgDate(d), Priority: r.Priority,
+			SourceRuleID: source,
+		})
+		if err != nil {
+			return 0, fmt.Errorf("create income instance: %w", err)
+		}
+		return n, nil
+	}
+	return 0, fmt.Errorf("rule %s has unknown kind %q", r.ID, r.Kind)
 }
 
 // materializeHistory inserts one instance row per due date bounded by
 // start..min(end, today) for every active rule. Used by the backfill path
-// (D5 Phase 1) to converge history; the regular pass uses catchUp.
+// (D5 Phase 1) to converge history; the regular pass is MaterializeUser.
 func materializeHistory(ctx context.Context, q *db.Queries, today time.Time) (expenseN, incomeN int, err error) {
 	todayPg := pgDate(today)
 
@@ -356,22 +383,55 @@ func withMaterializeLock(ctx context.Context, pool *pgxpool.Pool, queries *db.Qu
 	return nil
 }
 
-// MaterializeDue runs the catch-up pass: every active rule gets its due dates
-// after its watermark up to min(end_date, today), so entries missed while the
-// worker was down are created on the next pass. "today" is each rule owner's
-// date at now. Instance rows use recurring_type='one-time', NULL start/end,
-// source_rule_id set, status='posted'. Returns the number of rows inserted.
-func MaterializeDue(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, now time.Time) (int, error) {
+// MaterializeDue runs MaterializeUser, in the zone zones gives, for every user
+// with a rule due by now (its next_due_at has passed, or isn't computed
+// yet), each in its own short transaction, so one user's pass never waits on
+// another's and a failure for one user doesn't stop the rest. Instance rows use
+// recurring_type='one-time', NULL start/end, source_rule_id set,
+// status='posted'. Returns the rows inserted, and every user's error joined.
+func MaterializeDue(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones Zones, now time.Time) (int, error) {
+	users, err := queries.ListUsersDue(ctx, pgtype.Timestamptz{Time: now, Valid: true})
+	if err != nil {
+		return 0, fmt.Errorf("list users due: %w", err)
+	}
+	var errs []error
 	inserted := 0
-	err := withMaterializeLock(ctx, pool, queries, func(q *db.Queries) error {
-		e, i, err := catchUp(ctx, q, now)
+	for _, user := range users {
+		n, err := materializeUserTx(ctx, pool, queries, zones, user, now)
+		inserted += n
 		if err != nil {
-			return err
+			errs = append(errs, fmt.Errorf("user %s: %w", user, err))
 		}
-		inserted = e + i
-		return nil
-	})
-	return inserted, err
+	}
+	return inserted, errors.Join(errs...)
+}
+
+// materializeUserTx reads the user's zone once it holds their lock, so a zone
+// recorded meanwhile (which takes the same lock) is committed and seen, and
+// its reset of the next due times isn't overwritten with times in the old
+// zone. A failed read skips the user rather than guess; the next pass retries.
+func materializeUserTx(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones Zones, user uuid.UUID, now time.Time) (int, error) {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	q := queries.WithTx(tx)
+	if err := q.LockUserMaterialize(ctx, user); err != nil {
+		return 0, fmt.Errorf("lock user materialize: %w", err)
+	}
+	loc, err := zones.Zone(ctx, user)
+	if err != nil {
+		return 0, fmt.Errorf("timezone: %w", err)
+	}
+	n, err := MaterializeUser(ctx, q, user, loc, now)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("commit: %w", err)
+	}
+	return n, nil
 }
 
 // CountLegacyRows returns the number of rows still matching the legacy inline
