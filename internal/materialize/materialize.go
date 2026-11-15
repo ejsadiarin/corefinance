@@ -81,45 +81,10 @@ func daysBetween(a, b time.Time) int {
 	return int(b.Sub(a).Hours() / 24)
 }
 
-// IsDue reports whether today is an occurrence of a rule starting at start
-// with the given cadence (daily/weekly/monthly/yearly stepping from start).
-// Monthly uses same day-of-month clamped to month end (Jan 31 -> Feb 28);
-// yearly clamps Feb 29 to Feb 28 in non-leap years. Unknown cadences are
-// never due.
-func IsDue(start time.Time, cadence string, today time.Time) bool {
-	start, today = truncateDate(start), truncateDate(today)
-	if today.Before(start) {
-		return false
-	}
-	switch cadence {
-	case "daily":
-		return true
-	case "weekly":
-		return daysBetween(start, today)%7 == 0
-	case "monthly":
-		y, m, _ := today.Date()
-		day := start.Day()
-		if last := daysIn(y, m); day > last {
-			day = last
-		}
-		return today.Day() == day
-	case "yearly":
-		if today.Month() != start.Month() {
-			return false
-		}
-		day := start.Day()
-		if last := daysIn(today.Year(), start.Month()); day > last {
-			day = last
-		}
-		return today.Day() == day
-	}
-	return false
-}
-
 // DueDates returns every occurrence date of a rule with the given start,
 // cadence (daily/weekly/monthly/yearly), optional end, bounded above by
-// today: start..min(end, today). Used for history backfill; the daily pass
-// uses IsDue instead. Unknown cadences yield no dates.
+// today: start..min(end, today). The materialize pass, reconcile and the
+// legacy backfill all build on it. Unknown cadences yield no dates.
 func DueDates(start time.Time, cadence string, end *time.Time, today time.Time) []time.Time {
 	start = truncateDate(start)
 	bound := truncateDate(today)
