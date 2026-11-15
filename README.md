@@ -2,7 +2,7 @@
 
 Financial management microservice for Core. Handles expenses, incomes, categories, tags, recurring rules, and analytics.
 
-It runs behind [coregateway](https://github.com/ejsadiarin/coregateway/blob/rewrite-v2/README.md), which signs every request it
+It runs behind [coregateway](https://github.com/ejsadiarin/coregateway/blob/main/README.md), which signs every request it
 forwards; corefinance never sees a client directly. Two programs ship from
 this repo: the API (`cmd/api`, port 6969) and the worker (`cmd/worker`),
 which writes rule entries as they fall due (ADR-0001).
@@ -12,7 +12,7 @@ which writes rule entries as they fall due (ADR-0001).
 **The easy way: run it with everything else.** From a coregateway checkout,
 its `local-up` target builds and starts corefinance, its worker, the gateway, the
 other services and the dashboard, with their own Postgres. See coregateway's
-[Quick start](https://github.com/ejsadiarin/coregateway/blob/rewrite-v2/README.md#quick-start-the-whole-stack-locally).
+[Quick start](https://github.com/ejsadiarin/coregateway/blob/main/README.md#quick-start-the-whole-stack-locally).
 
 **Run this repo's code against that stack.** With coregateway's `local-up` target
 running, a native corefinance can use the same database and gateway. Put
@@ -40,7 +40,7 @@ below), not to replace the container.
 - **Database:** the `corefinance` schema and `corefinance_role` in Neon's
   `coredb`, created once with `internal/db/bootstrap.sql`, then the
   migrations. The steps, including the order relative to the gateway, are
-  in coregateway's [Setting up Neon](https://github.com/ejsadiarin/coregateway/blob/rewrite-v2/README.md#setting-up-neon).
+  in coregateway's [Setting up Neon](https://github.com/ejsadiarin/coregateway/blob/main/README.md#setting-up-neon).
 - **The gateway:** running and reachable at `JWT_JWKS_URL`. corefinance
   refuses to start without its signing keys.
 - **`.env`:** copy `.env.example`; `DATABASE_URL` (pooled host,
