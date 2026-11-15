@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ejsadiarin/corefinance/internal/category"
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 )
 
@@ -83,7 +84,7 @@ func TestMaterializeIncome_CopiesCategoryNotesPriority_Integration(t *testing.T)
 	ctx := context.Background()
 	userID := uuid.New()
 	today := d("2026-09-10")
-	categoryID := uuid.New()
+	categoryID := category.Incomes[0].ID // a system category (ADR-0002)
 
 	rule, err := q.CreateRecurringIncomeRule(ctx, db.CreateRecurringIncomeRuleParams{
 		UserID:        userID,

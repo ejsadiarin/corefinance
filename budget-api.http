@@ -44,94 +44,15 @@
 
 GET {{baseUrl}}/health HTTP/1.1
 
-### Expense Categories
-
-
-### ============================================
-
-
-### Create Expense Category
-
-POST {{baseUrl}}/api/budget/expense-categories HTTP/1.1
-Content-Type: application/json
-Authorization: Bearer {{jwt}}
-
-{
-  "name": "Food & Dining",
-  "color": "#FF5733",
-  "icon": "utensils"
-}
-
-
-### List Expense Categories
+### Categories (system-defined, read-only: ADR-0002)
 
 GET {{baseUrl}}/api/budget/expense-categories HTTP/1.1
 Authorization: Bearer {{jwt}}
 
 
-### Update Expense Category
-
-PUT {{baseUrl}}/api/budget/expense-categories/{category_id} HTTP/1.1
-Content-Type: application/json
-Authorization: Bearer {{jwt}}
-
-{
-  "name": "Food & Dining (Updated)",
-  "color": "#FF0000",
-  "icon": "utensils"
-}
-
-
-### Delete Expense Category
-
-DELETE {{baseUrl}}/api/budget/expense-categories/{category_id} HTTP/1.1
-Authorization: Bearer {{jwt}}
-
-
-### ============================================
-
-
-### Income Categories
-
-
-### ============================================
-
-
-### Create Income Category
-
-POST {{baseUrl}}/api/budget/income-categories HTTP/1.1
-Content-Type: application/json
-Authorization: Bearer {{jwt}}
-
-{
-  "name": "Salary",
-  "color": "#00FF00",
-  "icon": "briefcase"
-}
-
-
 ### List Income Categories
 
 GET {{baseUrl}}/api/budget/income-categories HTTP/1.1
-Authorization: Bearer {{jwt}}
-
-
-### Update Income Category
-
-PUT {{baseUrl}}/api/budget/income-categories/{category_id} HTTP/1.1
-Content-Type: application/json
-Authorization: Bearer {{jwt}}
-
-{
-  "name": "Salary (Updated)",
-  "color": "#00CC00",
-  "icon": "briefcase"
-}
-
-
-### Delete Income Category
-
-DELETE {{baseUrl}}/api/budget/income-categories/{category_id} HTTP/1.1
 Authorization: Bearer {{jwt}}
 
 

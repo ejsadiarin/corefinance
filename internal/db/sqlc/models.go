@@ -31,7 +31,7 @@ type Expense struct {
 
 type ExpenseCategory struct {
 	ID        uuid.UUID          `db:"id" json:"id"`
-	UserID    uuid.UUID          `db:"user_id" json:"user_id"`
+	UserID    pgtype.UUID        `db:"user_id" json:"user_id"`
 	Name      string             `db:"name" json:"name"`
 	Color     pgtype.Text        `db:"color" json:"color"`
 	Icon      pgtype.Text        `db:"icon" json:"icon"`
@@ -65,7 +65,7 @@ type Income struct {
 
 type IncomeCategory struct {
 	ID        uuid.UUID          `db:"id" json:"id"`
-	UserID    uuid.UUID          `db:"user_id" json:"user_id"`
+	UserID    pgtype.UUID        `db:"user_id" json:"user_id"`
 	Name      string             `db:"name" json:"name"`
 	Color     pgtype.Text        `db:"color" json:"color"`
 	Icon      pgtype.Text        `db:"icon" json:"icon"`

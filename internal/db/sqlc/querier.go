@@ -20,11 +20,9 @@ type Querier interface {
 	CheckSkippedExpense(ctx context.Context, arg CheckSkippedExpenseParams) (bool, error)
 	CheckSkippedIncome(ctx context.Context, arg CheckSkippedIncomeParams) (bool, error)
 	CreateExpense(ctx context.Context, arg CreateExpenseParams) (Expense, error)
-	CreateExpenseCategory(ctx context.Context, arg CreateExpenseCategoryParams) (ExpenseCategory, error)
 	// Rule-entry inserts (ADR-0001). The materialize pass is their only caller.
 	CreateExpenseInstance(ctx context.Context, arg CreateExpenseInstanceParams) (int64, error)
 	CreateIncome(ctx context.Context, arg CreateIncomeParams) (Income, error)
-	CreateIncomeCategory(ctx context.Context, arg CreateIncomeCategoryParams) (IncomeCategory, error)
 	CreateIncomeInstance(ctx context.Context, arg CreateIncomeInstanceParams) (int64, error)
 	// Expense rules: the rules of kind 'expense' (ADR-0001). Every query names
 	// the kind, so an income rule's id never matches here.
@@ -34,16 +32,13 @@ type Querier interface {
 	CreateRecurringIncomeRule(ctx context.Context, arg CreateRecurringIncomeRuleParams) (Rule, error)
 	CreateTag(ctx context.Context, arg CreateTagParams) (Tag, error)
 	DeleteExpense(ctx context.Context, arg DeleteExpenseParams) error
-	DeleteExpenseCategory(ctx context.Context, arg DeleteExpenseCategoryParams) error
 	DeleteIncome(ctx context.Context, arg DeleteIncomeParams) error
-	DeleteIncomeCategory(ctx context.Context, arg DeleteIncomeCategoryParams) error
 	DeleteRecurringExpenseRule(ctx context.Context, arg DeleteRecurringExpenseRuleParams) error
 	DeleteRecurringIncomeRule(ctx context.Context, arg DeleteRecurringIncomeRuleParams) error
 	DeleteTag(ctx context.Context, arg DeleteTagParams) error
 	GetCategoryBreakdown(ctx context.Context, arg GetCategoryBreakdownParams) ([]GetCategoryBreakdownRow, error)
 	GetCurrentTotalMoney(ctx context.Context, userID uuid.UUID) (decimal.Decimal, error)
 	GetExpense(ctx context.Context, arg GetExpenseParams) (GetExpenseRow, error)
-	GetExpenseCategory(ctx context.Context, arg GetExpenseCategoryParams) (ExpenseCategory, error)
 	GetExpenseStatsByCategory(ctx context.Context, arg GetExpenseStatsByCategoryParams) ([]GetExpenseStatsByCategoryRow, error)
 	// Review feed (#13): every transaction before the horizon has finished, so
 	// the feed never returns a cursor that a later commit could land behind.
@@ -51,7 +46,6 @@ type Querier interface {
 	GetFeedHorizon(ctx context.Context) (uint64, error)
 	GetFiftyThirtyTwenty(ctx context.Context, arg GetFiftyThirtyTwentyParams) (GetFiftyThirtyTwentyRow, error)
 	GetIncome(ctx context.Context, arg GetIncomeParams) (GetIncomeRow, error)
-	GetIncomeCategory(ctx context.Context, arg GetIncomeCategoryParams) (IncomeCategory, error)
 	// Incomes a recurring rule created. The worker stamps them one-time with
 	// source_rule_id set, so the link, not the type, marks an occurrence.
 	GetIncomeOccurrences(ctx context.Context, arg GetIncomeOccurrencesParams) ([]Income, error)
@@ -78,12 +72,14 @@ type Querier interface {
 	ListAllExpensesByUser(ctx context.Context, userID uuid.UUID) ([]Expense, error)
 	ListAllIncomeTagsByUser(ctx context.Context, userID uuid.UUID) ([]IncomeTag, error)
 	ListAllIncomesByUser(ctx context.Context, userID uuid.UUID) ([]Income, error)
-	ListExpenseCategories(ctx context.Context, userID uuid.UUID) ([]ExpenseCategory, error)
+	// Categories are one fixed, system-defined list per kind (ADR-0002): rows
+	// with no owner, seeded by migration 00015. Owners can't write them.
+	ListExpenseCategories(ctx context.Context) ([]ExpenseCategory, error)
 	ListExpenses(ctx context.Context, arg ListExpensesParams) ([]ListExpensesRow, error)
 	// The caller's expenses among the given ids; ids that don't exist or
 	// belong to someone else are simply absent.
 	ListExpensesByIDs(ctx context.Context, arg ListExpensesByIDsParams) ([]ListExpensesByIDsRow, error)
-	ListIncomeCategories(ctx context.Context, userID uuid.UUID) ([]IncomeCategory, error)
+	ListIncomeCategories(ctx context.Context) ([]IncomeCategory, error)
 	ListIncomes(ctx context.Context, arg ListIncomesParams) ([]ListIncomesRow, error)
 	// The caller's incomes among the given ids; ids that don't exist or
 	// belong to someone else are simply absent.
@@ -139,9 +135,7 @@ type Querier interface {
 	SkipIncome(ctx context.Context, arg SkipIncomeParams) error
 	SkipIncomeEntries(ctx context.Context, arg SkipIncomeEntriesParams) error
 	UpdateExpense(ctx context.Context, arg UpdateExpenseParams) (Expense, error)
-	UpdateExpenseCategory(ctx context.Context, arg UpdateExpenseCategoryParams) (ExpenseCategory, error)
 	UpdateIncome(ctx context.Context, arg UpdateIncomeParams) (Income, error)
-	UpdateIncomeCategory(ctx context.Context, arg UpdateIncomeCategoryParams) (IncomeCategory, error)
 	UpdateRecurringExpenseRule(ctx context.Context, arg UpdateRecurringExpenseRuleParams) (Rule, error)
 	UpdateRecurringIncomeRule(ctx context.Context, arg UpdateRecurringIncomeRuleParams) (Rule, error)
 	UpdateTag(ctx context.Context, arg UpdateTagParams) (Tag, error)

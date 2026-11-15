@@ -26,7 +26,7 @@ LEFT JOIN expenses e ON ec.id = e.category_id
     AND e.status != 'skipped'
     AND ($2::date IS NULL OR e.expense_date >= $2)
     AND ($3::date IS NULL OR e.expense_date <= $3)
-WHERE ec.user_id = $1 AND ec.is_active = true
+WHERE ec.user_id IS NULL AND ec.is_active = true
 GROUP BY ec.id, ec.name, ec.color
 ORDER BY total_amount DESC
 `

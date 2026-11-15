@@ -45,20 +45,19 @@ func (s *Server) RegisterRoutes() http.Handler {
 		r.Get("/rule-entries", s.RuleEntryHandler.List)
 		r.Get("/rule-entries/feed", s.RuleEntryHandler.Feed)
 
-		// expense categories
+		// expense and income categories: a fixed list (ADR-0002)
 		r.Route("/expense-categories", func(r chi.Router) {
-			r.Post("/", s.CategoryHandler.CreateExpense)
 			r.Get("/", s.CategoryHandler.ListExpense)
-			r.Put("/{id}", s.CategoryHandler.UpdateExpense)
-			r.Delete("/{id}", s.CategoryHandler.DeleteExpense)
+			r.Post("/", s.CategoryHandler.Fixed)
+			r.Put("/{id}", s.CategoryHandler.Fixed)
+			r.Delete("/{id}", s.CategoryHandler.Fixed)
 		})
 
-		// income categories
 		r.Route("/income-categories", func(r chi.Router) {
-			r.Post("/", s.CategoryHandler.CreateIncome)
 			r.Get("/", s.CategoryHandler.ListIncome)
-			r.Put("/{id}", s.CategoryHandler.UpdateIncome)
-			r.Delete("/{id}", s.CategoryHandler.DeleteIncome)
+			r.Post("/", s.CategoryHandler.Fixed)
+			r.Put("/{id}", s.CategoryHandler.Fixed)
+			r.Delete("/{id}", s.CategoryHandler.Fixed)
 		})
 
 		// tags

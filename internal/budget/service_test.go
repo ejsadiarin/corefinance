@@ -105,15 +105,14 @@ func TestService_Export(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		m := &mock.MockQuerier{
-			ListExpenseCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ExpenseCategory, error) {
-				assert.Equal(t, userID, uid)
+			ListExpenseCategoriesFn: func(ctx context.Context) ([]db.ExpenseCategory, error) {
 				return []db.ExpenseCategory{
-					{ID: uuid.New(), UserID: userID, Name: "Food", IsActive: true},
+					{ID: uuid.New(), Name: "Food", IsActive: true},
 				}, nil
 			},
-			ListIncomeCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.IncomeCategory, error) {
+			ListIncomeCategoriesFn: func(ctx context.Context) ([]db.IncomeCategory, error) {
 				return []db.IncomeCategory{
-					{ID: uuid.New(), UserID: userID, Name: "Salary", IsActive: true},
+					{ID: uuid.New(), Name: "Salary", IsActive: true},
 				}, nil
 			},
 			ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {
@@ -154,7 +153,7 @@ func TestService_Export(t *testing.T) {
 
 	t.Run("expense categories query error", func(t *testing.T) {
 		m := &mock.MockQuerier{
-			ListExpenseCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ExpenseCategory, error) {
+			ListExpenseCategoriesFn: func(ctx context.Context) ([]db.ExpenseCategory, error) {
 				return nil, errors.New("db error")
 			},
 		}
@@ -166,10 +165,10 @@ func TestService_Export(t *testing.T) {
 
 	t.Run("tags query error", func(t *testing.T) {
 		m := &mock.MockQuerier{
-			ListExpenseCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ExpenseCategory, error) {
+			ListExpenseCategoriesFn: func(ctx context.Context) ([]db.ExpenseCategory, error) {
 				return []db.ExpenseCategory{}, nil
 			},
-			ListIncomeCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.IncomeCategory, error) {
+			ListIncomeCategoriesFn: func(ctx context.Context) ([]db.IncomeCategory, error) {
 				return []db.IncomeCategory{}, nil
 			},
 			ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {
@@ -185,10 +184,10 @@ func TestService_Export(t *testing.T) {
 
 	t.Run("expenses query error", func(t *testing.T) {
 		m := &mock.MockQuerier{
-			ListExpenseCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ExpenseCategory, error) {
+			ListExpenseCategoriesFn: func(ctx context.Context) ([]db.ExpenseCategory, error) {
 				return []db.ExpenseCategory{}, nil
 			},
-			ListIncomeCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.IncomeCategory, error) {
+			ListIncomeCategoriesFn: func(ctx context.Context) ([]db.IncomeCategory, error) {
 				return []db.IncomeCategory{}, nil
 			},
 			ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {
@@ -207,10 +206,10 @@ func TestService_Export(t *testing.T) {
 
 	t.Run("incomes query error", func(t *testing.T) {
 		m := &mock.MockQuerier{
-			ListExpenseCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ExpenseCategory, error) {
+			ListExpenseCategoriesFn: func(ctx context.Context) ([]db.ExpenseCategory, error) {
 				return []db.ExpenseCategory{}, nil
 			},
-			ListIncomeCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.IncomeCategory, error) {
+			ListIncomeCategoriesFn: func(ctx context.Context) ([]db.IncomeCategory, error) {
 				return []db.IncomeCategory{}, nil
 			},
 			ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {
@@ -232,10 +231,10 @@ func TestService_Export(t *testing.T) {
 
 	t.Run("recurring expenses query error", func(t *testing.T) {
 		m := &mock.MockQuerier{
-			ListExpenseCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ExpenseCategory, error) {
+			ListExpenseCategoriesFn: func(ctx context.Context) ([]db.ExpenseCategory, error) {
 				return []db.ExpenseCategory{}, nil
 			},
-			ListIncomeCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.IncomeCategory, error) {
+			ListIncomeCategoriesFn: func(ctx context.Context) ([]db.IncomeCategory, error) {
 				return []db.IncomeCategory{}, nil
 			},
 			ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {
@@ -260,10 +259,10 @@ func TestService_Export(t *testing.T) {
 
 	t.Run("recurring incomes query error", func(t *testing.T) {
 		m := &mock.MockQuerier{
-			ListExpenseCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ExpenseCategory, error) {
+			ListExpenseCategoriesFn: func(ctx context.Context) ([]db.ExpenseCategory, error) {
 				return []db.ExpenseCategory{}, nil
 			},
-			ListIncomeCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.IncomeCategory, error) {
+			ListIncomeCategoriesFn: func(ctx context.Context) ([]db.IncomeCategory, error) {
 				return []db.IncomeCategory{}, nil
 			},
 			ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {
@@ -291,10 +290,10 @@ func TestService_Export(t *testing.T) {
 
 	t.Run("expense tags query error", func(t *testing.T) {
 		m := &mock.MockQuerier{
-			ListExpenseCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ExpenseCategory, error) {
+			ListExpenseCategoriesFn: func(ctx context.Context) ([]db.ExpenseCategory, error) {
 				return []db.ExpenseCategory{}, nil
 			},
-			ListIncomeCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.IncomeCategory, error) {
+			ListIncomeCategoriesFn: func(ctx context.Context) ([]db.IncomeCategory, error) {
 				return []db.IncomeCategory{}, nil
 			},
 			ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {
@@ -325,10 +324,10 @@ func TestService_Export(t *testing.T) {
 
 	t.Run("income tags query error", func(t *testing.T) {
 		m := &mock.MockQuerier{
-			ListExpenseCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ExpenseCategory, error) {
+			ListExpenseCategoriesFn: func(ctx context.Context) ([]db.ExpenseCategory, error) {
 				return []db.ExpenseCategory{}, nil
 			},
-			ListIncomeCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.IncomeCategory, error) {
+			ListIncomeCategoriesFn: func(ctx context.Context) ([]db.IncomeCategory, error) {
 				return []db.IncomeCategory{}, nil
 			},
 			ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {
@@ -366,12 +365,12 @@ func TestService_Export(t *testing.T) {
 		expID := uuid.New()
 
 		m := &mock.MockQuerier{
-			ListExpenseCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ExpenseCategory, error) {
+			ListExpenseCategoriesFn: func(ctx context.Context) ([]db.ExpenseCategory, error) {
 				return []db.ExpenseCategory{
-					{ID: catID, UserID: userID, Name: "Food", Color: pgtype.Text{String: "#FF0000", Valid: true}, IsActive: true},
+					{ID: catID, Name: "Food", Color: pgtype.Text{String: "#FF0000", Valid: true}, IsActive: true},
 				}, nil
 			},
-			ListIncomeCategoriesFn: func(ctx context.Context, uid uuid.UUID) ([]db.IncomeCategory, error) {
+			ListIncomeCategoriesFn: func(ctx context.Context) ([]db.IncomeCategory, error) {
 				return []db.IncomeCategory{}, nil
 			},
 			ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {

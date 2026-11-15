@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/ejsadiarin/corefinance/internal/category"
 	"github.com/ejsadiarin/corefinance/internal/helper"
 )
 
@@ -27,6 +28,10 @@ func (h *Handler) CreateIncomeRule(w http.ResponseWriter, r *http.Request) {
 	var req CreateIncomeRuleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		helper.RespondErrorJSON(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := category.CheckIncome(req.CategoryID); err != nil {
+		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	userID, ok := helper.GetUserID(w, r)
@@ -96,6 +101,10 @@ func (h *Handler) UpdateIncomeRule(w http.ResponseWriter, r *http.Request) {
 		helper.RespondErrorJSON(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	if err := category.CheckIncome(req.CategoryID); err != nil {
+		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	userID, ok := helper.GetUserID(w, r)
 	if !ok {
 		return
@@ -140,6 +149,10 @@ func (h *Handler) CreateExpenseRule(w http.ResponseWriter, r *http.Request) {
 	var req CreateExpenseRuleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		helper.RespondErrorJSON(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := category.CheckExpense(req.CategoryID); err != nil {
+		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	userID, ok := helper.GetUserID(w, r)
@@ -207,6 +220,10 @@ func (h *Handler) UpdateExpenseRule(w http.ResponseWriter, r *http.Request) {
 	var req UpdateExpenseRuleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		helper.RespondErrorJSON(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := category.CheckExpense(req.CategoryID); err != nil {
+		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	userID, ok := helper.GetUserID(w, r)

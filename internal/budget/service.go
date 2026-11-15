@@ -3,11 +3,13 @@ package budget
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/ejsadiarin/corefinance/internal/category"
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/helper"
 )
@@ -86,12 +88,12 @@ func (s *Service) Remaining(ctx context.Context, userID uuid.UUID) (*BudgetRemai
 func (s *Service) Export(ctx context.Context, userID uuid.UUID) (*BudgetExport, error) {
 	slog.Debug("budget.Service.Export: called", "user_id", userID)
 
-	expenseCategories, err := s.queries.ListExpenseCategories(ctx, userID)
+	expenseCategories, err := s.queries.ListExpenseCategories(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	incomeCategories, err := s.queries.ListIncomeCategories(ctx, userID)
+	incomeCategories, err := s.queries.ListIncomeCategories(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -159,39 +161,18 @@ func (s *Service) Import(ctx context.Context, userID uuid.UUID, export *BudgetEx
 
 	q := db.New(tx)
 
-	// Track ID mappings: old ID -> new ID
-	categoryMap := make(map[uuid.UUID]uuid.UUID)
+	// Categories are system-defined (ADR-0002): the file's categories map by
+	// name, and one with no match becomes `other` plus a tag of its name.
+	var expenseCats, incomeCats []namedCategory
+	for _, c := range export.ExpenseCategories {
+		expenseCats = append(expenseCats, namedCategory{ID: c.ID, Name: c.Name})
+	}
+	for _, c := range export.IncomeCategories {
+		incomeCats = append(incomeCats, namedCategory{ID: c.ID, Name: c.Name})
+	}
+	expenseCategory := newCategoryMapper(category.Expenses, category.ExpenseOther, expenseCats)
+	incomeCategory := newCategoryMapper(category.Incomes, category.IncomeOther, incomeCats)
 	tagMap := make(map[uuid.UUID]uuid.UUID)
-
-	// Import expense categories
-	for _, cat := range export.ExpenseCategories {
-		newCat, err := q.CreateExpenseCategory(ctx, db.CreateExpenseCategoryParams{
-			UserID: userID,
-			Name:   cat.Name,
-			Color:  cat.Color,
-			Icon:   cat.Icon,
-		})
-		if err != nil {
-			slog.Error("budget.Service.Import: failed to import expense categories", "error", err, "user_id", userID)
-			return err
-		}
-		categoryMap[cat.ID] = newCat.ID
-	}
-
-	// Import income categories
-	for _, cat := range export.IncomeCategories {
-		newCat, err := q.CreateIncomeCategory(ctx, db.CreateIncomeCategoryParams{
-			UserID: userID,
-			Name:   cat.Name,
-			Color:  cat.Color,
-			Icon:   cat.Icon,
-		})
-		if err != nil {
-			slog.Error("budget.Service.Import: failed to import income categories", "error", err, "user_id", userID)
-			return err
-		}
-		categoryMap[cat.ID] = newCat.ID
-	}
 
 	// Import tags
 	for _, tag := range export.Tags {
@@ -207,25 +188,46 @@ func (s *Service) Import(ctx context.Context, userID uuid.UUID, export *BudgetEx
 		tagMap[tag.ID] = newTag.ID
 	}
 
+	// The owner's tags by name, for the tags that carry an unmatched
+	// category's name: reuse one of that name, or create it.
+	ownTags, err := q.ListTags(ctx, userID)
+	if err != nil {
+		return err
+	}
+	tagByName := make(map[string]uuid.UUID, len(ownTags))
+	for _, t := range ownTags {
+		key := strings.ToLower(strings.TrimSpace(t.Name))
+		if _, seen := tagByName[key]; !seen {
+			tagByName[key] = t.ID
+		}
+	}
+	categoryTag := func(name string) (uuid.UUID, error) {
+		key := strings.ToLower(name)
+		if id, ok := tagByName[key]; ok {
+			return id, nil
+		}
+		t, err := q.CreateTag(ctx, db.CreateTagParams{UserID: userID, Name: name})
+		if err != nil {
+			return uuid.Nil, err
+		}
+		tagByName[key] = t.ID
+		return t.ID, nil
+	}
+
 	// Track expense/income ID mappings
 	expenseMap := make(map[uuid.UUID]uuid.UUID)
 	incomeMap := make(map[uuid.UUID]uuid.UUID)
 
 	// Import expenses
 	for _, exp := range export.Expenses {
-		newCatID := uuid.Nil
-		if exp.CategoryID.Valid {
-			if mapped, ok := categoryMap[exp.CategoryID.Bytes]; ok {
-				newCatID = mapped
-			}
-		}
+		cat := expenseCategory.target(exp.CategoryID)
 		newRuleID := uuid.Nil
 		if exp.SourceRuleID.Valid {
 			newRuleID = exp.SourceRuleID.Bytes
 		}
 		newExp, err := q.CreateExpense(ctx, db.CreateExpenseParams{
 			UserID:       userID,
-			CategoryID:   helper.ToPgUUIDFromUUID(newCatID),
+			CategoryID:   helper.ToPgUUIDFromUUID(cat.ID),
 			Amount:       exp.Amount,
 			Currency:     exp.Currency,
 			Description:  exp.Description,
@@ -241,23 +243,27 @@ func (s *Service) Import(ctx context.Context, userID uuid.UUID, export *BudgetEx
 			return err
 		}
 		expenseMap[exp.ID] = newExp.ID
+		if cat.Tag != "" {
+			tagID, err := categoryTag(cat.Tag)
+			if err != nil {
+				return err
+			}
+			if err := q.AddTagToExpense(ctx, db.AddTagToExpenseParams{ExpenseID: newExp.ID, TagID: tagID}); err != nil {
+				return err
+			}
+		}
 	}
 
 	// Import incomes
 	for _, inc := range export.Incomes {
-		newCatID := uuid.Nil
-		if inc.CategoryID.Valid {
-			if mapped, ok := categoryMap[inc.CategoryID.Bytes]; ok {
-				newCatID = mapped
-			}
-		}
+		cat := incomeCategory.target(inc.CategoryID)
 		newRuleID := uuid.Nil
 		if inc.SourceRuleID.Valid {
 			newRuleID = inc.SourceRuleID.Bytes
 		}
 		newInc, err := q.CreateIncome(ctx, db.CreateIncomeParams{
 			UserID:       userID,
-			CategoryID:   helper.ToPgUUIDFromUUID(newCatID),
+			CategoryID:   helper.ToPgUUIDFromUUID(cat.ID),
 			Amount:       inc.Amount,
 			Currency:     inc.Currency,
 			Description:  inc.Description,
@@ -272,22 +278,25 @@ func (s *Service) Import(ctx context.Context, userID uuid.UUID, export *BudgetEx
 			return err
 		}
 		incomeMap[inc.ID] = newInc.ID
+		if cat.Tag != "" {
+			tagID, err := categoryTag(cat.Tag)
+			if err != nil {
+				return err
+			}
+			if err := q.AddTagToIncome(ctx, db.AddTagToIncomeParams{IncomeID: newInc.ID, TagID: tagID}); err != nil {
+				return err
+			}
+		}
 	}
 
 	// Import recurring expense rules
 	for _, rule := range export.RecurringExpenses {
-		newCatID := uuid.Nil
-		if rule.CategoryID.Valid {
-			if mapped, ok := categoryMap[rule.CategoryID.Bytes]; ok {
-				newCatID = mapped
-			}
-		}
 		_, err := q.CreateRecurringExpenseRule(ctx, db.CreateRecurringExpenseRuleParams{
 			UserID:        userID,
 			Description:   rule.Description,
 			Amount:        rule.Amount,
 			Currency:      rule.Currency,
-			CategoryID:    helper.ToPgUUIDFromUUID(newCatID),
+			CategoryID:    helper.ToPgUUIDFromUUID(expenseCategory.target(rule.CategoryID).ID),
 			Notes:         rule.Notes,
 			RecurringType: rule.RecurringType,
 			StartDate:     rule.StartDate,
@@ -310,6 +319,7 @@ func (s *Service) Import(ctx context.Context, userID uuid.UUID, export *BudgetEx
 			RecurringType: rule.RecurringType,
 			StartDate:     rule.StartDate,
 			EndDate:       rule.EndDate,
+			CategoryID:    helper.ToPgUUIDFromUUID(incomeCategory.target(rule.CategoryID).ID),
 		})
 		if err != nil {
 			slog.Error("budget.Service.Import: failed to import recurring income rules", "error", err, "user_id", userID)

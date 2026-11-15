@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/ejsadiarin/corefinance/internal/category"
 	"github.com/ejsadiarin/corefinance/internal/helper"
 	"github.com/google/uuid"
 )
@@ -21,6 +22,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var req CreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		helper.RespondErrorJSON(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := category.CheckExpense(req.CategoryID); err != nil {
+		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if err := helper.ValidateAmount(req.Amount, "amount"); err != nil {
@@ -152,6 +157,10 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	var req UpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		helper.RespondErrorJSON(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := category.CheckExpense(req.CategoryID); err != nil {
+		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if err := helper.ValidateAmount(req.Amount, "amount"); err != nil {

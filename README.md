@@ -60,7 +60,7 @@ cmd/api/main.go              — entrypoint
 internal/server/              — HTTP server, routes, handlers (remaining/export/import)
 internal/expense/             — expense CRUD, search, skip
 internal/income/              — income CRUD, skip, occurrences
-internal/category/            — expense/income categories (soft delete)
+internal/category/            — the fixed expense/income category lists (ADR-0002)
 internal/tag/                 — tags + tag associations
 internal/recurring/           — recurring expense/income rules
 internal/stats/               — analytics (summary, trends, 50/30/20, velocity)
@@ -96,8 +96,8 @@ All routes are prefixed with `/budget`.
 
 | Method | Path | Description |
 |---|---|---|
-| | `/expense-categories/*` | Expense category CRUD (soft delete) |
-| | `/income-categories/*` | Income category CRUD (soft delete) |
+| | `/expense-categories` | The fixed expense categories (GET only) |
+| | `/income-categories` | The fixed income categories (GET only) |
 | | `/tags/*` | Tag CRUD + tag associations for expenses/incomes |
 | | `/expenses/*` | Expense CRUD, search, skip, check-skipped, tag management; `GET /expenses?ids=a,b,c` fetches up to 100 of yours by id, leaving out ids that don't exist or aren't yours |
 | | `/incomes/*` | Income CRUD, skip, check-skipped, occurrences, tag management; `GET /incomes?ids=a,b,c` likewise |
