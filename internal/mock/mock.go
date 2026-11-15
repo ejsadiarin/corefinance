@@ -55,6 +55,11 @@ type MockQuerier struct {
 	ListRuleEntriesToReconcileFn          func(ctx context.Context, arg db.ListRuleEntriesToReconcileParams) ([]db.ListRuleEntriesToReconcileRow, error)
 	GetSeenTimezoneFn                     func(ctx context.Context, userID uuid.UUID) (string, error)
 	RecordUserTimezoneFn                  func(ctx context.Context, arg db.RecordUserTimezoneParams) (bool, error)
+	SkipExpenseEntriesFn                  func(ctx context.Context, arg db.SkipExpenseEntriesParams) error
+	SkipIncomeEntriesFn                   func(ctx context.Context, arg db.SkipIncomeEntriesParams) error
+	MarkExpenseEntriesKeptFn              func(ctx context.Context, arg db.MarkExpenseEntriesKeptParams) error
+	MarkIncomeEntriesKeptFn               func(ctx context.Context, arg db.MarkIncomeEntriesKeptParams) error
+	SetRuleNextDueFn                      func(ctx context.Context, arg db.SetRuleNextDueParams) error
 	ListUsersDueFn                        func(ctx context.Context, now pgtype.Timestamptz) ([]uuid.UUID, error)
 	ListUserActiveRulesFn                 func(ctx context.Context, userID uuid.UUID) ([]db.Rule, error)
 	GetNextWakeFn                         func(ctx context.Context, now pgtype.Timestamptz) (pgtype.Timestamptz, error)
@@ -261,7 +266,7 @@ func (m *MockQuerier) GetMonthOverMonthTrends(ctx context.Context, arg db.GetMon
 }
 
 // GetRecurringExpenseRule defaults to an open-ended rule, which a rule
-// update reads to compare end dates (#5).
+// update reads to compare schedules (#15).
 func (m *MockQuerier) GetRecurringExpenseRule(ctx context.Context, arg db.GetRecurringExpenseRuleParams) (db.GetRecurringExpenseRuleRow, error) {
 	if m.GetRecurringExpenseRuleFn == nil {
 		return db.GetRecurringExpenseRuleRow{ID: arg.ID, UserID: arg.UserID}, nil
@@ -514,20 +519,36 @@ func (m *MockQuerier) ListRuleEntriesToReconcile(ctx context.Context, arg db.Lis
 	return m.ListRuleEntriesToReconcileFn(ctx, arg)
 }
 
+// SkipExpenseEntries defaults to succeeding.
 func (m *MockQuerier) SkipExpenseEntries(ctx context.Context, arg db.SkipExpenseEntriesParams) error {
-	return nil
+	if m.SkipExpenseEntriesFn == nil {
+		return nil
+	}
+	return m.SkipExpenseEntriesFn(ctx, arg)
 }
 
+// SkipIncomeEntries defaults to succeeding.
 func (m *MockQuerier) SkipIncomeEntries(ctx context.Context, arg db.SkipIncomeEntriesParams) error {
-	return nil
+	if m.SkipIncomeEntriesFn == nil {
+		return nil
+	}
+	return m.SkipIncomeEntriesFn(ctx, arg)
 }
 
+// MarkExpenseEntriesKept defaults to succeeding.
 func (m *MockQuerier) MarkExpenseEntriesKept(ctx context.Context, arg db.MarkExpenseEntriesKeptParams) error {
-	return nil
+	if m.MarkExpenseEntriesKeptFn == nil {
+		return nil
+	}
+	return m.MarkExpenseEntriesKeptFn(ctx, arg)
 }
 
+// MarkIncomeEntriesKept defaults to succeeding.
 func (m *MockQuerier) MarkIncomeEntriesKept(ctx context.Context, arg db.MarkIncomeEntriesKeptParams) error {
-	return nil
+	if m.MarkIncomeEntriesKeptFn == nil {
+		return nil
+	}
+	return m.MarkIncomeEntriesKeptFn(ctx, arg)
 }
 
 // ListUsersDue defaults to nobody.
@@ -554,8 +575,12 @@ func (m *MockQuerier) GetNextWake(ctx context.Context, now pgtype.Timestamptz) (
 	return m.GetNextWakeFn(ctx, now)
 }
 
+// SetRuleNextDue defaults to succeeding.
 func (m *MockQuerier) SetRuleNextDue(ctx context.Context, arg db.SetRuleNextDueParams) error {
-	return nil
+	if m.SetRuleNextDueFn == nil {
+		return nil
+	}
+	return m.SetRuleNextDueFn(ctx, arg)
 }
 
 // GetSeenTimezone defaults to "never seen".
