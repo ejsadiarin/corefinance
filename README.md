@@ -61,7 +61,7 @@ All routes are prefixed with `/budget`.
 | | `/trends/month-over-month` | Month-over-month comparison |
 | | `/priority-groups` | Reference data (need/want/savings) |
 | | `/rule-entries` | Entries recurring rules created (expenses and incomes), newest-inserted first; filters `rule_id`, `start_date`/`end_date`, `created_since` (RFC 3339), paged with `page`/`page_size` |
-| | `/rule-entries/feed` | "What's new" feed of rule entries: `{entries, next}`; pass `next` back as `after`. Never skips an entry from a pass that commits late (prefer it over `created_since`) |
+| | `/rule-entries/feed` | "What's new" feed of rule entries: `{entries, next}`; pass `next` back as `after`, with the same filters (`rule_id`, `start_date`/`end_date`): a cursor is only valid with the filters that produced it. Never skips an entry from a pass that commits late (prefer it over `created_since`) |
 | | `/remaining` | Current month budget remaining |
 | | `/export` | Export all budget data as JSON |
 | | `/import` | Import budget data (with ID remapping) |

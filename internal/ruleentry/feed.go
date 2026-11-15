@@ -60,7 +60,9 @@ func parseCursor(s string) (cursor, error) {
 // from transactions newer than the oldest one still in flight, so a page's
 // cursor can't move past an entry that commits later: that entry shows up
 // on a later page instead. A long-running transaction anywhere in the
-// database delays the feed; it never loses entries.
+// database delays the feed; it never loses entries. A cursor is only valid
+// with the filters that produced it: with other filters, its page can pass
+// entries those filters would have returned before it.
 func (h *Handler) Feed(w http.ResponseWriter, r *http.Request) {
 	userID, ok := helper.ResolveTargetUser(w, r)
 	if !ok {
