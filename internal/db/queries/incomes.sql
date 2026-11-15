@@ -1,6 +1,6 @@
 -- name: CreateIncome :one
-INSERT INTO incomes (user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+INSERT INTO incomes (user_id, category_id, amount, currency, description, notes, date, priority, status, source_rule_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
 -- name: GetIncome :one
@@ -18,15 +18,13 @@ WHERE i.user_id = @user_id
   AND (@end_date::date IS NULL OR i.date <= @end_date)
   AND ('00000000-0000-0000-0000-000000000000' = @category_id::uuid OR i.category_id = @category_id)
   AND ('' = @status OR i.status = @status)
-  AND ('' = @recurring_type OR i.recurring_type = @recurring_type)
 ORDER BY i.date DESC, i.created_at DESC
 LIMIT @page_limit OFFSET @page_offset;
 
 -- name: UpdateIncome :one
 UPDATE incomes
 SET category_id = $3, amount = $4, currency = $5, description = $6, notes = $7,
-    date = $8, recurring_type = $9, priority = $10, status = $11,
-    start_date = $12, end_date = $13, source_rule_id = $14,
+    date = $8, priority = $9, status = $10, source_rule_id = $11,
     updated_at = now(), user_edited_at = now()
 WHERE id = $1 AND user_id = $2
 RETURNING *;

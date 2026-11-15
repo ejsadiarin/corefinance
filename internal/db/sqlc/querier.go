@@ -16,17 +16,12 @@ type Querier interface {
 	AddTagToExpense(ctx context.Context, arg AddTagToExpenseParams) error
 	AddTagToIncome(ctx context.Context, arg AddTagToIncomeParams) error
 	// The watermark only moves forward: GREATEST ignores a NULL current value.
-	AdvanceExpenseRuleWatermark(ctx context.Context, arg AdvanceExpenseRuleWatermarkParams) error
-	AdvanceIncomeRuleWatermark(ctx context.Context, arg AdvanceIncomeRuleWatermarkParams) error
 	AdvanceRuleWatermark(ctx context.Context, arg AdvanceRuleWatermarkParams) error
 	CheckSkippedExpense(ctx context.Context, arg CheckSkippedExpenseParams) (bool, error)
 	CheckSkippedIncome(ctx context.Context, arg CheckSkippedIncomeParams) (bool, error)
-	CountLegacyExpenses(ctx context.Context) (int64, error)
-	CountLegacyExpensesByUser(ctx context.Context, userID uuid.UUID) (int64, error)
-	CountLegacyIncomes(ctx context.Context) (int64, error)
-	CountLegacyIncomesByUser(ctx context.Context, userID uuid.UUID) (int64, error)
 	CreateExpense(ctx context.Context, arg CreateExpenseParams) (Expense, error)
 	CreateExpenseCategory(ctx context.Context, arg CreateExpenseCategoryParams) (ExpenseCategory, error)
+	// Rule-entry inserts (ADR-0001). The materialize pass is their only caller.
 	CreateExpenseInstance(ctx context.Context, arg CreateExpenseInstanceParams) (int64, error)
 	CreateIncome(ctx context.Context, arg CreateIncomeParams) (Income, error)
 	CreateIncomeCategory(ctx context.Context, arg CreateIncomeCategoryParams) (IncomeCategory, error)
@@ -41,8 +36,6 @@ type Querier interface {
 	DeleteRecurringExpenseRule(ctx context.Context, arg DeleteRecurringExpenseRuleParams) error
 	DeleteRecurringIncomeRule(ctx context.Context, arg DeleteRecurringIncomeRuleParams) error
 	DeleteTag(ctx context.Context, arg DeleteTagParams) error
-	FlipLegacyExpenseToOneTime(ctx context.Context, id uuid.UUID) error
-	FlipLegacyIncomeToOneTime(ctx context.Context, id uuid.UUID) error
 	GetCategoryBreakdown(ctx context.Context, arg GetCategoryBreakdownParams) ([]GetCategoryBreakdownRow, error)
 	GetCurrentTotalMoney(ctx context.Context, userID uuid.UUID) (decimal.Decimal, error)
 	GetExpense(ctx context.Context, arg GetExpenseParams) (GetExpenseRow, error)
@@ -77,12 +70,6 @@ type Querier interface {
 	GetTotalIncomesByDateRange(ctx context.Context, arg GetTotalIncomesByDateRangeParams) (decimal.Decimal, error)
 	GetTrends(ctx context.Context, arg GetTrendsParams) ([]GetTrendsRow, error)
 	GetUpcomingRecurringExpenses(ctx context.Context, userID uuid.UUID) ([]GetUpcomingRecurringExpensesRow, error)
-	// Worker materialization queries (D3/D4/D5): active-rule selection, idempotent
-	// instance inserts, and legacy inline-rule backfill support.
-	ListActiveExpenseRules(ctx context.Context, startDate pgtype.Date) ([]RecurringExpenseRule, error)
-	ListActiveExpenseRulesByUser(ctx context.Context, arg ListActiveExpenseRulesByUserParams) ([]RecurringExpenseRule, error)
-	ListActiveIncomeRules(ctx context.Context, startDate pgtype.Date) ([]RecurringIncomeRule, error)
-	ListActiveIncomeRulesByUser(ctx context.Context, arg ListActiveIncomeRulesByUserParams) ([]RecurringIncomeRule, error)
 	ListAllExpenseTagsByUser(ctx context.Context, userID uuid.UUID) ([]ExpenseTag, error)
 	ListAllExpensesByUser(ctx context.Context, userID uuid.UUID) ([]Expense, error)
 	ListAllIncomeTagsByUser(ctx context.Context, userID uuid.UUID) ([]IncomeTag, error)
@@ -97,10 +84,6 @@ type Querier interface {
 	// The caller's incomes among the given ids; ids that don't exist or
 	// belong to someone else are simply absent.
 	ListIncomesByIDs(ctx context.Context, arg ListIncomesByIDsParams) ([]ListIncomesByIDsRow, error)
-	ListLegacyExpenses(ctx context.Context) ([]Expense, error)
-	ListLegacyExpensesByUser(ctx context.Context, userID uuid.UUID) ([]Expense, error)
-	ListLegacyIncomes(ctx context.Context) ([]Income, error)
-	ListLegacyIncomesByUser(ctx context.Context, userID uuid.UUID) ([]Income, error)
 	ListRecurringExpenseRules(ctx context.Context, userID uuid.UUID) ([]ListRecurringExpenseRulesRow, error)
 	// ListRecurringExpenseRulesWithPaused lists every rule, paused ones too, so
 	// the web can show a paused rule and resume it.

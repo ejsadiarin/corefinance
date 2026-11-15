@@ -20,8 +20,6 @@ func TestCreate_Success(t *testing.T) {
 	catID := "550e8400-e29b-41d4-a716-446655440000"
 	sourceRuleID := "550e8400-e29b-41d4-a716-446655440001"
 	notes := "monthly salary"
-	startDate := "2026-01-01"
-	endDate := "2026-12-31"
 
 	mq := &mock.MockQuerier{
 		CreateIncomeFn: func(ctx context.Context, arg db.CreateIncomeParams) (db.Income, error) {
@@ -32,11 +30,8 @@ func TestCreate_Success(t *testing.T) {
 			assert.Equal(t, "Salary", arg.Description)
 			assert.True(t, arg.Notes.Valid)
 			assert.Equal(t, notes, arg.Notes.String)
-			assert.Equal(t, "monthly", arg.RecurringType)
 			assert.Equal(t, "high", arg.Priority)
 			assert.Equal(t, "active", arg.Status)
-			assert.True(t, arg.StartDate.Valid)
-			assert.True(t, arg.EndDate.Valid)
 			assert.True(t, arg.SourceRuleID.Valid)
 			return db.Income{
 				ID:          incomeID,
@@ -50,18 +45,15 @@ func TestCreate_Success(t *testing.T) {
 	svc := NewService(mq)
 
 	result, err := svc.Create(context.Background(), userID, CreateRequest{
-		CategoryID:    &catID,
-		Amount:        50000,
-		Currency:      "PHP",
-		Description:   "Salary",
-		Notes:         &notes,
-		Date:          "2026-09-05",
-		RecurringType: "monthly",
-		Priority:      "high",
-		Status:        "active",
-		StartDate:     &startDate,
-		EndDate:       &endDate,
-		SourceRuleID:  &sourceRuleID,
+		CategoryID:   &catID,
+		Amount:       50000,
+		Currency:     "PHP",
+		Description:  "Salary",
+		Notes:        &notes,
+		Date:         "2026-09-05",
+		Priority:     "high",
+		Status:       "active",
+		SourceRuleID: &sourceRuleID,
 	})
 
 	require.NoError(t, err)
@@ -95,8 +87,6 @@ func TestCreate_NilOptionalFields(t *testing.T) {
 		CreateIncomeFn: func(ctx context.Context, arg db.CreateIncomeParams) (db.Income, error) {
 			assert.False(t, arg.CategoryID.Valid)
 			assert.False(t, arg.Notes.Valid)
-			assert.False(t, arg.StartDate.Valid)
-			assert.False(t, arg.EndDate.Valid)
 			assert.False(t, arg.SourceRuleID.Valid)
 			return db.Income{ID: uuid.New()}, nil
 		},
@@ -200,7 +190,6 @@ func TestList_FiltersPassedThrough(t *testing.T) {
 	endDate := "2026-06-30"
 	catID := "550e8400-e29b-41d4-a716-446655440000"
 	status := "active"
-	recType := "monthly"
 
 	mq := &mock.MockQuerier{
 		ListIncomesFn: func(ctx context.Context, arg db.ListIncomesParams) ([]db.ListIncomesRow, error) {
@@ -209,20 +198,18 @@ func TestList_FiltersPassedThrough(t *testing.T) {
 			assert.True(t, arg.EndDate.Valid)
 			assert.NotEqual(t, uuid.Nil, arg.CategoryID)
 			assert.Equal(t, "active", arg.Status)
-			assert.Equal(t, "monthly", arg.RecurringType)
 			return nil, nil
 		},
 	}
 	svc := NewService(mq)
 
 	_, err := svc.List(context.Background(), userID, ListParams{
-		StartDate:     &startDate,
-		EndDate:       &endDate,
-		CategoryID:    &catID,
-		Status:        &status,
-		RecurringType: &recType,
-		Page:          1,
-		PageSize:      10,
+		StartDate:  &startDate,
+		EndDate:    &endDate,
+		CategoryID: &catID,
+		Status:     &status,
+		Page:       1,
+		PageSize:   10,
 	})
 
 	require.NoError(t, err)
@@ -283,14 +270,13 @@ func TestUpdate_Success(t *testing.T) {
 	svc := NewService(mq)
 
 	result, err := svc.Update(context.Background(), incomeID, userID, UpdateRequest{
-		CategoryID:    &catID,
-		Amount:        75000,
-		Currency:      "USD",
-		Description:   "Updated Salary",
-		Date:          "2026-09-05",
-		RecurringType: "monthly",
-		Priority:      "high",
-		Status:        "active",
+		CategoryID:  &catID,
+		Amount:      75000,
+		Currency:    "USD",
+		Description: "Updated Salary",
+		Date:        "2026-09-05",
+		Priority:    "high",
+		Status:      "active",
 	})
 
 	require.NoError(t, err)
@@ -324,8 +310,6 @@ func TestUpdate_NilOptionalFields(t *testing.T) {
 		UpdateIncomeFn: func(ctx context.Context, arg db.UpdateIncomeParams) (db.Income, error) {
 			assert.False(t, arg.CategoryID.Valid)
 			assert.False(t, arg.Notes.Valid)
-			assert.False(t, arg.StartDate.Valid)
-			assert.False(t, arg.EndDate.Valid)
 			assert.False(t, arg.SourceRuleID.Valid)
 			return db.Income{ID: incomeID}, nil
 		},

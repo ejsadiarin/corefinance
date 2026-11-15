@@ -201,7 +201,6 @@ Authorization: Bearer {{jwt}}
   "description": "Groceries",
   "expense_date": "2026-02-17",
   "notes": "Weekly grocery shopping",
-  "recurring_type": "one-time",
   "priority": "need",
   "status": "posted",
   "is_debt": false
@@ -247,7 +246,6 @@ Authorization: Bearer {{jwt}}
   "description": "Groceries (Updated)",
   "expense_date": "2026-02-17",
   "notes": "Weekly grocery shopping - updated",
-  "recurring_type": "one-time",
   "priority": "need",
   "status": "posted",
   "is_debt": false
@@ -326,7 +324,6 @@ Authorization: Bearer {{jwt}}
   "currency": "PHP",
   "description": "Salary - February",
   "date": "2026-02-15",
-  "recurring_type": "monthly",
   "priority": "need",
   "status": "posted"
 }
@@ -367,7 +364,6 @@ Authorization: Bearer {{jwt}}
   "currency": "PHP",
   "description": "Salary - February (Updated)",
   "date": "2026-02-15",
-  "recurring_type": "monthly",
   "priority": "need",
   "status": "posted"
 }

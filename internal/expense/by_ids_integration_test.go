@@ -25,15 +25,13 @@ func seedExpense(t *testing.T, q *db.Queries, userID uuid.UUID, description stri
 	day := pgtype.Date{Valid: true}
 	require.NoError(t, day.Scan("2026-11-01"))
 	e, err := q.CreateExpense(context.Background(), db.CreateExpenseParams{
-		UserID:        userID,
-		Amount:        decimal.NewFromInt(120),
-		Currency:      "PHP",
-		Description:   description,
-		ExpenseDate:   day,
-		RecurringType: "one-time",
-		Priority:      "want",
-		Status:        "posted",
-		StartDate:     day,
+		UserID:      userID,
+		Amount:      decimal.NewFromInt(120),
+		Currency:    "PHP",
+		Description: description,
+		ExpenseDate: day,
+		Priority:    "want",
+		Status:      "posted",
 	})
 	require.NoError(t, err)
 	return e.ID

@@ -37,25 +37,22 @@ func (q *Queries) CheckSkippedIncome(ctx context.Context, arg CheckSkippedIncome
 }
 
 const createIncome = `-- name: CreateIncome :one
-INSERT INTO incomes (user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-RETURNING id, user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at, txid
+INSERT INTO incomes (user_id, category_id, amount, currency, description, notes, date, priority, status, source_rule_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING id, user_id, category_id, amount, currency, description, notes, date, priority, status, source_rule_id, created_at, updated_at, user_edited_at, txid
 `
 
 type CreateIncomeParams struct {
-	UserID        uuid.UUID       `db:"user_id" json:"user_id"`
-	CategoryID    pgtype.UUID     `db:"category_id" json:"category_id"`
-	Amount        decimal.Decimal `db:"amount" json:"amount"`
-	Currency      string          `db:"currency" json:"currency"`
-	Description   string          `db:"description" json:"description"`
-	Notes         pgtype.Text     `db:"notes" json:"notes"`
-	Date          pgtype.Date     `db:"date" json:"date"`
-	RecurringType string          `db:"recurring_type" json:"recurring_type"`
-	Priority      string          `db:"priority" json:"priority"`
-	Status        string          `db:"status" json:"status"`
-	StartDate     pgtype.Date     `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date     `db:"end_date" json:"end_date"`
-	SourceRuleID  pgtype.UUID     `db:"source_rule_id" json:"source_rule_id"`
+	UserID       uuid.UUID       `db:"user_id" json:"user_id"`
+	CategoryID   pgtype.UUID     `db:"category_id" json:"category_id"`
+	Amount       decimal.Decimal `db:"amount" json:"amount"`
+	Currency     string          `db:"currency" json:"currency"`
+	Description  string          `db:"description" json:"description"`
+	Notes        pgtype.Text     `db:"notes" json:"notes"`
+	Date         pgtype.Date     `db:"date" json:"date"`
+	Priority     string          `db:"priority" json:"priority"`
+	Status       string          `db:"status" json:"status"`
+	SourceRuleID pgtype.UUID     `db:"source_rule_id" json:"source_rule_id"`
 }
 
 func (q *Queries) CreateIncome(ctx context.Context, arg CreateIncomeParams) (Income, error) {
@@ -67,11 +64,8 @@ func (q *Queries) CreateIncome(ctx context.Context, arg CreateIncomeParams) (Inc
 		arg.Description,
 		arg.Notes,
 		arg.Date,
-		arg.RecurringType,
 		arg.Priority,
 		arg.Status,
-		arg.StartDate,
-		arg.EndDate,
 		arg.SourceRuleID,
 	)
 	var i Income
@@ -84,11 +78,8 @@ func (q *Queries) CreateIncome(ctx context.Context, arg CreateIncomeParams) (Inc
 		&i.Description,
 		&i.Notes,
 		&i.Date,
-		&i.RecurringType,
 		&i.Priority,
 		&i.Status,
-		&i.StartDate,
-		&i.EndDate,
 		&i.SourceRuleID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -114,7 +105,7 @@ func (q *Queries) DeleteIncome(ctx context.Context, arg DeleteIncomeParams) erro
 }
 
 const getIncome = `-- name: GetIncome :one
-SELECT i.id, i.user_id, i.category_id, i.amount, i.currency, i.description, i.notes, i.date, i.recurring_type, i.priority, i.status, i.start_date, i.end_date, i.source_rule_id, i.created_at, i.updated_at, i.user_edited_at, i.txid, ic.name AS category_name, ic.color AS category_color, ic.icon AS category_icon
+SELECT i.id, i.user_id, i.category_id, i.amount, i.currency, i.description, i.notes, i.date, i.priority, i.status, i.source_rule_id, i.created_at, i.updated_at, i.user_edited_at, i.txid, ic.name AS category_name, ic.color AS category_color, ic.icon AS category_icon
 FROM incomes i
 LEFT JOIN income_categories ic ON i.category_id = ic.id
 WHERE i.id = $1 AND i.user_id = $2
@@ -134,11 +125,8 @@ type GetIncomeRow struct {
 	Description   string             `db:"description" json:"description"`
 	Notes         pgtype.Text        `db:"notes" json:"notes"`
 	Date          pgtype.Date        `db:"date" json:"date"`
-	RecurringType string             `db:"recurring_type" json:"recurring_type"`
 	Priority      string             `db:"priority" json:"priority"`
 	Status        string             `db:"status" json:"status"`
-	StartDate     pgtype.Date        `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date        `db:"end_date" json:"end_date"`
 	SourceRuleID  pgtype.UUID        `db:"source_rule_id" json:"source_rule_id"`
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
@@ -161,11 +149,8 @@ func (q *Queries) GetIncome(ctx context.Context, arg GetIncomeParams) (GetIncome
 		&i.Description,
 		&i.Notes,
 		&i.Date,
-		&i.RecurringType,
 		&i.Priority,
 		&i.Status,
-		&i.StartDate,
-		&i.EndDate,
 		&i.SourceRuleID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -179,7 +164,7 @@ func (q *Queries) GetIncome(ctx context.Context, arg GetIncomeParams) (GetIncome
 }
 
 const getIncomeOccurrences = `-- name: GetIncomeOccurrences :many
-SELECT id, user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at, txid FROM incomes
+SELECT id, user_id, category_id, amount, currency, description, notes, date, priority, status, source_rule_id, created_at, updated_at, user_edited_at, txid FROM incomes
 WHERE user_id = $1
   AND source_rule_id IS NOT NULL
   AND ($2::date IS NULL OR date >= $2)
@@ -213,11 +198,8 @@ func (q *Queries) GetIncomeOccurrences(ctx context.Context, arg GetIncomeOccurre
 			&i.Description,
 			&i.Notes,
 			&i.Date,
-			&i.RecurringType,
 			&i.Priority,
 			&i.Status,
-			&i.StartDate,
-			&i.EndDate,
 			&i.SourceRuleID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -257,7 +239,7 @@ func (q *Queries) GetTotalIncomesByDateRange(ctx context.Context, arg GetTotalIn
 }
 
 const listAllIncomesByUser = `-- name: ListAllIncomesByUser :many
-SELECT id, user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at, txid FROM incomes
+SELECT id, user_id, category_id, amount, currency, description, notes, date, priority, status, source_rule_id, created_at, updated_at, user_edited_at, txid FROM incomes
 WHERE user_id = $1
 ORDER BY date DESC, created_at DESC
 `
@@ -280,11 +262,8 @@ func (q *Queries) ListAllIncomesByUser(ctx context.Context, userID uuid.UUID) ([
 			&i.Description,
 			&i.Notes,
 			&i.Date,
-			&i.RecurringType,
 			&i.Priority,
 			&i.Status,
-			&i.StartDate,
-			&i.EndDate,
 			&i.SourceRuleID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -302,7 +281,7 @@ func (q *Queries) ListAllIncomesByUser(ctx context.Context, userID uuid.UUID) ([
 }
 
 const listIncomes = `-- name: ListIncomes :many
-SELECT i.id, i.user_id, i.category_id, i.amount, i.currency, i.description, i.notes, i.date, i.recurring_type, i.priority, i.status, i.start_date, i.end_date, i.source_rule_id, i.created_at, i.updated_at, i.user_edited_at, i.txid, ic.name AS category_name, ic.color AS category_color, ic.icon AS category_icon
+SELECT i.id, i.user_id, i.category_id, i.amount, i.currency, i.description, i.notes, i.date, i.priority, i.status, i.source_rule_id, i.created_at, i.updated_at, i.user_edited_at, i.txid, ic.name AS category_name, ic.color AS category_color, ic.icon AS category_icon
 FROM incomes i
 LEFT JOIN income_categories ic ON i.category_id = ic.id
 WHERE i.user_id = $1
@@ -310,20 +289,18 @@ WHERE i.user_id = $1
   AND ($3::date IS NULL OR i.date <= $3)
   AND ('00000000-0000-0000-0000-000000000000' = $4::uuid OR i.category_id = $4)
   AND ('' = $5 OR i.status = $5)
-  AND ('' = $6 OR i.recurring_type = $6)
 ORDER BY i.date DESC, i.created_at DESC
-LIMIT $8 OFFSET $7
+LIMIT $7 OFFSET $6
 `
 
 type ListIncomesParams struct {
-	UserID        uuid.UUID   `db:"user_id" json:"user_id"`
-	StartDate     pgtype.Date `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date `db:"end_date" json:"end_date"`
-	CategoryID    uuid.UUID   `db:"category_id" json:"category_id"`
-	Status        interface{} `db:"status" json:"status"`
-	RecurringType interface{} `db:"recurring_type" json:"recurring_type"`
-	PageOffset    int32       `db:"page_offset" json:"page_offset"`
-	PageLimit     int32       `db:"page_limit" json:"page_limit"`
+	UserID     uuid.UUID   `db:"user_id" json:"user_id"`
+	StartDate  pgtype.Date `db:"start_date" json:"start_date"`
+	EndDate    pgtype.Date `db:"end_date" json:"end_date"`
+	CategoryID uuid.UUID   `db:"category_id" json:"category_id"`
+	Status     interface{} `db:"status" json:"status"`
+	PageOffset int32       `db:"page_offset" json:"page_offset"`
+	PageLimit  int32       `db:"page_limit" json:"page_limit"`
 }
 
 type ListIncomesRow struct {
@@ -335,11 +312,8 @@ type ListIncomesRow struct {
 	Description   string             `db:"description" json:"description"`
 	Notes         pgtype.Text        `db:"notes" json:"notes"`
 	Date          pgtype.Date        `db:"date" json:"date"`
-	RecurringType string             `db:"recurring_type" json:"recurring_type"`
 	Priority      string             `db:"priority" json:"priority"`
 	Status        string             `db:"status" json:"status"`
-	StartDate     pgtype.Date        `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date        `db:"end_date" json:"end_date"`
 	SourceRuleID  pgtype.UUID        `db:"source_rule_id" json:"source_rule_id"`
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
@@ -357,7 +331,6 @@ func (q *Queries) ListIncomes(ctx context.Context, arg ListIncomesParams) ([]Lis
 		arg.EndDate,
 		arg.CategoryID,
 		arg.Status,
-		arg.RecurringType,
 		arg.PageOffset,
 		arg.PageLimit,
 	)
@@ -377,11 +350,8 @@ func (q *Queries) ListIncomes(ctx context.Context, arg ListIncomesParams) ([]Lis
 			&i.Description,
 			&i.Notes,
 			&i.Date,
-			&i.RecurringType,
 			&i.Priority,
 			&i.Status,
-			&i.StartDate,
-			&i.EndDate,
 			&i.SourceRuleID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -402,7 +372,7 @@ func (q *Queries) ListIncomes(ctx context.Context, arg ListIncomesParams) ([]Lis
 }
 
 const listIncomesByIDs = `-- name: ListIncomesByIDs :many
-SELECT i.id, i.user_id, i.category_id, i.amount, i.currency, i.description, i.notes, i.date, i.recurring_type, i.priority, i.status, i.start_date, i.end_date, i.source_rule_id, i.created_at, i.updated_at, i.user_edited_at, i.txid, ic.name AS category_name, ic.color AS category_color, ic.icon AS category_icon
+SELECT i.id, i.user_id, i.category_id, i.amount, i.currency, i.description, i.notes, i.date, i.priority, i.status, i.source_rule_id, i.created_at, i.updated_at, i.user_edited_at, i.txid, ic.name AS category_name, ic.color AS category_color, ic.icon AS category_icon
 FROM incomes i
 LEFT JOIN income_categories ic ON i.category_id = ic.id
 WHERE i.user_id = $1 AND i.id = ANY($2::uuid[])
@@ -423,11 +393,8 @@ type ListIncomesByIDsRow struct {
 	Description   string             `db:"description" json:"description"`
 	Notes         pgtype.Text        `db:"notes" json:"notes"`
 	Date          pgtype.Date        `db:"date" json:"date"`
-	RecurringType string             `db:"recurring_type" json:"recurring_type"`
 	Priority      string             `db:"priority" json:"priority"`
 	Status        string             `db:"status" json:"status"`
-	StartDate     pgtype.Date        `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date        `db:"end_date" json:"end_date"`
 	SourceRuleID  pgtype.UUID        `db:"source_rule_id" json:"source_rule_id"`
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
@@ -458,11 +425,8 @@ func (q *Queries) ListIncomesByIDs(ctx context.Context, arg ListIncomesByIDsPara
 			&i.Description,
 			&i.Notes,
 			&i.Date,
-			&i.RecurringType,
 			&i.Priority,
 			&i.Status,
-			&i.StartDate,
-			&i.EndDate,
 			&i.SourceRuleID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -501,28 +465,24 @@ func (q *Queries) SkipIncome(ctx context.Context, arg SkipIncomeParams) error {
 const updateIncome = `-- name: UpdateIncome :one
 UPDATE incomes
 SET category_id = $3, amount = $4, currency = $5, description = $6, notes = $7,
-    date = $8, recurring_type = $9, priority = $10, status = $11,
-    start_date = $12, end_date = $13, source_rule_id = $14,
+    date = $8, priority = $9, status = $10, source_rule_id = $11,
     updated_at = now(), user_edited_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at, txid
+RETURNING id, user_id, category_id, amount, currency, description, notes, date, priority, status, source_rule_id, created_at, updated_at, user_edited_at, txid
 `
 
 type UpdateIncomeParams struct {
-	ID            uuid.UUID       `db:"id" json:"id"`
-	UserID        uuid.UUID       `db:"user_id" json:"user_id"`
-	CategoryID    pgtype.UUID     `db:"category_id" json:"category_id"`
-	Amount        decimal.Decimal `db:"amount" json:"amount"`
-	Currency      string          `db:"currency" json:"currency"`
-	Description   string          `db:"description" json:"description"`
-	Notes         pgtype.Text     `db:"notes" json:"notes"`
-	Date          pgtype.Date     `db:"date" json:"date"`
-	RecurringType string          `db:"recurring_type" json:"recurring_type"`
-	Priority      string          `db:"priority" json:"priority"`
-	Status        string          `db:"status" json:"status"`
-	StartDate     pgtype.Date     `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date     `db:"end_date" json:"end_date"`
-	SourceRuleID  pgtype.UUID     `db:"source_rule_id" json:"source_rule_id"`
+	ID           uuid.UUID       `db:"id" json:"id"`
+	UserID       uuid.UUID       `db:"user_id" json:"user_id"`
+	CategoryID   pgtype.UUID     `db:"category_id" json:"category_id"`
+	Amount       decimal.Decimal `db:"amount" json:"amount"`
+	Currency     string          `db:"currency" json:"currency"`
+	Description  string          `db:"description" json:"description"`
+	Notes        pgtype.Text     `db:"notes" json:"notes"`
+	Date         pgtype.Date     `db:"date" json:"date"`
+	Priority     string          `db:"priority" json:"priority"`
+	Status       string          `db:"status" json:"status"`
+	SourceRuleID pgtype.UUID     `db:"source_rule_id" json:"source_rule_id"`
 }
 
 func (q *Queries) UpdateIncome(ctx context.Context, arg UpdateIncomeParams) (Income, error) {
@@ -535,11 +495,8 @@ func (q *Queries) UpdateIncome(ctx context.Context, arg UpdateIncomeParams) (Inc
 		arg.Description,
 		arg.Notes,
 		arg.Date,
-		arg.RecurringType,
 		arg.Priority,
 		arg.Status,
-		arg.StartDate,
-		arg.EndDate,
 		arg.SourceRuleID,
 	)
 	var i Income
@@ -552,11 +509,8 @@ func (q *Queries) UpdateIncome(ctx context.Context, arg UpdateIncomeParams) (Inc
 		&i.Description,
 		&i.Notes,
 		&i.Date,
-		&i.RecurringType,
 		&i.Priority,
 		&i.Status,
-		&i.StartDate,
-		&i.EndDate,
 		&i.SourceRuleID,
 		&i.CreatedAt,
 		&i.UpdatedAt,

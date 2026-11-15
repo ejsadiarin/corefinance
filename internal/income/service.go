@@ -2,9 +2,9 @@ package income
 
 import (
 	"context"
-	"log/slog"
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
+	"log/slog"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/helper"
@@ -21,19 +21,16 @@ func NewService(queries db.Querier) *Service {
 func (s *Service) Create(ctx context.Context, userID uuid.UUID, req CreateRequest) (db.Income, error) {
 	slog.Debug("income.Service.Create", "user_id", userID)
 	return s.queries.CreateIncome(ctx, db.CreateIncomeParams{
-		UserID:        userID,
-		CategoryID:    helper.ToPgUUID(req.CategoryID),
-		Amount:        decimal.NewFromFloat(req.Amount),
-		Currency:      req.Currency,
-		Description:   req.Description,
-		Notes:         helper.ToPgText(req.Notes),
-		Date:          helper.ToPgDate(req.Date),
-		RecurringType: req.RecurringType,
-		Priority:      req.Priority,
-		Status:        req.Status,
-		StartDate:     helper.ToPgDatePtr(req.StartDate),
-		EndDate:       helper.ToPgDatePtr(req.EndDate),
-		SourceRuleID:  helper.ToPgUUID(req.SourceRuleID),
+		UserID:       userID,
+		CategoryID:   helper.ToPgUUID(req.CategoryID),
+		Amount:       decimal.NewFromFloat(req.Amount),
+		Currency:     req.Currency,
+		Description:  req.Description,
+		Notes:        helper.ToPgText(req.Notes),
+		Date:         helper.ToPgDate(req.Date),
+		Priority:     req.Priority,
+		Status:       req.Status,
+		SourceRuleID: helper.ToPgUUID(req.SourceRuleID),
 	})
 }
 
@@ -61,34 +58,30 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID, params ListParams)
 		pageSize = 50
 	}
 	return s.queries.ListIncomes(ctx, db.ListIncomesParams{
-		UserID:        userID,
-		StartDate:     helper.ToPgDatePtr(params.StartDate),
-		EndDate:       helper.ToPgDatePtr(params.EndDate),
-		CategoryID:    helper.ToUUID(params.CategoryID),
-		Status:        helper.StrVal(params.Status),
-		RecurringType: helper.StrVal(params.RecurringType),
-		PageLimit:     pageSize,
-		PageOffset:    (page - 1) * pageSize,
+		UserID:     userID,
+		StartDate:  helper.ToPgDatePtr(params.StartDate),
+		EndDate:    helper.ToPgDatePtr(params.EndDate),
+		CategoryID: helper.ToUUID(params.CategoryID),
+		Status:     helper.StrVal(params.Status),
+		PageLimit:  pageSize,
+		PageOffset: (page - 1) * pageSize,
 	})
 }
 
 func (s *Service) Update(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateRequest) (db.Income, error) {
 	slog.Debug("income.Service.Update", "id", id, "user_id", userID)
 	return s.queries.UpdateIncome(ctx, db.UpdateIncomeParams{
-		ID:            id,
-		UserID:        userID,
-		CategoryID:    helper.ToPgUUID(req.CategoryID),
-		Amount:        decimal.NewFromFloat(req.Amount),
-		Currency:      req.Currency,
-		Description:   req.Description,
-		Notes:         helper.ToPgText(req.Notes),
-		Date:          helper.ToPgDate(req.Date),
-		RecurringType: req.RecurringType,
-		Priority:      req.Priority,
-		Status:        req.Status,
-		StartDate:     helper.ToPgDatePtr(req.StartDate),
-		EndDate:       helper.ToPgDatePtr(req.EndDate),
-		SourceRuleID:  helper.ToPgUUID(req.SourceRuleID),
+		ID:           id,
+		UserID:       userID,
+		CategoryID:   helper.ToPgUUID(req.CategoryID),
+		Amount:       decimal.NewFromFloat(req.Amount),
+		Currency:     req.Currency,
+		Description:  req.Description,
+		Notes:        helper.ToPgText(req.Notes),
+		Date:         helper.ToPgDate(req.Date),
+		Priority:     req.Priority,
+		Status:       req.Status,
+		SourceRuleID: helper.ToPgUUID(req.SourceRuleID),
 	})
 }
 

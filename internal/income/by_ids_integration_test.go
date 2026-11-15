@@ -24,15 +24,13 @@ func seedIncome(t *testing.T, q *db.Queries, userID uuid.UUID, description strin
 	day := pgtype.Date{Valid: true}
 	require.NoError(t, day.Scan("2026-11-01"))
 	i, err := q.CreateIncome(context.Background(), db.CreateIncomeParams{
-		UserID:        userID,
-		Amount:        decimal.NewFromInt(5000),
-		Currency:      "PHP",
-		Description:   description,
-		Date:          day,
-		RecurringType: "one-time",
-		Priority:      "want",
-		Status:        "posted",
-		StartDate:     day,
+		UserID:      userID,
+		Amount:      decimal.NewFromInt(5000),
+		Currency:    "PHP",
+		Description: description,
+		Date:        day,
+		Priority:    "want",
+		Status:      "posted",
 	})
 	require.NoError(t, err)
 	return i.ID

@@ -13,39 +13,6 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-const advanceExpenseRuleWatermark = `-- name: AdvanceExpenseRuleWatermark :exec
-UPDATE recurring_expense_rules
-SET materialized_through = GREATEST(materialized_through, $1::date)
-WHERE id = $2
-`
-
-type AdvanceExpenseRuleWatermarkParams struct {
-	Through pgtype.Date `db:"through" json:"through"`
-	ID      uuid.UUID   `db:"id" json:"id"`
-}
-
-// The watermark only moves forward: GREATEST ignores a NULL current value.
-func (q *Queries) AdvanceExpenseRuleWatermark(ctx context.Context, arg AdvanceExpenseRuleWatermarkParams) error {
-	_, err := q.db.Exec(ctx, advanceExpenseRuleWatermark, arg.Through, arg.ID)
-	return err
-}
-
-const advanceIncomeRuleWatermark = `-- name: AdvanceIncomeRuleWatermark :exec
-UPDATE recurring_income_rules
-SET materialized_through = GREATEST(materialized_through, $1::date)
-WHERE id = $2
-`
-
-type AdvanceIncomeRuleWatermarkParams struct {
-	Through pgtype.Date `db:"through" json:"through"`
-	ID      uuid.UUID   `db:"id" json:"id"`
-}
-
-func (q *Queries) AdvanceIncomeRuleWatermark(ctx context.Context, arg AdvanceIncomeRuleWatermarkParams) error {
-	_, err := q.db.Exec(ctx, advanceIncomeRuleWatermark, arg.Through, arg.ID)
-	return err
-}
-
 const advanceRuleWatermark = `-- name: AdvanceRuleWatermark :exec
 UPDATE rules
 SET materialized_through = GREATEST(materialized_through, $1::date)
@@ -57,62 +24,16 @@ type AdvanceRuleWatermarkParams struct {
 	ID      uuid.UUID   `db:"id" json:"id"`
 }
 
+// The watermark only moves forward: GREATEST ignores a NULL current value.
 func (q *Queries) AdvanceRuleWatermark(ctx context.Context, arg AdvanceRuleWatermarkParams) error {
 	_, err := q.db.Exec(ctx, advanceRuleWatermark, arg.Through, arg.ID)
 	return err
 }
 
-const countLegacyExpenses = `-- name: CountLegacyExpenses :one
-SELECT COUNT(*)::bigint AS legacy_count FROM expenses
-WHERE recurring_type != 'one-time' AND source_rule_id IS NULL
-`
-
-func (q *Queries) CountLegacyExpenses(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, countLegacyExpenses)
-	var legacy_count int64
-	err := row.Scan(&legacy_count)
-	return legacy_count, err
-}
-
-const countLegacyExpensesByUser = `-- name: CountLegacyExpensesByUser :one
-SELECT COUNT(*)::bigint AS legacy_count FROM expenses
-WHERE user_id = $1 AND recurring_type != 'one-time' AND source_rule_id IS NULL
-`
-
-func (q *Queries) CountLegacyExpensesByUser(ctx context.Context, userID uuid.UUID) (int64, error) {
-	row := q.db.QueryRow(ctx, countLegacyExpensesByUser, userID)
-	var legacy_count int64
-	err := row.Scan(&legacy_count)
-	return legacy_count, err
-}
-
-const countLegacyIncomes = `-- name: CountLegacyIncomes :one
-SELECT COUNT(*)::bigint AS legacy_count FROM incomes
-WHERE recurring_type != 'one-time' AND source_rule_id IS NULL
-`
-
-func (q *Queries) CountLegacyIncomes(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, countLegacyIncomes)
-	var legacy_count int64
-	err := row.Scan(&legacy_count)
-	return legacy_count, err
-}
-
-const countLegacyIncomesByUser = `-- name: CountLegacyIncomesByUser :one
-SELECT COUNT(*)::bigint AS legacy_count FROM incomes
-WHERE user_id = $1 AND recurring_type != 'one-time' AND source_rule_id IS NULL
-`
-
-func (q *Queries) CountLegacyIncomesByUser(ctx context.Context, userID uuid.UUID) (int64, error) {
-	row := q.db.QueryRow(ctx, countLegacyIncomesByUser, userID)
-	var legacy_count int64
-	err := row.Scan(&legacy_count)
-	return legacy_count, err
-}
-
 const createExpenseInstance = `-- name: CreateExpenseInstance :execrows
-INSERT INTO expenses (user_id, category_id, amount, currency, description, notes, expense_date, recurring_type, priority, status, is_debt, start_date, end_date, source_rule_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, 'one-time', $8, 'posted', $9, NULL, NULL, $10)
+
+INSERT INTO expenses (user_id, category_id, amount, currency, description, notes, expense_date, priority, status, is_debt, source_rule_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'posted', $9, $10)
 ON CONFLICT (user_id, source_rule_id, expense_date) WHERE source_rule_id IS NOT NULL DO NOTHING
 `
 
@@ -129,6 +50,7 @@ type CreateExpenseInstanceParams struct {
 	SourceRuleID pgtype.UUID     `db:"source_rule_id" json:"source_rule_id"`
 }
 
+// Rule-entry inserts (ADR-0001). The materialize pass is their only caller.
 func (q *Queries) CreateExpenseInstance(ctx context.Context, arg CreateExpenseInstanceParams) (int64, error) {
 	result, err := q.db.Exec(ctx, createExpenseInstance,
 		arg.UserID,
@@ -149,8 +71,8 @@ func (q *Queries) CreateExpenseInstance(ctx context.Context, arg CreateExpenseIn
 }
 
 const createIncomeInstance = `-- name: CreateIncomeInstance :execrows
-INSERT INTO incomes (user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, 'one-time', $8, 'posted', NULL, NULL, $9)
+INSERT INTO incomes (user_id, category_id, amount, currency, description, notes, date, priority, status, source_rule_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'posted', $9)
 ON CONFLICT (user_id, source_rule_id, date) WHERE source_rule_id IS NOT NULL DO NOTHING
 `
 
@@ -184,26 +106,6 @@ func (q *Queries) CreateIncomeInstance(ctx context.Context, arg CreateIncomeInst
 	return result.RowsAffected(), nil
 }
 
-const flipLegacyExpenseToOneTime = `-- name: FlipLegacyExpenseToOneTime :exec
-UPDATE expenses SET recurring_type = 'one-time', updated_at = now()
-WHERE id = $1
-`
-
-func (q *Queries) FlipLegacyExpenseToOneTime(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, flipLegacyExpenseToOneTime, id)
-	return err
-}
-
-const flipLegacyIncomeToOneTime = `-- name: FlipLegacyIncomeToOneTime :exec
-UPDATE incomes SET recurring_type = 'one-time', updated_at = now()
-WHERE id = $1
-`
-
-func (q *Queries) FlipLegacyIncomeToOneTime(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, flipLegacyIncomeToOneTime, id)
-	return err
-}
-
 const getNextWake = `-- name: GetNextWake :one
 SELECT min(next_due_at)::timestamptz AS next_wake FROM rules
 WHERE is_active = true AND next_due_at > $1::timestamptz AND next_due_at < 'infinity'
@@ -215,383 +117,6 @@ func (q *Queries) GetNextWake(ctx context.Context, now pgtype.Timestamptz) (pgty
 	var next_wake pgtype.Timestamptz
 	err := row.Scan(&next_wake)
 	return next_wake, err
-}
-
-const listActiveExpenseRules = `-- name: ListActiveExpenseRules :many
-
-SELECT id, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, created_at, updated_at, materialized_through, kind FROM recurring_expense_rules
-WHERE is_active = true
-  AND start_date <= $1
-  AND (end_date IS NULL OR end_date >= $1)
-ORDER BY start_date ASC
-`
-
-// Worker materialization queries (D3/D4/D5): active-rule selection, idempotent
-// instance inserts, and legacy inline-rule backfill support.
-func (q *Queries) ListActiveExpenseRules(ctx context.Context, startDate pgtype.Date) ([]RecurringExpenseRule, error) {
-	rows, err := q.db.Query(ctx, listActiveExpenseRules, startDate)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []RecurringExpenseRule{}
-	for rows.Next() {
-		var i RecurringExpenseRule
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.Description,
-			&i.Amount,
-			&i.Currency,
-			&i.CategoryID,
-			&i.Notes,
-			&i.RecurringType,
-			&i.StartDate,
-			&i.EndDate,
-			&i.Priority,
-			&i.IsActive,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.MaterializedThrough,
-			&i.Kind,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listActiveExpenseRulesByUser = `-- name: ListActiveExpenseRulesByUser :many
-SELECT id, user_id, description, amount, currency, category_id, notes, recurring_type, start_date, end_date, priority, is_active, created_at, updated_at, materialized_through, kind FROM recurring_expense_rules
-WHERE user_id = $1
-  AND is_active = true
-  AND start_date <= $2
-  AND (end_date IS NULL OR end_date >= $2)
-ORDER BY start_date ASC
-`
-
-type ListActiveExpenseRulesByUserParams struct {
-	UserID    uuid.UUID   `db:"user_id" json:"user_id"`
-	StartDate pgtype.Date `db:"start_date" json:"start_date"`
-}
-
-func (q *Queries) ListActiveExpenseRulesByUser(ctx context.Context, arg ListActiveExpenseRulesByUserParams) ([]RecurringExpenseRule, error) {
-	rows, err := q.db.Query(ctx, listActiveExpenseRulesByUser, arg.UserID, arg.StartDate)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []RecurringExpenseRule{}
-	for rows.Next() {
-		var i RecurringExpenseRule
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.Description,
-			&i.Amount,
-			&i.Currency,
-			&i.CategoryID,
-			&i.Notes,
-			&i.RecurringType,
-			&i.StartDate,
-			&i.EndDate,
-			&i.Priority,
-			&i.IsActive,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.MaterializedThrough,
-			&i.Kind,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listActiveIncomeRules = `-- name: ListActiveIncomeRules :many
-SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority, materialized_through, kind FROM recurring_income_rules
-WHERE is_active = true
-  AND start_date <= $1
-  AND (end_date IS NULL OR end_date >= $1)
-ORDER BY start_date ASC
-`
-
-func (q *Queries) ListActiveIncomeRules(ctx context.Context, startDate pgtype.Date) ([]RecurringIncomeRule, error) {
-	rows, err := q.db.Query(ctx, listActiveIncomeRules, startDate)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []RecurringIncomeRule{}
-	for rows.Next() {
-		var i RecurringIncomeRule
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.Amount,
-			&i.Currency,
-			&i.Description,
-			&i.RecurringType,
-			&i.StartDate,
-			&i.EndDate,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.IsActive,
-			&i.CategoryID,
-			&i.Notes,
-			&i.Priority,
-			&i.MaterializedThrough,
-			&i.Kind,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listActiveIncomeRulesByUser = `-- name: ListActiveIncomeRulesByUser :many
-SELECT id, user_id, amount, currency, description, recurring_type, start_date, end_date, created_at, updated_at, is_active, category_id, notes, priority, materialized_through, kind FROM recurring_income_rules
-WHERE user_id = $1
-  AND is_active = true
-  AND start_date <= $2
-  AND (end_date IS NULL OR end_date >= $2)
-ORDER BY start_date ASC
-`
-
-type ListActiveIncomeRulesByUserParams struct {
-	UserID    uuid.UUID   `db:"user_id" json:"user_id"`
-	StartDate pgtype.Date `db:"start_date" json:"start_date"`
-}
-
-func (q *Queries) ListActiveIncomeRulesByUser(ctx context.Context, arg ListActiveIncomeRulesByUserParams) ([]RecurringIncomeRule, error) {
-	rows, err := q.db.Query(ctx, listActiveIncomeRulesByUser, arg.UserID, arg.StartDate)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []RecurringIncomeRule{}
-	for rows.Next() {
-		var i RecurringIncomeRule
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.Amount,
-			&i.Currency,
-			&i.Description,
-			&i.RecurringType,
-			&i.StartDate,
-			&i.EndDate,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.IsActive,
-			&i.CategoryID,
-			&i.Notes,
-			&i.Priority,
-			&i.MaterializedThrough,
-			&i.Kind,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listLegacyExpenses = `-- name: ListLegacyExpenses :many
-SELECT id, user_id, category_id, amount, currency, description, notes, expense_date, recurring_type, priority, status, is_debt, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at, txid FROM expenses
-WHERE recurring_type != 'one-time' AND source_rule_id IS NULL
-ORDER BY start_date ASC NULLS LAST, expense_date ASC
-`
-
-func (q *Queries) ListLegacyExpenses(ctx context.Context) ([]Expense, error) {
-	rows, err := q.db.Query(ctx, listLegacyExpenses)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Expense{}
-	for rows.Next() {
-		var i Expense
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.CategoryID,
-			&i.Amount,
-			&i.Currency,
-			&i.Description,
-			&i.Notes,
-			&i.ExpenseDate,
-			&i.RecurringType,
-			&i.Priority,
-			&i.Status,
-			&i.IsDebt,
-			&i.StartDate,
-			&i.EndDate,
-			&i.SourceRuleID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.UserEditedAt,
-			&i.Txid,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listLegacyExpensesByUser = `-- name: ListLegacyExpensesByUser :many
-SELECT id, user_id, category_id, amount, currency, description, notes, expense_date, recurring_type, priority, status, is_debt, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at, txid FROM expenses
-WHERE user_id = $1 AND recurring_type != 'one-time' AND source_rule_id IS NULL
-ORDER BY start_date ASC NULLS LAST, expense_date ASC
-`
-
-func (q *Queries) ListLegacyExpensesByUser(ctx context.Context, userID uuid.UUID) ([]Expense, error) {
-	rows, err := q.db.Query(ctx, listLegacyExpensesByUser, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Expense{}
-	for rows.Next() {
-		var i Expense
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.CategoryID,
-			&i.Amount,
-			&i.Currency,
-			&i.Description,
-			&i.Notes,
-			&i.ExpenseDate,
-			&i.RecurringType,
-			&i.Priority,
-			&i.Status,
-			&i.IsDebt,
-			&i.StartDate,
-			&i.EndDate,
-			&i.SourceRuleID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.UserEditedAt,
-			&i.Txid,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listLegacyIncomes = `-- name: ListLegacyIncomes :many
-SELECT id, user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at, txid FROM incomes
-WHERE recurring_type != 'one-time' AND source_rule_id IS NULL
-ORDER BY start_date ASC NULLS LAST, date ASC
-`
-
-func (q *Queries) ListLegacyIncomes(ctx context.Context) ([]Income, error) {
-	rows, err := q.db.Query(ctx, listLegacyIncomes)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Income{}
-	for rows.Next() {
-		var i Income
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.CategoryID,
-			&i.Amount,
-			&i.Currency,
-			&i.Description,
-			&i.Notes,
-			&i.Date,
-			&i.RecurringType,
-			&i.Priority,
-			&i.Status,
-			&i.StartDate,
-			&i.EndDate,
-			&i.SourceRuleID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.UserEditedAt,
-			&i.Txid,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listLegacyIncomesByUser = `-- name: ListLegacyIncomesByUser :many
-SELECT id, user_id, category_id, amount, currency, description, notes, date, recurring_type, priority, status, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at, txid FROM incomes
-WHERE user_id = $1 AND recurring_type != 'one-time' AND source_rule_id IS NULL
-ORDER BY start_date ASC NULLS LAST, date ASC
-`
-
-func (q *Queries) ListLegacyIncomesByUser(ctx context.Context, userID uuid.UUID) ([]Income, error) {
-	rows, err := q.db.Query(ctx, listLegacyIncomesByUser, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Income{}
-	for rows.Next() {
-		var i Income
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.CategoryID,
-			&i.Amount,
-			&i.Currency,
-			&i.Description,
-			&i.Notes,
-			&i.Date,
-			&i.RecurringType,
-			&i.Priority,
-			&i.Status,
-			&i.StartDate,
-			&i.EndDate,
-			&i.SourceRuleID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.UserEditedAt,
-			&i.Txid,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const listRuleEntriesToReconcile = `-- name: ListRuleEntriesToReconcile :many

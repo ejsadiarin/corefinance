@@ -37,26 +37,23 @@ func (q *Queries) CheckSkippedExpense(ctx context.Context, arg CheckSkippedExpen
 }
 
 const createExpense = `-- name: CreateExpense :one
-INSERT INTO expenses (user_id, category_id, amount, currency, description, notes, expense_date, recurring_type, priority, status, is_debt, start_date, end_date, source_rule_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-RETURNING id, user_id, category_id, amount, currency, description, notes, expense_date, recurring_type, priority, status, is_debt, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at, txid
+INSERT INTO expenses (user_id, category_id, amount, currency, description, notes, expense_date, priority, status, is_debt, source_rule_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING id, user_id, category_id, amount, currency, description, notes, expense_date, priority, status, is_debt, source_rule_id, created_at, updated_at, user_edited_at, txid
 `
 
 type CreateExpenseParams struct {
-	UserID        uuid.UUID       `db:"user_id" json:"user_id"`
-	CategoryID    pgtype.UUID     `db:"category_id" json:"category_id"`
-	Amount        decimal.Decimal `db:"amount" json:"amount"`
-	Currency      string          `db:"currency" json:"currency"`
-	Description   string          `db:"description" json:"description"`
-	Notes         pgtype.Text     `db:"notes" json:"notes"`
-	ExpenseDate   pgtype.Date     `db:"expense_date" json:"expense_date"`
-	RecurringType string          `db:"recurring_type" json:"recurring_type"`
-	Priority      string          `db:"priority" json:"priority"`
-	Status        string          `db:"status" json:"status"`
-	IsDebt        bool            `db:"is_debt" json:"is_debt"`
-	StartDate     pgtype.Date     `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date     `db:"end_date" json:"end_date"`
-	SourceRuleID  pgtype.UUID     `db:"source_rule_id" json:"source_rule_id"`
+	UserID       uuid.UUID       `db:"user_id" json:"user_id"`
+	CategoryID   pgtype.UUID     `db:"category_id" json:"category_id"`
+	Amount       decimal.Decimal `db:"amount" json:"amount"`
+	Currency     string          `db:"currency" json:"currency"`
+	Description  string          `db:"description" json:"description"`
+	Notes        pgtype.Text     `db:"notes" json:"notes"`
+	ExpenseDate  pgtype.Date     `db:"expense_date" json:"expense_date"`
+	Priority     string          `db:"priority" json:"priority"`
+	Status       string          `db:"status" json:"status"`
+	IsDebt       bool            `db:"is_debt" json:"is_debt"`
+	SourceRuleID pgtype.UUID     `db:"source_rule_id" json:"source_rule_id"`
 }
 
 func (q *Queries) CreateExpense(ctx context.Context, arg CreateExpenseParams) (Expense, error) {
@@ -68,12 +65,9 @@ func (q *Queries) CreateExpense(ctx context.Context, arg CreateExpenseParams) (E
 		arg.Description,
 		arg.Notes,
 		arg.ExpenseDate,
-		arg.RecurringType,
 		arg.Priority,
 		arg.Status,
 		arg.IsDebt,
-		arg.StartDate,
-		arg.EndDate,
 		arg.SourceRuleID,
 	)
 	var i Expense
@@ -86,12 +80,9 @@ func (q *Queries) CreateExpense(ctx context.Context, arg CreateExpenseParams) (E
 		&i.Description,
 		&i.Notes,
 		&i.ExpenseDate,
-		&i.RecurringType,
 		&i.Priority,
 		&i.Status,
 		&i.IsDebt,
-		&i.StartDate,
-		&i.EndDate,
 		&i.SourceRuleID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -117,7 +108,7 @@ func (q *Queries) DeleteExpense(ctx context.Context, arg DeleteExpenseParams) er
 }
 
 const getExpense = `-- name: GetExpense :one
-SELECT e.id, e.user_id, e.category_id, e.amount, e.currency, e.description, e.notes, e.expense_date, e.recurring_type, e.priority, e.status, e.is_debt, e.start_date, e.end_date, e.source_rule_id, e.created_at, e.updated_at, e.user_edited_at, e.txid, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
+SELECT e.id, e.user_id, e.category_id, e.amount, e.currency, e.description, e.notes, e.expense_date, e.priority, e.status, e.is_debt, e.source_rule_id, e.created_at, e.updated_at, e.user_edited_at, e.txid, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
 FROM expenses e
 LEFT JOIN expense_categories ec ON e.category_id = ec.id
 WHERE e.id = $1 AND e.user_id = $2
@@ -137,12 +128,9 @@ type GetExpenseRow struct {
 	Description   string             `db:"description" json:"description"`
 	Notes         pgtype.Text        `db:"notes" json:"notes"`
 	ExpenseDate   pgtype.Date        `db:"expense_date" json:"expense_date"`
-	RecurringType string             `db:"recurring_type" json:"recurring_type"`
 	Priority      string             `db:"priority" json:"priority"`
 	Status        string             `db:"status" json:"status"`
 	IsDebt        bool               `db:"is_debt" json:"is_debt"`
-	StartDate     pgtype.Date        `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date        `db:"end_date" json:"end_date"`
 	SourceRuleID  pgtype.UUID        `db:"source_rule_id" json:"source_rule_id"`
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
@@ -165,12 +153,9 @@ func (q *Queries) GetExpense(ctx context.Context, arg GetExpenseParams) (GetExpe
 		&i.Description,
 		&i.Notes,
 		&i.ExpenseDate,
-		&i.RecurringType,
 		&i.Priority,
 		&i.Status,
 		&i.IsDebt,
-		&i.StartDate,
-		&i.EndDate,
 		&i.SourceRuleID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -264,7 +249,7 @@ func (q *Queries) GetTotalExpensesByDateRange(ctx context.Context, arg GetTotalE
 }
 
 const listAllExpensesByUser = `-- name: ListAllExpensesByUser :many
-SELECT id, user_id, category_id, amount, currency, description, notes, expense_date, recurring_type, priority, status, is_debt, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at, txid FROM expenses
+SELECT id, user_id, category_id, amount, currency, description, notes, expense_date, priority, status, is_debt, source_rule_id, created_at, updated_at, user_edited_at, txid FROM expenses
 WHERE user_id = $1
 ORDER BY expense_date DESC, created_at DESC
 `
@@ -287,12 +272,9 @@ func (q *Queries) ListAllExpensesByUser(ctx context.Context, userID uuid.UUID) (
 			&i.Description,
 			&i.Notes,
 			&i.ExpenseDate,
-			&i.RecurringType,
 			&i.Priority,
 			&i.Status,
 			&i.IsDebt,
-			&i.StartDate,
-			&i.EndDate,
 			&i.SourceRuleID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -310,7 +292,7 @@ func (q *Queries) ListAllExpensesByUser(ctx context.Context, userID uuid.UUID) (
 }
 
 const listExpenses = `-- name: ListExpenses :many
-SELECT e.id, e.user_id, e.category_id, e.amount, e.currency, e.description, e.notes, e.expense_date, e.recurring_type, e.priority, e.status, e.is_debt, e.start_date, e.end_date, e.source_rule_id, e.created_at, e.updated_at, e.user_edited_at, e.txid, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
+SELECT e.id, e.user_id, e.category_id, e.amount, e.currency, e.description, e.notes, e.expense_date, e.priority, e.status, e.is_debt, e.source_rule_id, e.created_at, e.updated_at, e.user_edited_at, e.txid, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
 FROM expenses e
 LEFT JOIN expense_categories ec ON e.category_id = ec.id
 WHERE e.user_id = $1
@@ -319,21 +301,19 @@ WHERE e.user_id = $1
   AND ('00000000-0000-0000-0000-000000000000' = $4::uuid OR e.category_id = $4)
   AND ('' = $5 OR e.priority = $5)
   AND ('' = $6 OR e.status = $6)
-  AND ('' = $7 OR e.recurring_type = $7)
 ORDER BY e.expense_date DESC, e.created_at DESC
-LIMIT $9 OFFSET $8
+LIMIT $8 OFFSET $7
 `
 
 type ListExpensesParams struct {
-	UserID        uuid.UUID   `db:"user_id" json:"user_id"`
-	StartDate     pgtype.Date `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date `db:"end_date" json:"end_date"`
-	CategoryID    uuid.UUID   `db:"category_id" json:"category_id"`
-	Priority      interface{} `db:"priority" json:"priority"`
-	Status        interface{} `db:"status" json:"status"`
-	RecurringType interface{} `db:"recurring_type" json:"recurring_type"`
-	PageOffset    int32       `db:"page_offset" json:"page_offset"`
-	PageLimit     int32       `db:"page_limit" json:"page_limit"`
+	UserID     uuid.UUID   `db:"user_id" json:"user_id"`
+	StartDate  pgtype.Date `db:"start_date" json:"start_date"`
+	EndDate    pgtype.Date `db:"end_date" json:"end_date"`
+	CategoryID uuid.UUID   `db:"category_id" json:"category_id"`
+	Priority   interface{} `db:"priority" json:"priority"`
+	Status     interface{} `db:"status" json:"status"`
+	PageOffset int32       `db:"page_offset" json:"page_offset"`
+	PageLimit  int32       `db:"page_limit" json:"page_limit"`
 }
 
 type ListExpensesRow struct {
@@ -345,12 +325,9 @@ type ListExpensesRow struct {
 	Description   string             `db:"description" json:"description"`
 	Notes         pgtype.Text        `db:"notes" json:"notes"`
 	ExpenseDate   pgtype.Date        `db:"expense_date" json:"expense_date"`
-	RecurringType string             `db:"recurring_type" json:"recurring_type"`
 	Priority      string             `db:"priority" json:"priority"`
 	Status        string             `db:"status" json:"status"`
 	IsDebt        bool               `db:"is_debt" json:"is_debt"`
-	StartDate     pgtype.Date        `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date        `db:"end_date" json:"end_date"`
 	SourceRuleID  pgtype.UUID        `db:"source_rule_id" json:"source_rule_id"`
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
@@ -369,7 +346,6 @@ func (q *Queries) ListExpenses(ctx context.Context, arg ListExpensesParams) ([]L
 		arg.CategoryID,
 		arg.Priority,
 		arg.Status,
-		arg.RecurringType,
 		arg.PageOffset,
 		arg.PageLimit,
 	)
@@ -389,12 +365,9 @@ func (q *Queries) ListExpenses(ctx context.Context, arg ListExpensesParams) ([]L
 			&i.Description,
 			&i.Notes,
 			&i.ExpenseDate,
-			&i.RecurringType,
 			&i.Priority,
 			&i.Status,
 			&i.IsDebt,
-			&i.StartDate,
-			&i.EndDate,
 			&i.SourceRuleID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -415,7 +388,7 @@ func (q *Queries) ListExpenses(ctx context.Context, arg ListExpensesParams) ([]L
 }
 
 const listExpensesByIDs = `-- name: ListExpensesByIDs :many
-SELECT e.id, e.user_id, e.category_id, e.amount, e.currency, e.description, e.notes, e.expense_date, e.recurring_type, e.priority, e.status, e.is_debt, e.start_date, e.end_date, e.source_rule_id, e.created_at, e.updated_at, e.user_edited_at, e.txid, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
+SELECT e.id, e.user_id, e.category_id, e.amount, e.currency, e.description, e.notes, e.expense_date, e.priority, e.status, e.is_debt, e.source_rule_id, e.created_at, e.updated_at, e.user_edited_at, e.txid, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
 FROM expenses e
 LEFT JOIN expense_categories ec ON e.category_id = ec.id
 WHERE e.user_id = $1 AND e.id = ANY($2::uuid[])
@@ -436,12 +409,9 @@ type ListExpensesByIDsRow struct {
 	Description   string             `db:"description" json:"description"`
 	Notes         pgtype.Text        `db:"notes" json:"notes"`
 	ExpenseDate   pgtype.Date        `db:"expense_date" json:"expense_date"`
-	RecurringType string             `db:"recurring_type" json:"recurring_type"`
 	Priority      string             `db:"priority" json:"priority"`
 	Status        string             `db:"status" json:"status"`
 	IsDebt        bool               `db:"is_debt" json:"is_debt"`
-	StartDate     pgtype.Date        `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date        `db:"end_date" json:"end_date"`
 	SourceRuleID  pgtype.UUID        `db:"source_rule_id" json:"source_rule_id"`
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
@@ -472,12 +442,9 @@ func (q *Queries) ListExpensesByIDs(ctx context.Context, arg ListExpensesByIDsPa
 			&i.Description,
 			&i.Notes,
 			&i.ExpenseDate,
-			&i.RecurringType,
 			&i.Priority,
 			&i.Status,
 			&i.IsDebt,
-			&i.StartDate,
-			&i.EndDate,
 			&i.SourceRuleID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -498,7 +465,7 @@ func (q *Queries) ListExpensesByIDs(ctx context.Context, arg ListExpensesByIDsPa
 }
 
 const searchExpenses = `-- name: SearchExpenses :many
-SELECT e.id, e.user_id, e.category_id, e.amount, e.currency, e.description, e.notes, e.expense_date, e.recurring_type, e.priority, e.status, e.is_debt, e.start_date, e.end_date, e.source_rule_id, e.created_at, e.updated_at, e.user_edited_at, e.txid, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
+SELECT e.id, e.user_id, e.category_id, e.amount, e.currency, e.description, e.notes, e.expense_date, e.priority, e.status, e.is_debt, e.source_rule_id, e.created_at, e.updated_at, e.user_edited_at, e.txid, ec.name AS category_name, ec.color AS category_color, ec.icon AS category_icon
 FROM expenses e
 LEFT JOIN expense_categories ec ON e.category_id = ec.id
 WHERE e.user_id = $1
@@ -523,12 +490,9 @@ type SearchExpensesRow struct {
 	Description   string             `db:"description" json:"description"`
 	Notes         pgtype.Text        `db:"notes" json:"notes"`
 	ExpenseDate   pgtype.Date        `db:"expense_date" json:"expense_date"`
-	RecurringType string             `db:"recurring_type" json:"recurring_type"`
 	Priority      string             `db:"priority" json:"priority"`
 	Status        string             `db:"status" json:"status"`
 	IsDebt        bool               `db:"is_debt" json:"is_debt"`
-	StartDate     pgtype.Date        `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date        `db:"end_date" json:"end_date"`
 	SourceRuleID  pgtype.UUID        `db:"source_rule_id" json:"source_rule_id"`
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
@@ -562,12 +526,9 @@ func (q *Queries) SearchExpenses(ctx context.Context, arg SearchExpensesParams) 
 			&i.Description,
 			&i.Notes,
 			&i.ExpenseDate,
-			&i.RecurringType,
 			&i.Priority,
 			&i.Status,
 			&i.IsDebt,
-			&i.StartDate,
-			&i.EndDate,
 			&i.SourceRuleID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -606,29 +567,26 @@ func (q *Queries) SkipExpense(ctx context.Context, arg SkipExpenseParams) error 
 const updateExpense = `-- name: UpdateExpense :one
 UPDATE expenses
 SET category_id = $3, amount = $4, currency = $5, description = $6, notes = $7,
-    expense_date = $8, recurring_type = $9, priority = $10, status = $11,
-    is_debt = $12, start_date = $13, end_date = $14, source_rule_id = $15,
+    expense_date = $8, priority = $9, status = $10,
+    is_debt = $11, source_rule_id = $12,
     updated_at = now(), user_edited_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, category_id, amount, currency, description, notes, expense_date, recurring_type, priority, status, is_debt, start_date, end_date, source_rule_id, created_at, updated_at, user_edited_at, txid
+RETURNING id, user_id, category_id, amount, currency, description, notes, expense_date, priority, status, is_debt, source_rule_id, created_at, updated_at, user_edited_at, txid
 `
 
 type UpdateExpenseParams struct {
-	ID            uuid.UUID       `db:"id" json:"id"`
-	UserID        uuid.UUID       `db:"user_id" json:"user_id"`
-	CategoryID    pgtype.UUID     `db:"category_id" json:"category_id"`
-	Amount        decimal.Decimal `db:"amount" json:"amount"`
-	Currency      string          `db:"currency" json:"currency"`
-	Description   string          `db:"description" json:"description"`
-	Notes         pgtype.Text     `db:"notes" json:"notes"`
-	ExpenseDate   pgtype.Date     `db:"expense_date" json:"expense_date"`
-	RecurringType string          `db:"recurring_type" json:"recurring_type"`
-	Priority      string          `db:"priority" json:"priority"`
-	Status        string          `db:"status" json:"status"`
-	IsDebt        bool            `db:"is_debt" json:"is_debt"`
-	StartDate     pgtype.Date     `db:"start_date" json:"start_date"`
-	EndDate       pgtype.Date     `db:"end_date" json:"end_date"`
-	SourceRuleID  pgtype.UUID     `db:"source_rule_id" json:"source_rule_id"`
+	ID           uuid.UUID       `db:"id" json:"id"`
+	UserID       uuid.UUID       `db:"user_id" json:"user_id"`
+	CategoryID   pgtype.UUID     `db:"category_id" json:"category_id"`
+	Amount       decimal.Decimal `db:"amount" json:"amount"`
+	Currency     string          `db:"currency" json:"currency"`
+	Description  string          `db:"description" json:"description"`
+	Notes        pgtype.Text     `db:"notes" json:"notes"`
+	ExpenseDate  pgtype.Date     `db:"expense_date" json:"expense_date"`
+	Priority     string          `db:"priority" json:"priority"`
+	Status       string          `db:"status" json:"status"`
+	IsDebt       bool            `db:"is_debt" json:"is_debt"`
+	SourceRuleID pgtype.UUID     `db:"source_rule_id" json:"source_rule_id"`
 }
 
 func (q *Queries) UpdateExpense(ctx context.Context, arg UpdateExpenseParams) (Expense, error) {
@@ -641,12 +599,9 @@ func (q *Queries) UpdateExpense(ctx context.Context, arg UpdateExpenseParams) (E
 		arg.Description,
 		arg.Notes,
 		arg.ExpenseDate,
-		arg.RecurringType,
 		arg.Priority,
 		arg.Status,
 		arg.IsDebt,
-		arg.StartDate,
-		arg.EndDate,
 		arg.SourceRuleID,
 	)
 	var i Expense
@@ -659,12 +614,9 @@ func (q *Queries) UpdateExpense(ctx context.Context, arg UpdateExpenseParams) (E
 		&i.Description,
 		&i.Notes,
 		&i.ExpenseDate,
-		&i.RecurringType,
 		&i.Priority,
 		&i.Status,
 		&i.IsDebt,
-		&i.StartDate,
-		&i.EndDate,
 		&i.SourceRuleID,
 		&i.CreatedAt,
 		&i.UpdatedAt,

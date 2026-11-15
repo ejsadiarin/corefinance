@@ -22,8 +22,8 @@ func newStatsIntegrationService(t *testing.T) (*Service, *pgxpool.Pool) {
 func seedExpense(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, amount, date, status string) {
 	t.Helper()
 	_, err := pool.Exec(ctx, `INSERT INTO expenses
-		(user_id, amount, currency, description, expense_date, recurring_type, priority, status, start_date)
-		VALUES ($1::uuid, $2::numeric, 'PHP', 'test expense', $3::date, 'one-time', 'want', $4, $3::date)`,
+		(user_id, amount, currency, description, expense_date, priority, status)
+		VALUES ($1::uuid, $2::numeric, 'PHP', 'test expense', $3::date, 'want', $4)`,
 		userID.String(), amount, date, status)
 	require.NoError(t, err)
 }
@@ -31,8 +31,8 @@ func seedExpense(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID u
 func seedIncome(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, amount, date, status string) {
 	t.Helper()
 	_, err := pool.Exec(ctx, `INSERT INTO incomes
-		(user_id, amount, currency, description, date, recurring_type, priority, status, start_date)
-		VALUES ($1::uuid, $2::numeric, 'PHP', 'test income', $3::date, 'one-time', 'want', $4, $3::date)`,
+		(user_id, amount, currency, description, date, priority, status)
+		VALUES ($1::uuid, $2::numeric, 'PHP', 'test income', $3::date, 'want', $4)`,
 		userID.String(), amount, date, status)
 	require.NoError(t, err)
 }

@@ -39,7 +39,7 @@ func TestRuleEntries_EditedMark_Integration(t *testing.T) {
 	edited := before["expense 2026-09-01"]
 	_, err := expense.NewService(f.q).Update(ctx, uuid.MustParse(edited.ID), user, expense.UpdateRequest{
 		Amount: 120, Currency: "PHP", Description: "rent (raised)", ExpenseDate: "2026-09-01",
-		RecurringType: "one-time", Priority: "need", Status: "posted", SourceRuleID: ptr(rent.String()),
+		Priority: "need", Status: "posted", SourceRuleID: ptr(rent.String()),
 	})
 	require.NoError(t, err)
 	require.NoError(t, expense.NewService(f.q).Skip(ctx, uuid.MustParse(before["expense 2026-10-01"].ID), user))

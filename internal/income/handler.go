@@ -32,10 +32,6 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := helper.ValidateRecurringType(req.RecurringType); err != nil {
-		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
 	if err := helper.ValidateStatus(req.Status); err != nil {
 		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
 		return
@@ -105,13 +101,12 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Debug("income.List: request received", "user_id", userID)
 	params := ListParams{
-		StartDate:     helper.ParseQueryString(r, "start_date"),
-		EndDate:       helper.ParseQueryString(r, "end_date"),
-		CategoryID:    helper.ParseQueryString(r, "category_id"),
-		Status:        helper.ParseQueryString(r, "status"),
-		RecurringType: helper.ParseQueryString(r, "recurring_type"),
-		Page:          helper.ParseQueryInt(r, "page", 1),
-		PageSize:      helper.ParseQueryInt(r, "page_size", 50),
+		StartDate:  helper.ParseQueryString(r, "start_date"),
+		EndDate:    helper.ParseQueryString(r, "end_date"),
+		CategoryID: helper.ParseQueryString(r, "category_id"),
+		Status:     helper.ParseQueryString(r, "status"),
+		Page:       helper.ParseQueryInt(r, "page", 1),
+		PageSize:   helper.ParseQueryInt(r, "page_size", 50),
 	}
 	incomes, err := h.service.List(r.Context(), userID, params)
 	if err != nil {
@@ -138,10 +133,6 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := helper.ValidatePriority(req.Priority); err != nil {
-		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err := helper.ValidateRecurringType(req.RecurringType); err != nil {
 		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
