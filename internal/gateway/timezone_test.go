@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/google/uuid"
@@ -33,7 +34,7 @@ func fakeGateway(t *testing.T, key string, zones map[string]string, status int) 
 			tz = "UTC"
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"user_id":"` + id + `","timezone":"` + tz + `","saved":` + map[bool]string{true: "true", false: "false"}[saved] + `}`))
+		_, _ = w.Write([]byte(`{"user_id":"` + id + `","timezone":"` + tz + `","saved":` + strconv.FormatBool(saved) + `}`))
 	}))
 	mux := http.NewServeMux()
 	mux.Handle("GET /api/users/{id}/timezone", srv.Config.Handler)

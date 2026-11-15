@@ -24,6 +24,8 @@ type TimezoneClient struct {
 	http    *http.Client
 }
 
+// NewTimezoneClient is a client for the gateway at baseURL (e.g.
+// http://coregateway-api:8080), authenticating with apiKey.
 func NewTimezoneClient(baseURL, apiKey string) *TimezoneClient {
 	return &TimezoneClient{
 		baseURL: strings.TrimRight(baseURL, "/"),
@@ -42,7 +44,7 @@ type timezoneResponse struct {
 func (c *TimezoneClient) Zone(ctx context.Context, userID uuid.UUID) (*time.Location, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/users/"+userID.String()+"/timezone", nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("gateway timezone lookup: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	res, err := c.http.Do(req)
@@ -58,9 +60,12 @@ func (c *TimezoneClient) Zone(ctx context.Context, userID uuid.UUID) (*time.Loca
 	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
 		return nil, fmt.Errorf("gateway timezone lookup: decode: %w", err)
 	}
+	if out.Timezone == "" {
+		return nil, fmt.Errorf("gateway timezone lookup: no zone in the answer")
+	}
 	loc, err := time.LoadLocation(out.Timezone)
-	if err != nil || out.Timezone == "" {
-		return nil, fmt.Errorf("gateway timezone lookup: zone %q doesn't load", out.Timezone)
+	if err != nil {
+		return nil, fmt.Errorf("gateway timezone lookup: zone %q: %w", out.Timezone, err)
 	}
 	return loc, nil
 }

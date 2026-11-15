@@ -154,8 +154,8 @@ func TestTagService_Update(t *testing.T) {
 				assert.Equal(t, "Updated Tag", arg.Name)
 				assert.Equal(t, pgtype.Text{String: color, Valid: true}, arg.Color)
 				return db.Tag{
-					ID:    tagID,
-					Name:  "Updated Tag",
+					ID:   tagID,
+					Name: "Updated Tag",
 					Color: pgtype.Text{String: color, Valid: true},
 				}, nil
 			},

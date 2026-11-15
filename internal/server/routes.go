@@ -256,10 +256,12 @@ func (s *Server) observeTimezone(next http.Handler) http.Handler {
 		if target, targeted := auth.ActAsFromContext(ctx); targeted {
 			userID, ok = target, true
 		}
-		if ok {
-			tz := materialize.LoadZone(auth.TimezoneFromContext(ctx)).String()
-			if err := materialize.ObserveTimezone(ctx, s.Queries, userID, tz, time.Now()); err != nil {
-				slog.Error("observe timezone failed", "error", err, "user_id", userID)
+		// A token without tz (minted before the gateway sent it) is UTC for
+		// dating, but says nothing about the user's zone: don't record it, or
+		// old and new tokens would flip the schedule back and forth.
+		if tz := auth.TimezoneFromContext(ctx); ok && tz != "" {
+			if err := materialize.ObserveTimezone(ctx, s.Queries, userID, materialize.LoadZone(tz), time.Now()); err != nil {
+				slog.Error("server.observeTimezone: failed", "error", err, "user_id", userID)
 			}
 		}
 		next.ServeHTTP(w, r)

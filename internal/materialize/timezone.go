@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
@@ -52,20 +53,29 @@ func dateIn(now time.Time, loc *time.Location) time.Time {
 }
 
 // ObserveTimezone records the zone a request's token carried for the user,
-// seen at now. When it differs from the last one corefinance saw, the user's
-// next due times are cleared: each is midnight in the old zone, and the next
-// pass recomputes them (#16).
-func ObserveTimezone(ctx context.Context, q db.Querier, userID uuid.UUID, tz string, now time.Time) error {
-	changed, err := q.ObserveUserTimezone(ctx, db.ObserveUserTimezoneParams{
-		UserID: userID, Timezone: tz, SeenAt: pgtype.Timestamptz{Time: now, Valid: true},
-	})
-	if err != nil {
-		return fmt.Errorf("observe user timezone: %w", err)
-	}
-	if len(changed) == 0 {
+// seen at now: when it differs from the last one corefinance saw, the user's
+// next due times are reset in the same statement (#16). The common case, an
+// unchanged zone, is a read and no write.
+func ObserveTimezone(ctx context.Context, q db.Querier, userID uuid.UUID, loc *time.Location, now time.Time) error {
+	seen, err := q.GetSeenTimezone(ctx, userID)
+	if err == nil && seen == loc.String() {
 		return nil
 	}
-	return clearNextDue(ctx, q, userID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("get seen timezone: %w", err)
+	}
+	return recordZone(ctx, q, userID, loc, now)
+}
+
+// recordZone records loc as the user's zone checked at now, resetting their
+// next due times if it changed.
+func recordZone(ctx context.Context, q db.Querier, userID uuid.UUID, loc *time.Location, now time.Time) error {
+	if _, err := q.RecordUserTimezone(ctx, db.RecordUserTimezoneParams{
+		Owner: userID, Timezone: loc.String(), SeenAt: pgtype.Timestamptz{Time: now, Valid: true},
+	}); err != nil {
+		return fmt.Errorf("record user timezone: %w", err)
+	}
+	return nil
 }
 
 // ZoneRefreshEvery is how often the worker asks the gateway again for the
@@ -73,41 +83,52 @@ func ObserveTimezone(ctx context.Context, q db.Querier, userID uuid.UUID, tz str
 // even if they make no request to corefinance.
 const ZoneRefreshEvery = 10 * time.Minute
 
+// zoneCheck is what refreshZones learned this pass: the zones it looked up,
+// and the users whose lookup failed (skipped for the rest of the pass).
+type zoneCheck struct {
+	zones  map[uuid.UUID]*time.Location
+	failed map[uuid.UUID]bool
+}
+
 // refreshZones asks zones again for every user with an active rule whose
-// zone wasn't checked in the last ZoneRefreshEvery, and clears the next due
-// times of those whose zone changed. A failed lookup is reported and the
-// user's schedule is left as it is until a later pass.
-func refreshZones(ctx context.Context, q db.Querier, zones Zones, now time.Time) error {
+// zone wasn't checked in the last ZoneRefreshEvery, and records each answer
+// (resetting the schedule of users whose zone changed). A failed lookup is
+// reported, and the user's schedule is left alone until a later pass.
+func refreshZones(ctx context.Context, q db.Querier, zones Zones, now time.Time) (zoneCheck, error) {
+	check := zoneCheck{zones: map[uuid.UUID]*time.Location{}, failed: map[uuid.UUID]bool{}}
 	users, err := q.ListUsersToRefreshZone(ctx, pgtype.Timestamptz{Time: now.Add(-ZoneRefreshEvery), Valid: true})
 	if err != nil {
-		return fmt.Errorf("list users to refresh zone: %w", err)
+		return check, fmt.Errorf("list users to refresh zone: %w", err)
 	}
 	var errs []error
 	for _, user := range users {
 		loc, err := zones.Zone(ctx, user)
 		if err != nil {
+			check.failed[user] = true
 			errs = append(errs, fmt.Errorf("user %s: timezone: %w", user, err))
 			continue
 		}
-		prev, err := q.RefreshUserTimezone(ctx, db.RefreshUserTimezoneParams{
-			UserID: user, Timezone: loc.String(), SeenAt: pgtype.Timestamptz{Time: now, Valid: true},
-		})
-		if err != nil {
-			errs = append(errs, fmt.Errorf("user %s: refresh timezone: %w", user, err))
-			continue
-		}
-		if prev != loc.String() {
-			if err := clearNextDue(ctx, q, user); err != nil {
-				errs = append(errs, fmt.Errorf("user %s: %w", user, err))
-			}
+		check.zones[user] = loc
+		if err := recordZone(ctx, q, user, loc, now); err != nil {
+			errs = append(errs, fmt.Errorf("user %s: %w", user, err))
 		}
 	}
-	return errors.Join(errs...)
+	return check, errors.Join(errs...)
 }
 
-func clearNextDue(ctx context.Context, q db.Querier, userID uuid.UUID) error {
-	if err := q.ClearUserNextDue(ctx, userID); err != nil {
-		return fmt.Errorf("clear next due: %w", err)
+// zoneFor is the user's zone for this pass: the one refreshZones just looked
+// up, or a fresh lookup. ok is false when the lookup failed (now or earlier
+// in the pass); the error is reported once.
+func (c zoneCheck) zoneFor(ctx context.Context, zones Zones, user uuid.UUID) (loc *time.Location, ok bool, err error) {
+	if c.failed[user] {
+		return nil, false, nil
 	}
-	return nil
+	if loc, ok := c.zones[user]; ok {
+		return loc, true, nil
+	}
+	loc, err = zones.Zone(ctx, user)
+	if err != nil {
+		return nil, false, fmt.Errorf("user %s: timezone: %w", user, err)
+	}
+	return loc, true, nil
 }

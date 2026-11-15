@@ -97,7 +97,9 @@ func runOnce(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones
 	}
 	n, err := materialize.MaterializeDue(ctx, pool, queries, zones, today)
 	if err != nil {
-		slog.Error("materialize failed", "error", err)
+		// Some users were skipped (a failed timezone lookup, a failed write);
+		// the rest were filled, and the skipped ones are retried next pass.
+		slog.Warn("materialize pass skipped some users", "inserted", n, "error", err)
 		return 1
 	}
 	// Passes run at least once a minute; only ones that did something are news.
@@ -148,7 +150,7 @@ func main() {
 	slog.Info("worker started, filling rules as they fall due")
 	for {
 		if code := runOnce(ctx, pool, queries, zones, false); code != 0 {
-			slog.Error("materialize pass failed, retrying at the next wake")
+			slog.Info("retrying skipped users at the next wake")
 		}
 		wait := untilNextWake(ctx, queries, time.Now())
 		select {

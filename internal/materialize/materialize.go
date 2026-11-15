@@ -232,10 +232,9 @@ func PendingDates(start time.Time, cadence string, watermark, end pgtype.Date, t
 // MaterializeUser fills one user's rules (#14, ADR-0001): every active rule
 // gets its due dates after its watermark (materialized_through) up to
 // min(end_date, today), where today is the date at now in the user's zone
-// loc, and the
-// watermark moves forward. Missed days while the worker was down are filled
-// on the next pass; rules that ended in the meantime still get their last
-// entries. The watermark never moves backward, so an entry the user deleted
+// loc, and the watermark moves forward. Missed days while the worker was
+// down are filled on the next pass; rules that ended in the meantime still
+// get their last entries. The watermark never moves backward, so an entry the user deleted
 // is not recreated, and inserts are ON CONFLICT DO NOTHING, so entries the
 // user edited or skipped are untouched.
 //
@@ -419,18 +418,18 @@ func withMaterializeLock(ctx context.Context, pool *pgxpool.Pool, queries *db.Qu
 	return nil
 }
 
-// MaterializeDue runs MaterializeUser for every user with a rule due by now,
-// in the zone zones gives for them
-// (its next_due_at has passed, or isn't computed yet), each
-// in its own short transaction, so one user's pass never waits on another's
-// and a failure for one user doesn't stop the rest. Instance rows use
+// MaterializeDue runs MaterializeUser, in the zone zones gives, for every user
+// with a rule due by now (its next_due_at has passed, or isn't computed
+// yet), each in its own short transaction, so one user's pass never waits on
+// another's and a failure for one user doesn't stop the rest. Instance rows use
 // recurring_type='one-time', NULL start/end, source_rule_id set,
 // status='posted'. Returns the rows inserted, and every user's error joined.
 func MaterializeDue(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones Zones, now time.Time) (int, error) {
 	var errs []error
-	// A zone change at the gateway clears the user's next due times, so they
+	// A zone change at the gateway resets the user's next due times, so they
 	// are due below and recomputed in the new zone.
-	if err := refreshZones(ctx, queries, zones, now); err != nil {
+	check, err := refreshZones(ctx, queries, zones, now)
+	if err != nil {
 		errs = append(errs, err)
 	}
 	users, err := queries.ListUsersDue(ctx, pgtype.Timestamptz{Time: now, Valid: true})
@@ -441,9 +440,11 @@ func MaterializeDue(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries
 	for _, user := range users {
 		// The zone comes from the gateway (ADR-0005): if it can't be had,
 		// skip this user rather than guess; the next pass retries.
-		loc, err := zones.Zone(ctx, user)
+		loc, ok, err := check.zoneFor(ctx, zones, user)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("user %s: timezone: %w", user, err))
+			errs = append(errs, err)
+		}
+		if !ok {
 			continue
 		}
 		n, err := materializeUserTx(ctx, pool, queries, user, loc, now)
@@ -462,7 +463,7 @@ func materializeUserTx(ctx context.Context, pool *pgxpool.Pool, queries *db.Quer
 	}
 	defer tx.Rollback(ctx)
 	q := queries.WithTx(tx)
-	if err := ObserveTimezone(ctx, q, user, loc.String(), now); err != nil {
+	if err := ObserveTimezone(ctx, q, user, loc, now); err != nil {
 		return 0, err
 	}
 	n, err := MaterializeUser(ctx, q, user, loc, now)

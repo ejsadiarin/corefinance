@@ -9,8 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 )
 
 // The user's "today" (#9): rule entries land on the user's date, not the
@@ -22,7 +20,7 @@ var mondayEveningUTC = time.Date(2026, 11, 9, 16, 30, 0, 0, time.UTC)
 // testZones is the gateway as the tests see it: users not in it are on UTC.
 var testZones = FixedZones{}
 
-func setTimezone(t *testing.T, _ context.Context, _ *db.Queries, userID uuid.UUID, tz string) {
+func setTimezone(t *testing.T, userID uuid.UUID, tz string) {
 	t.Helper()
 	testZones[userID] = tz
 }
@@ -31,7 +29,7 @@ func TestCatchUp_ManilaUserGetsTuesdayEntryAtMondayEveningUTC_Integration(t *tes
 	pool, q := newMaterializeTest(t)
 	ctx := context.Background()
 	manila := uuid.New()
-	setTimezone(t, ctx, q, manila, "Asia/Manila")
+	setTimezone(t, manila, "Asia/Manila")
 	rule := seedExpenseRule(t, ctx, q, manila, "weekly", "2026-11-10", nil) // a Tuesday
 
 	n, err := MaterializeDue(ctx, pool, q, testZones, mondayEveningUTC)
@@ -87,4 +85,26 @@ func TestCatchUp_FailedZoneLookupSkipsOnlyThatUser_Integration(t *testing.T) {
 	_, err = MaterializeDue(ctx, pool, q, FixedZones{}, mondayEveningUTC)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"2026-11-08", "2026-11-09"}, ruleExpenseDates(t, ctx, pool, downRule.ID))
+}
+
+// A token's zone (#18): the same zone again leaves the schedule alone; a
+// different one resets the user's next due times for the next pass.
+func TestObserveTimezone_ChangeResetsNextDue_Integration(t *testing.T) {
+	pool, q := newMaterializeTest(t)
+	ctx := context.Background()
+	user := uuid.New()
+	rule := seedExpenseRule(t, ctx, q, user, "weekly", "2026-11-10", nil)
+	manila, err := time.LoadLocation("Asia/Manila")
+	require.NoError(t, err)
+
+	require.NoError(t, ObserveTimezone(ctx, q, user, time.UTC, mondayEveningUTC))
+	_, err = MaterializeDue(ctx, pool, q, testZones, mondayEveningUTC)
+	require.NoError(t, err)
+	assert.Equal(t, "2026-11-10T00:00Z", storedNextDue(t, ctx, pool, rule.ID))
+
+	require.NoError(t, ObserveTimezone(ctx, q, user, time.UTC, mondayEveningUTC))
+	assert.Equal(t, "2026-11-10T00:00Z", storedNextDue(t, ctx, pool, rule.ID), "same zone: untouched")
+
+	require.NoError(t, ObserveTimezone(ctx, q, user, manila, mondayEveningUTC))
+	assert.Equal(t, "null", storedNextDue(t, ctx, pool, rule.ID), "new zone: reset for the next pass")
 }

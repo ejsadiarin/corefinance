@@ -12,6 +12,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getSeenTimezone = `-- name: GetSeenTimezone :one
+
+SELECT timezone FROM user_timezones WHERE user_id = $1
+`
+
+// The zone corefinance last saw per user (#18, coregateway ADR-0005), kept
+// to notice a change and recompute the user's next due times.
+func (q *Queries) GetSeenTimezone(ctx context.Context, userID uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, getSeenTimezone, userID)
+	var timezone string
+	err := row.Scan(&timezone)
+	return timezone, err
+}
+
 const listUsersToRefreshZone = `-- name: ListUsersToRefreshZone :many
 SELECT DISTINCT r.user_id FROM rules r
 LEFT JOIN user_timezones z ON z.user_id = r.user_id
@@ -42,64 +56,36 @@ func (q *Queries) ListUsersToRefreshZone(ctx context.Context, cutoff pgtype.Time
 	return items, nil
 }
 
-const observeUserTimezone = `-- name: ObserveUserTimezone :many
-
-INSERT INTO user_timezones (user_id, timezone, seen_at)
-VALUES ($1, $2, $3::timestamptz)
-ON CONFLICT (user_id) DO UPDATE SET timezone = EXCLUDED.timezone, seen_at = EXCLUDED.seen_at
-WHERE user_timezones.timezone IS DISTINCT FROM EXCLUDED.timezone
-RETURNING user_id
+const recordUserTimezone = `-- name: RecordUserTimezone :one
+WITH prev AS (
+    SELECT timezone FROM user_timezones WHERE user_id = $2::uuid
+), recorded AS (
+    INSERT INTO user_timezones (user_id, timezone, seen_at)
+    VALUES ($2::uuid, $1::text, $3::timestamptz)
+    ON CONFLICT (user_id) DO UPDATE SET timezone = EXCLUDED.timezone, seen_at = EXCLUDED.seen_at
+    RETURNING user_id
+), cleared AS (
+    UPDATE rules SET next_due_at = NULL
+    WHERE user_id = $2::uuid
+      AND (SELECT timezone FROM prev) IS DISTINCT FROM $1::text
+    RETURNING id
+)
+SELECT ((SELECT timezone FROM prev) IS DISTINCT FROM $1::text)::bool AS changed
 `
 
-type ObserveUserTimezoneParams struct {
-	UserID   uuid.UUID          `db:"user_id" json:"user_id"`
+type RecordUserTimezoneParams struct {
 	Timezone string             `db:"timezone" json:"timezone"`
+	Owner    uuid.UUID          `db:"owner" json:"owner"`
 	SeenAt   pgtype.Timestamptz `db:"seen_at" json:"seen_at"`
 }
 
-// The zone corefinance last saw per user (#18, coregateway ADR-0005), kept
-// to notice a change and recompute the user's next due times.
-// From a request's token: writes only when the zone is new or changed, and
-// then returns the user's row, so callers know to recompute.
-func (q *Queries) ObserveUserTimezone(ctx context.Context, arg ObserveUserTimezoneParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, observeUserTimezone, arg.UserID, arg.Timezone, arg.SeenAt)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []uuid.UUID{}
-	for rows.Next() {
-		var user_id uuid.UUID
-		if err := rows.Scan(&user_id); err != nil {
-			return nil, err
-		}
-		items = append(items, user_id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const refreshUserTimezone = `-- name: RefreshUserTimezone :one
-WITH prev AS (SELECT timezone FROM user_timezones WHERE user_id = $1)
-INSERT INTO user_timezones (user_id, timezone, seen_at)
-VALUES ($1, $2, $3::timestamptz)
-ON CONFLICT (user_id) DO UPDATE SET timezone = EXCLUDED.timezone, seen_at = EXCLUDED.seen_at
-RETURNING COALESCE((SELECT timezone FROM prev), '')::text AS previous
-`
-
-type RefreshUserTimezoneParams struct {
-	UserID   uuid.UUID          `db:"user_id" json:"user_id"`
-	Timezone string             `db:"timezone" json:"timezone"`
-	SeenAt   pgtype.Timestamptz `db:"seen_at" json:"seen_at"`
-}
-
-// From the gateway: always records the check, and returns the zone before
-// it (” when there was none).
-func (q *Queries) RefreshUserTimezone(ctx context.Context, arg RefreshUserTimezoneParams) (string, error) {
-	row := q.db.QueryRow(ctx, refreshUserTimezone, arg.UserID, arg.Timezone, arg.SeenAt)
-	var previous string
-	err := row.Scan(&previous)
-	return previous, err
+// Records a zone seen at seen_at and, in the same statement, clears the
+// user's next due times when it differs from the one before (each is
+// midnight in the old zone; the next pass recomputes them). One statement,
+// so a change can't be recorded without its schedule being reset.
+func (q *Queries) RecordUserTimezone(ctx context.Context, arg RecordUserTimezoneParams) (bool, error) {
+	row := q.db.QueryRow(ctx, recordUserTimezone, arg.Timezone, arg.Owner, arg.SeenAt)
+	var changed bool
+	err := row.Scan(&changed)
+	return changed, err
 }

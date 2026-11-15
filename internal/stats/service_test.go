@@ -290,9 +290,9 @@ func TestStatsService_UpcomingBills(t *testing.T) {
 				assert.Equal(t, userID, uid)
 				return []db.GetUpcomingRecurringExpensesRow{
 					{
-						ID:           uuid.New(),
-						Description:  "Rent",
-						Amount:       decimal.NewFromFloat(1500),
+						ID:          uuid.New(),
+						Description: "Rent",
+						Amount:      decimal.NewFromFloat(1500),
 						CategoryName: pgtype.Text{String: "Housing", Valid: true},
 					},
 					{

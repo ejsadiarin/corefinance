@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 
@@ -52,6 +53,9 @@ type MockQuerier struct {
 	LockUserMaterializeFn                 func(ctx context.Context, userID uuid.UUID) error
 	AdvanceRuleWatermarkFn                func(ctx context.Context, arg db.AdvanceRuleWatermarkParams) error
 	ListRuleEntriesToReconcileFn          func(ctx context.Context, arg db.ListRuleEntriesToReconcileParams) ([]db.ListRuleEntriesToReconcileRow, error)
+	GetSeenTimezoneFn                     func(ctx context.Context, userID uuid.UUID) (string, error)
+	RecordUserTimezoneFn                  func(ctx context.Context, arg db.RecordUserTimezoneParams) (bool, error)
+	ListUsersToRefreshZoneFn              func(ctx context.Context, cutoff pgtype.Timestamptz) ([]uuid.UUID, error)
 	ListUsersDueFn                        func(ctx context.Context, now pgtype.Timestamptz) ([]uuid.UUID, error)
 	ListUserActiveRulesFn                 func(ctx context.Context, userID uuid.UUID) ([]db.Rule, error)
 	GetNextWakeFn                         func(ctx context.Context, now pgtype.Timestamptz) (pgtype.Timestamptz, error)
@@ -557,15 +561,26 @@ func (m *MockQuerier) SetRuleNextDue(ctx context.Context, arg db.SetRuleNextDueP
 
 func (m *MockQuerier) ClearUserNextDue(ctx context.Context, userID uuid.UUID) error { return nil }
 
-// ObserveUserTimezone defaults to "no change".
-func (m *MockQuerier) ObserveUserTimezone(ctx context.Context, arg db.ObserveUserTimezoneParams) ([]uuid.UUID, error) {
-	return nil, nil
+// GetSeenTimezone defaults to "never seen".
+func (m *MockQuerier) GetSeenTimezone(ctx context.Context, userID uuid.UUID) (string, error) {
+	if m.GetSeenTimezoneFn == nil {
+		return "", pgx.ErrNoRows
+	}
+	return m.GetSeenTimezoneFn(ctx, userID)
 }
 
+// RecordUserTimezone defaults to recording an unchanged zone.
+func (m *MockQuerier) RecordUserTimezone(ctx context.Context, arg db.RecordUserTimezoneParams) (bool, error) {
+	if m.RecordUserTimezoneFn == nil {
+		return false, nil
+	}
+	return m.RecordUserTimezoneFn(ctx, arg)
+}
+
+// ListUsersToRefreshZone defaults to nobody.
 func (m *MockQuerier) ListUsersToRefreshZone(ctx context.Context, cutoff pgtype.Timestamptz) ([]uuid.UUID, error) {
-	return nil, nil
-}
-
-func (m *MockQuerier) RefreshUserTimezone(ctx context.Context, arg db.RefreshUserTimezoneParams) (string, error) {
-	return arg.Timezone, nil
+	if m.ListUsersToRefreshZoneFn == nil {
+		return nil, nil
+	}
+	return m.ListUsersToRefreshZoneFn(ctx, cutoff)
 }

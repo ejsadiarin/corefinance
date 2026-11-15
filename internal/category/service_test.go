@@ -164,8 +164,8 @@ func TestCategoryService_UpdateExpense(t *testing.T) {
 				assert.Equal(t, "Updated", arg.Name)
 				assert.Equal(t, pgtype.Text{String: color, Valid: true}, arg.Color)
 				return db.ExpenseCategory{
-					ID:    catID,
-					Name:  "Updated",
+					ID:   catID,
+					Name: "Updated",
 					Color: pgtype.Text{String: color, Valid: true},
 				}, nil
 			},
@@ -348,8 +348,8 @@ func TestCategoryService_UpdateIncome(t *testing.T) {
 				assert.Equal(t, "Updated Income", arg.Name)
 				assert.Equal(t, pgtype.Text{String: color, Valid: true}, arg.Color)
 				return db.IncomeCategory{
-					ID:    catID,
-					Name:  "Updated Income",
+					ID:   catID,
+					Name: "Updated Income",
 					Color: pgtype.Text{String: color, Valid: true},
 				}, nil
 			},

@@ -66,6 +66,9 @@ type Querier interface {
 	GetRecurringExpenseRule(ctx context.Context, arg GetRecurringExpenseRuleParams) (GetRecurringExpenseRuleRow, error)
 	GetRecurringIncomeRule(ctx context.Context, arg GetRecurringIncomeRuleParams) (RecurringIncomeRule, error)
 	GetSavingsRate(ctx context.Context, arg GetSavingsRateParams) (GetSavingsRateRow, error)
+	// The zone corefinance last saw per user (#18, coregateway ADR-0005), kept
+	// to notice a change and recompute the user's next due times.
+	GetSeenTimezone(ctx context.Context, userID uuid.UUID) (string, error)
 	GetSpendingVelocity(ctx context.Context, arg GetSpendingVelocityParams) (GetSpendingVelocityRow, error)
 	GetSummary(ctx context.Context, arg GetSummaryParams) (GetSummaryRow, error)
 	GetTag(ctx context.Context, arg GetTagParams) (Tag, error)
@@ -137,14 +140,11 @@ type Querier interface {
 	// a later schedule change reports it for review instead of skipping it.
 	MarkExpenseEntriesKept(ctx context.Context, arg MarkExpenseEntriesKeptParams) error
 	MarkIncomeEntriesKept(ctx context.Context, arg MarkIncomeEntriesKeptParams) error
-	// The zone corefinance last saw per user (#18, coregateway ADR-0005), kept
-	// to notice a change and recompute the user's next due times.
-	// From a request's token: writes only when the zone is new or changed, and
-	// then returns the user's row, so callers know to recompute.
-	ObserveUserTimezone(ctx context.Context, arg ObserveUserTimezoneParams) ([]uuid.UUID, error)
-	// From the gateway: always records the check, and returns the zone before
-	// it ('' when there was none).
-	RefreshUserTimezone(ctx context.Context, arg RefreshUserTimezoneParams) (string, error)
+	// Records a zone seen at seen_at and, in the same statement, clears the
+	// user's next due times when it differs from the one before (each is
+	// midnight in the old zone; the next pass recomputes them). One statement,
+	// so a change can't be recorded without its schedule being reset.
+	RecordUserTimezone(ctx context.Context, arg RecordUserTimezoneParams) (bool, error)
 	RemoveTagFromExpense(ctx context.Context, arg RemoveTagFromExpenseParams) error
 	RemoveTagFromIncome(ctx context.Context, arg RemoveTagFromIncomeParams) error
 	SearchExpenses(ctx context.Context, arg SearchExpensesParams) ([]SearchExpensesRow, error)

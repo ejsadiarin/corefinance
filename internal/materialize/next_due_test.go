@@ -28,7 +28,7 @@ func TestNextDue_ManilaTuesdayIsDueAtMondayEveningUTC_Integration(t *testing.T) 
 	pool, q := newMaterializeTest(t)
 	ctx := context.Background()
 	manila := uuid.New()
-	setTimezone(t, ctx, q, manila, "Asia/Manila")
+	setTimezone(t, manila, "Asia/Manila")
 	rule := seedExpenseRule(t, ctx, q, manila, "weekly", "2026-11-10", nil) // a Tuesday
 
 	// Monday 10:00 UTC (18:00 in Manila): nothing yet, due at Tuesday 00:00 Manila.
@@ -91,7 +91,7 @@ func TestNextDue_TimezoneChangeRecomputes_Integration(t *testing.T) {
 
 	// The gateway now says Manila, and the user makes no request: once the
 	// zone is due a re-check, a pass sees the change and recomputes.
-	setTimezone(t, ctx, q, user, "Asia/Manila")
+	setTimezone(t, user, "Asia/Manila")
 	_, err = MaterializeDue(ctx, pool, q, testZones, time.Date(2026, 11, 9, 10, 0, 0, 0, time.UTC).Add(ZoneRefreshEvery+time.Minute))
 	require.NoError(t, err)
 	assert.Equal(t, "2026-11-09T16:00Z", storedNextDue(t, ctx, pool, rule.ID))
