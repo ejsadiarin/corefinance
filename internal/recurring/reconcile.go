@@ -19,9 +19,9 @@ import (
 // longer produces ("stale") are skipped if the user never edited them,
 // unless the caller keeps them; entries the user edited are kept and
 // reported for review. Nothing is deleted, and a schedule change adds no
-// entries before today: the writer carries on from where it is, so entries
-// the user deleted are never recreated. Ending a rule in the past (#5) is
-// one case of this.
+// entries before today: the rule carries on from today (or from where it
+// was, if later), so entries the user deleted are never recreated. Ending a
+// rule in the past (#5) is one case of this.
 
 // What happens to untouched stale entries.
 const (
@@ -77,6 +77,22 @@ func sameDate(a, b pgtype.Date) bool {
 
 func (s schedule) equal(o schedule) bool {
 	return s.cadence == o.cadence && sameDate(s.start, o.start) && sameDate(s.end, o.end)
+}
+
+// noBackfill moves the rule's watermark up to `through` (the day before the
+// owner's today) when its schedule changed, so the fill that follows adds no
+// entries before today: reopening a rule that ended last week doesn't fill
+// the week since. The watermark only moves forward, so a rule already filled
+// through today is untouched. Pausing isn't a schedule change; resuming has
+// its own watermark (materialize.ResumeThrough).
+func noBackfill(ctx context.Context, q db.Querier, ruleID uuid.UUID, was, now schedule, through pgtype.Date) error {
+	if was.equal(now) {
+		return nil
+	}
+	if err := q.AdvanceRuleWatermark(ctx, db.AdvanceRuleWatermarkParams{ID: ruleID, Through: through}); err != nil {
+		return fmt.Errorf("advance rule watermark: %w", err)
+	}
+	return nil
 }
 
 // reconcile skips, keeps or reports the rule's entries that schedule `now`

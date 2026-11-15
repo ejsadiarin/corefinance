@@ -158,8 +158,8 @@ func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 		return IncomeRuleUpdate{}, err
 	}
 	var out IncomeRuleUpdate
-	// The rule and its entries change together: if skipping fails, the end
-	// date isn't saved either, so a retry still sees it move (#5).
+	// The rule and its entries change together: if reconciling fails, the
+	// schedule change isn't saved either, so a retry still sees it (#15).
 	err := s.inTx(ctx, func(q db.Querier) error {
 		loc, err := lockOwnerInZone(ctx, q, userID)
 		if err != nil {
@@ -169,7 +169,9 @@ func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 		if err != nil {
 			return err
 		}
-		resumeThrough := materialize.ResumeThrough(loc, time.Now())
+		// The day before the owner's today: where a resumed rule, or one
+		// whose schedule changed, carries on from.
+		yesterday := materialize.ResumeThrough(loc, time.Now())
 		rule, err := q.UpdateRecurringIncomeRule(ctx, db.UpdateRecurringIncomeRuleParams{
 			ID:            id,
 			UserID:        userID,
@@ -183,16 +185,18 @@ func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 			Notes:         helper.ToPgText(req.Notes),
 			Priority:      optionalPriority(req.Priority),
 			IsActive:      helper.ToPgBool(req.IsActive),
-			ResumeThrough: resumeThrough,
+			ResumeThrough: yesterday,
 		})
 		if err != nil {
 			return err
 		}
-		stale, err := reconcile(ctx, q, userID, rule.ID,
-			schedule{start: old.StartDate, cadence: old.RecurringType, end: old.EndDate},
-			schedule{start: rule.StartDate, cadence: rule.RecurringType, end: rule.EndDate},
-			choice)
+		was := schedule{start: old.StartDate, cadence: old.RecurringType, end: old.EndDate}
+		now := schedule{start: rule.StartDate, cadence: rule.RecurringType, end: rule.EndDate}
+		stale, err := reconcile(ctx, q, userID, rule.ID, was, now, choice)
 		if err != nil {
+			return err
+		}
+		if err := noBackfill(ctx, q, rule.ID, was, now, yesterday); err != nil {
 			return err
 		}
 		out = IncomeRuleUpdate{RecurringIncomeRule: rule, StaleEntries: stale}
@@ -265,8 +269,8 @@ func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uu
 		return ExpenseRuleUpdate{}, err
 	}
 	var out ExpenseRuleUpdate
-	// The rule and its entries change together: if skipping fails, the end
-	// date isn't saved either, so a retry still sees it move (#5).
+	// The rule and its entries change together: if reconciling fails, the
+	// schedule change isn't saved either, so a retry still sees it (#15).
 	err := s.inTx(ctx, func(q db.Querier) error {
 		loc, err := lockOwnerInZone(ctx, q, userID)
 		if err != nil {
@@ -276,7 +280,9 @@ func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uu
 		if err != nil {
 			return err
 		}
-		resumeThrough := materialize.ResumeThrough(loc, time.Now())
+		// The day before the owner's today: where a resumed rule, or one
+		// whose schedule changed, carries on from.
+		yesterday := materialize.ResumeThrough(loc, time.Now())
 		rule, err := q.UpdateRecurringExpenseRule(ctx, db.UpdateRecurringExpenseRuleParams{
 			ID:            id,
 			UserID:        userID,
@@ -290,16 +296,18 @@ func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uu
 			EndDate:       helper.ToPgDatePtr(req.EndDate),
 			Priority:      req.Priority,
 			IsActive:      helper.ToPgBool(req.IsActive),
-			ResumeThrough: resumeThrough,
+			ResumeThrough: yesterday,
 		})
 		if err != nil {
 			return err
 		}
-		stale, err := reconcile(ctx, q, userID, rule.ID,
-			schedule{start: old.StartDate, cadence: old.RecurringType, end: old.EndDate},
-			schedule{start: rule.StartDate, cadence: rule.RecurringType, end: rule.EndDate},
-			choice)
+		was := schedule{start: old.StartDate, cadence: old.RecurringType, end: old.EndDate}
+		now := schedule{start: rule.StartDate, cadence: rule.RecurringType, end: rule.EndDate}
+		stale, err := reconcile(ctx, q, userID, rule.ID, was, now, choice)
 		if err != nil {
+			return err
+		}
+		if err := noBackfill(ctx, q, rule.ID, was, now, yesterday); err != nil {
 			return err
 		}
 		out = ExpenseRuleUpdate{RecurringExpenseRule: rule, StaleEntries: stale}

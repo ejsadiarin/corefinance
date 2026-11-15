@@ -319,3 +319,25 @@ func entryOn(t *testing.T, ctx context.Context, q *db.Queries, user, rule uuid.U
 	require.NoError(t, err)
 	return e
 }
+
+// A schedule change adds no entries before today (#15): reopening a daily
+// rule that ended 5 days ago adds today's entry, not the days in between.
+func TestReconcile_ReopeningEndedRuleAddsOnlyToday_Integration(t *testing.T) {
+	ctx := context.Background()
+	s, q := newReconcileService(t)
+	user := uuid.New()
+	req := CreateExpenseRuleRequest{
+		Amount: 5, Currency: "PHP", Description: "bus", RecurringType: "daily",
+		StartDate: rel(-7), EndDate: ptr(rel(-5)), Priority: "need",
+	}
+	rule, err := s.CreateExpenseRule(ctx, user, req)
+	require.NoError(t, err)
+	require.Equal(t, []string{rel(-7), rel(-6), rel(-5)}, ruleEntryDates(t, ctx, q, user, rule.ID))
+
+	_, err = s.UpdateExpenseRule(ctx, rule.ID, user, UpdateExpenseRuleRequest{
+		Amount: req.Amount, Currency: req.Currency, Description: req.Description,
+		RecurringType: req.RecurringType, StartDate: req.StartDate, Priority: req.Priority,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{rel(-7), rel(-6), rel(-5), rel(0)}, ruleEntryDates(t, ctx, q, user, rule.ID))
+}
