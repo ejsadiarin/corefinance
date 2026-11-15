@@ -151,8 +151,8 @@ type Tag struct {
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
-type UserSetting struct {
-	UserID    uuid.UUID          `db:"user_id" json:"user_id"`
-	Timezone  string             `db:"timezone" json:"timezone"`
-	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+type UserTimezone struct {
+	UserID   uuid.UUID          `db:"user_id" json:"user_id"`
+	Timezone string             `db:"timezone" json:"timezone"`
+	SeenAt   pgtype.Timestamptz `db:"seen_at" json:"seen_at"`
 }

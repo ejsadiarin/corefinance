@@ -12,6 +12,7 @@ const (
 	userKey   contextKey = "user_id"
 	scopesKey contextKey = "scopes"
 	actAsKey  contextKey = "act_as"
+	tzKey     contextKey = "tz"
 )
 
 // WithUserID stores the user ID in the context.
@@ -58,4 +59,16 @@ func WithActAs(ctx context.Context, id uuid.UUID) context.Context {
 func ActAsFromContext(ctx context.Context) (uuid.UUID, bool) {
 	id, ok := ctx.Value(actAsKey).(uuid.UUID)
 	return id, ok
+}
+
+// WithTimezone stores the token's tz claim (ADR-0005).
+func WithTimezone(ctx context.Context, tz string) context.Context {
+	return context.WithValue(ctx, tzKey, tz)
+}
+
+// TimezoneFromContext is the token's tz claim: the IANA zone of the user the
+// request is about, or "" when the token didn't carry one (read as UTC).
+func TimezoneFromContext(ctx context.Context) string {
+	tz, _ := ctx.Value(tzKey).(string)
+	return tz
 }

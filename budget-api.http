@@ -461,26 +461,10 @@ GET {{baseUrl}}/api/budget/rule-entries/feed?after=&page_size=50 HTTP/1.1
 Authorization: Bearer {{jwt}}
 
 
-### ============================================
-### Settings
-### ============================================
-
-
-### Get Settings (saved=false means the UTC default)
-
-GET {{baseUrl}}/api/budget/settings HTTP/1.1
-Authorization: Bearer {{jwt}}
-
-
-### Save Timezone (rule entries are dated in it)
-
-PUT {{baseUrl}}/api/budget/settings HTTP/1.1
-Authorization: Bearer {{jwt}}
-Content-Type: application/json
-
-{
-  "timezone": "Asia/Manila"
-}
+### Timezone
+# Rule entries are dated in the user's timezone, which the gateway owns
+# (coregateway ADR-0005): set it with PUT /api/users/{id}/timezone at the
+# gateway. corefinance reads it from the internal token's tz claim.
 
 
 ### ============================================

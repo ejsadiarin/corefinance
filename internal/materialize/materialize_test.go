@@ -77,7 +77,7 @@ func TestMaterializeDue_DailyCreatesTodaysInstance_Integration(t *testing.T) {
 
 	rule := seedExpenseRule(t, ctx, q, userID, "daily", "2026-09-10", nil)
 
-	n, err := MaterializeDue(ctx, pool, q, today)
+	n, err := MaterializeDue(ctx, pool, q, testZones, today)
 	require.NoError(t, err)
 	require.Equal(t, 1, n)
 
@@ -109,11 +109,11 @@ func TestMaterializeDue_DoubleRunIdempotent_Integration(t *testing.T) {
 	rule := seedExpenseRule(t, ctx, q, userID, "daily", "2026-09-10", nil)
 	incomeRule := seedIncomeRule(t, ctx, q, userID, "daily", "2026-09-10")
 
-	n1, err := MaterializeDue(ctx, pool, q, today)
+	n1, err := MaterializeDue(ctx, pool, q, testZones, today)
 	require.NoError(t, err)
 	require.Equal(t, 2, n1)
 
-	n2, err := MaterializeDue(ctx, pool, q, today)
+	n2, err := MaterializeDue(ctx, pool, q, testZones, today)
 	require.NoError(t, err)
 	assert.Equal(t, 0, n2, "second run must insert 0 rows")
 
@@ -136,7 +136,7 @@ func TestMaterializeDue_FutureRuleNothing_EndedRuleStopsAtEnd_Integration(t *tes
 	ended := seedExpenseRule(t, ctx, q, userID, "daily", "2026-09-01", &endedEnd)
 	future := seedExpenseRule(t, ctx, q, userID, "weekly", "2026-09-11", nil)
 
-	n, err := MaterializeDue(ctx, pool, q, today)
+	n, err := MaterializeDue(ctx, pool, q, testZones, today)
 	require.NoError(t, err)
 	assert.Equal(t, 9, n)
 	assert.Equal(t, 9, countRuleExpenses(t, ctx, pool, ended.ID))
@@ -147,7 +147,7 @@ func TestMaterializeDue_FutureRuleNothing_EndedRuleStopsAtEnd_Integration(t *tes
 		`SELECT max(expense_date) FROM expenses WHERE source_rule_id = $1`, ended.ID).Scan(&last))
 	assert.True(t, last.Time.Equal(d("2026-09-09")))
 
-	_, err = MaterializeDue(ctx, pool, q, d("2026-09-20"))
+	_, err = MaterializeDue(ctx, pool, q, testZones, d("2026-09-20"))
 	require.NoError(t, err)
 	assert.Equal(t, 2, countRuleExpenses(t, ctx, pool, future.ID), "future rule gets 09-11 and 09-18 once it starts")
 	assert.Equal(t, 9, countRuleExpenses(t, ctx, pool, ended.ID), "ended rule gets nothing after its end date")
@@ -162,11 +162,11 @@ func TestMaterializeDue_MonthlyClamp_Integration(t *testing.T) {
 
 	rule := seedExpenseRule(t, ctx, q, userID, "monthly", "2026-01-31", nil)
 
-	n, err := MaterializeDue(ctx, pool, q, d("2026-02-27"))
+	n, err := MaterializeDue(ctx, pool, q, testZones, d("2026-02-27"))
 	require.NoError(t, err)
 	assert.Equal(t, 1, n)
 
-	n, err = MaterializeDue(ctx, pool, q, d("2026-02-28"))
+	n, err = MaterializeDue(ctx, pool, q, testZones, d("2026-02-28"))
 	require.NoError(t, err)
 	require.Equal(t, 1, n)
 	assert.Equal(t, 2, countRuleExpenses(t, ctx, pool, rule.ID))

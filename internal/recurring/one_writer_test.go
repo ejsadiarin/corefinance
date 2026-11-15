@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ejsadiarin/corefinance/internal/auth"
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/materialize"
 	"github.com/ejsadiarin/corefinance/internal/testutil"
@@ -40,8 +41,7 @@ func TestSavingRuleFillsMissedDaysInOwnersTimezone_Integration(t *testing.T) {
 	q := db.New(pool)
 	s := NewServiceWithPool(q, pool)
 	user := uuid.New()
-	_, err := q.PutUserSettings(ctx, db.PutUserSettingsParams{UserID: user, Timezone: "Asia/Manila"})
-	require.NoError(t, err)
+	ctx = auth.WithTimezone(ctx, "Asia/Manila") // the token's tz claim
 
 	manila, err := time.LoadLocation("Asia/Manila")
 	require.NoError(t, err)
@@ -73,7 +73,7 @@ func TestSavingRuleDuringWorkerPassMakesNoDuplicates_Integration(t *testing.T) {
 	q := db.New(pool)
 	s := NewServiceWithPool(q, pool)
 	user := uuid.New()
-	start := time.Now().AddDate(0, 0, -30).Format(time.DateOnly)
+	start := time.Now().UTC().AddDate(0, 0, -30).Format(time.DateOnly)
 
 	var wg sync.WaitGroup
 	var rule db.RecurringExpenseRule
@@ -88,13 +88,13 @@ func TestSavingRuleDuringWorkerPassMakesNoDuplicates_Integration(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 5; i++ {
-			_, err := materialize.MaterializeDue(ctx, pool, q, time.Now())
+			_, err := materialize.MaterializeDue(ctx, pool, q, materialize.FixedZones{}, time.Now())
 			assert.NoError(t, err)
 		}
 	}()
 	wg.Wait()
 	require.NoError(t, createErr)
-	_, err := materialize.MaterializeDue(ctx, pool, q, time.Now())
+	_, err := materialize.MaterializeDue(ctx, pool, q, materialize.FixedZones{}, time.Now())
 	require.NoError(t, err)
 
 	dates := ruleEntryDates(t, ctx, q, user, rule.ID)

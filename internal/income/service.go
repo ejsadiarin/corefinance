@@ -2,9 +2,9 @@ package income
 
 import (
 	"context"
-	"log/slog"
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
+	"log/slog"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/helper"

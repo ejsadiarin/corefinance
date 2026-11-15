@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 
@@ -56,8 +55,6 @@ type MockQuerier struct {
 	ListUsersDueFn                        func(ctx context.Context, now pgtype.Timestamptz) ([]uuid.UUID, error)
 	ListUserActiveRulesFn                 func(ctx context.Context, userID uuid.UUID) ([]db.Rule, error)
 	GetNextWakeFn                         func(ctx context.Context, now pgtype.Timestamptz) (pgtype.Timestamptz, error)
-	GetUserSettingsFn                     func(ctx context.Context, userID uuid.UUID) (db.UserSetting, error)
-	PutUserSettingsFn                     func(ctx context.Context, arg db.PutUserSettingsParams) (db.UserSetting, error)
 	GetIncomeCategoryFn                   func(ctx context.Context, arg db.GetIncomeCategoryParams) (db.IncomeCategory, error)
 	GetIncomeOccurrencesFn                func(ctx context.Context, arg db.GetIncomeOccurrencesParams) ([]db.Income, error)
 	GetMonthOverMonthTrendsFn             func(ctx context.Context, arg db.GetMonthOverMonthTrendsParams) ([]db.GetMonthOverMonthTrendsRow, error)
@@ -466,19 +463,6 @@ func (m *MockQuerier) UpdateTag(ctx context.Context, arg db.UpdateTagParams) (db
 	return m.UpdateTagFn(ctx, arg)
 }
 
-// GetUserSettings defaults to "no settings saved" so tests that don't care
-// about the user's timezone needn't stub it.
-func (m *MockQuerier) GetUserSettings(ctx context.Context, userID uuid.UUID) (db.UserSetting, error) {
-	if m.GetUserSettingsFn == nil {
-		return db.UserSetting{}, pgx.ErrNoRows
-	}
-	return m.GetUserSettingsFn(ctx, userID)
-}
-
-func (m *MockQuerier) PutUserSettings(ctx context.Context, arg db.PutUserSettingsParams) (db.UserSetting, error) {
-	return m.PutUserSettingsFn(ctx, arg)
-}
-
 // ListRuleEntries defaults to no entries.
 func (m *MockQuerier) ListRuleEntries(ctx context.Context, arg db.ListRuleEntriesParams) ([]db.ListRuleEntriesRow, error) {
 	if m.ListRuleEntriesFn == nil {
@@ -572,3 +556,16 @@ func (m *MockQuerier) SetRuleNextDue(ctx context.Context, arg db.SetRuleNextDueP
 }
 
 func (m *MockQuerier) ClearUserNextDue(ctx context.Context, userID uuid.UUID) error { return nil }
+
+// ObserveUserTimezone defaults to "no change".
+func (m *MockQuerier) ObserveUserTimezone(ctx context.Context, arg db.ObserveUserTimezoneParams) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
+func (m *MockQuerier) ListUsersToRefreshZone(ctx context.Context, cutoff pgtype.Timestamptz) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
+func (m *MockQuerier) RefreshUserTimezone(ctx context.Context, arg db.RefreshUserTimezoneParams) (string, error) {
+	return arg.Timezone, nil
+}

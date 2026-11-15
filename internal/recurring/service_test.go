@@ -30,9 +30,9 @@ func TestRecurringService_CreateIncomeRule(t *testing.T) {
 				assert.True(t, arg.StartDate.Valid)
 				assert.False(t, arg.EndDate.Valid)
 				return db.RecurringIncomeRule{
-					ID:     ruleID,
-					UserID: userID,
-					Amount: decimal.NewFromFloat(5000.50),
+					ID:            ruleID,
+					UserID:        userID,
+					Amount:        decimal.NewFromFloat(5000.50),
 					Currency:      "PHP",
 					Description:   "Monthly Salary",
 					RecurringType: "monthly",
@@ -393,9 +393,9 @@ func TestRecurringService_GetExpenseRule(t *testing.T) {
 				assert.Equal(t, ruleID, arg.ID)
 				assert.Equal(t, userID, arg.UserID)
 				return db.GetRecurringExpenseRuleRow{
-					ID:          ruleID,
-					Description: "Rent",
-					Amount:      decimal.NewFromFloat(1500),
+					ID:           ruleID,
+					Description:  "Rent",
+					Amount:       decimal.NewFromFloat(1500),
 					CategoryName: pgtype.Text{String: "Housing", Valid: true},
 				}, nil
 			},

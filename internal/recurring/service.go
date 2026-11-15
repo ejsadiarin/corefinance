@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 
+	"github.com/ejsadiarin/corefinance/internal/auth"
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/helper"
 	"github.com/ejsadiarin/corefinance/internal/materialize"
@@ -54,7 +55,7 @@ func (s *Service) inTx(ctx context.Context, fn func(q db.Querier) error) error {
 // call lockOwner first, so they take the owner's lock before any rule row,
 // in the same order the worker does.
 func fill(ctx context.Context, q db.Querier, userID uuid.UUID) error {
-	n, err := materialize.MaterializeUser(ctx, q, userID, time.Now())
+	n, err := materialize.MaterializeUser(ctx, q, userID, ownerZone(ctx), time.Now())
 	if err != nil {
 		return fmt.Errorf("fill rule entries: %w", err)
 	}
@@ -62,6 +63,13 @@ func fill(ctx context.Context, q db.Querier, userID uuid.UUID) error {
 		slog.Info("recurring.Service filled rule entries", "user_id", userID, "inserted", n)
 	}
 	return nil
+}
+
+// ownerZone is the rule owner's timezone from the request's internal token
+// (coregateway ADR-0005). Rule writes are always the caller's own, so the
+// token's zone is the owner's.
+func ownerZone(ctx context.Context) *time.Location {
+	return materialize.LoadZone(auth.TimezoneFromContext(ctx))
 }
 
 func lockOwner(ctx context.Context, q db.Querier, userID uuid.UUID) error {
@@ -143,10 +151,7 @@ func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 		if err != nil {
 			return err
 		}
-		resumeThrough, err := materialize.ResumeThrough(ctx, q, userID, time.Now())
-		if err != nil {
-			return err
-		}
+		resumeThrough := materialize.ResumeThrough(ownerZone(ctx), time.Now())
 		rule, err := q.UpdateRecurringIncomeRule(ctx, db.UpdateRecurringIncomeRuleParams{
 			ID:            id,
 			UserID:        userID,
@@ -251,10 +256,7 @@ func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uu
 		if err != nil {
 			return err
 		}
-		resumeThrough, err := materialize.ResumeThrough(ctx, q, userID, time.Now())
-		if err != nil {
-			return err
-		}
+		resumeThrough := materialize.ResumeThrough(ownerZone(ctx), time.Now())
 		rule, err := q.UpdateRecurringExpenseRule(ctx, db.UpdateRecurringExpenseRuleParams{
 			ID:            id,
 			UserID:        userID,

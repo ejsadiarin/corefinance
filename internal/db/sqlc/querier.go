@@ -75,8 +75,6 @@ type Querier interface {
 	GetTotalIncomesByDateRange(ctx context.Context, arg GetTotalIncomesByDateRangeParams) (decimal.Decimal, error)
 	GetTrends(ctx context.Context, arg GetTrendsParams) ([]GetTrendsRow, error)
 	GetUpcomingRecurringExpenses(ctx context.Context, userID uuid.UUID) ([]GetUpcomingRecurringExpensesRow, error)
-	// Per-user settings (#9).
-	GetUserSettings(ctx context.Context, userID uuid.UUID) (UserSetting, error)
 	// Worker materialization queries (D3/D4/D5): active-rule selection, idempotent
 	// instance inserts, and legacy inline-rule backfill support.
 	ListActiveExpenseRules(ctx context.Context, startDate pgtype.Date) ([]RecurringExpenseRule, error)
@@ -122,6 +120,10 @@ type Querier interface {
 	// Next-due scheduling (#16): users with an active rule whose next occurrence
 	// has started, or whose next_due_at hasn't been computed yet.
 	ListUsersDue(ctx context.Context, now pgtype.Timestamptz) ([]uuid.UUID, error)
+	// Users with an active rule whose zone hasn't been checked since cutoff: the
+	// worker asks the gateway again, so a change there reaches the schedule
+	// without the user making a request.
+	ListUsersToRefreshZone(ctx context.Context, cutoff pgtype.Timestamptz) ([]uuid.UUID, error)
 	// Catch-up pass (#7), one user at a time under a per-user lock (#14,
 	// ADR-0001). A rule is behind when its watermark (materialized_through, or
 	// the day before start_date when nothing has been filled) is earlier than
@@ -135,7 +137,14 @@ type Querier interface {
 	// a later schedule change reports it for review instead of skipping it.
 	MarkExpenseEntriesKept(ctx context.Context, arg MarkExpenseEntriesKeptParams) error
 	MarkIncomeEntriesKept(ctx context.Context, arg MarkIncomeEntriesKeptParams) error
-	PutUserSettings(ctx context.Context, arg PutUserSettingsParams) (UserSetting, error)
+	// The zone corefinance last saw per user (#18, coregateway ADR-0005), kept
+	// to notice a change and recompute the user's next due times.
+	// From a request's token: writes only when the zone is new or changed, and
+	// then returns the user's row, so callers know to recompute.
+	ObserveUserTimezone(ctx context.Context, arg ObserveUserTimezoneParams) ([]uuid.UUID, error)
+	// From the gateway: always records the check, and returns the zone before
+	// it ('' when there was none).
+	RefreshUserTimezone(ctx context.Context, arg RefreshUserTimezoneParams) (string, error)
 	RemoveTagFromExpense(ctx context.Context, arg RemoveTagFromExpenseParams) error
 	RemoveTagFromIncome(ctx context.Context, arg RemoveTagFromIncomeParams) error
 	SearchExpenses(ctx context.Context, arg SearchExpensesParams) ([]SearchExpensesRow, error)

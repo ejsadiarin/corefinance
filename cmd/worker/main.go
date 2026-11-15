@@ -14,12 +14,17 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
+	"github.com/ejsadiarin/corefinance/internal/gateway"
 	"github.com/ejsadiarin/corefinance/internal/logger"
 	"github.com/ejsadiarin/corefinance/internal/materialize"
 
 	_ "github.com/joho/godotenv/autoload"
 )
 
+// Env: DATABASE_URL (or DB_*), and GATEWAY_URL + GATEWAY_API_KEY: an API key
+// owned by a gateway admin with the corefinance:admin scope, used to look
+// users' timezones up (coregateway ADR-0005). Not needed for --backfill.
+//
 // Flags:
 //   --once      run one materialization pass and exit (one-shot jobs, tests)
 //   --backfill  run one pass of materialize + legacy inline-rule conversion
@@ -64,7 +69,7 @@ func buildPool() *pgxpool.Pool {
 	return pool
 }
 
-func runOnce(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, backfill bool) int {
+func runOnce(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones materialize.Zones, backfill bool) int {
 	today := time.Now()
 	if backfill {
 		res, err := materialize.BackfillLegacy(ctx, pool, queries, today)
@@ -90,7 +95,7 @@ func runOnce(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, backf
 		}
 		return 0
 	}
-	n, err := materialize.MaterializeDue(ctx, pool, queries, today)
+	n, err := materialize.MaterializeDue(ctx, pool, queries, zones, today)
 	if err != nil {
 		slog.Error("materialize failed", "error", err)
 		return 1
@@ -115,11 +120,23 @@ func main() {
 	defer pool.Close()
 	queries := db.New(pool)
 
+	// The gateway owns users' timezones (ADR-0005); without a way to look them
+	// up the worker can't date entries, so it refuses to run rather than guess.
+	var zones materialize.Zones
+	if !*backfill {
+		gatewayURL, gatewayKey := os.Getenv("GATEWAY_URL"), os.Getenv("GATEWAY_API_KEY")
+		if gatewayURL == "" || gatewayKey == "" {
+			slog.Error("GATEWAY_URL and GATEWAY_API_KEY are required: the worker looks users' timezones up from the gateway")
+			os.Exit(1)
+		}
+		zones = gateway.NewTimezoneClient(gatewayURL, gatewayKey)
+	}
+
 	if *backfill {
-		os.Exit(runOnce(context.Background(), pool, queries, true))
+		os.Exit(runOnce(context.Background(), pool, queries, nil, true))
 	}
 	if *once {
-		os.Exit(runOnce(context.Background(), pool, queries, false))
+		os.Exit(runOnce(context.Background(), pool, queries, zones, false))
 	}
 
 	// Long-running mode (#16): a pass, then sleep until the earliest rule's
@@ -130,7 +147,7 @@ func main() {
 
 	slog.Info("worker started, filling rules as they fall due")
 	for {
-		if code := runOnce(ctx, pool, queries, false); code != 0 {
+		if code := runOnce(ctx, pool, queries, zones, false); code != 0 {
 			slog.Error("materialize pass failed, retrying at the next wake")
 		}
 		wait := untilNextWake(ctx, queries, time.Now())

@@ -231,7 +231,8 @@ func PendingDates(start time.Time, cadence string, watermark, end pgtype.Date, t
 
 // MaterializeUser fills one user's rules (#14, ADR-0001): every active rule
 // gets its due dates after its watermark (materialized_through) up to
-// min(end_date, today), where today is the user's date at now, and the
+// min(end_date, today), where today is the date at now in the user's zone
+// loc, and the
 // watermark moves forward. Missed days while the worker was down are filled
 // on the next pass; rules that ended in the meantime still get their last
 // entries. The watermark never moves backward, so an entry the user deleted
@@ -241,15 +242,11 @@ func PendingDates(start time.Time, cadence string, watermark, end pgtype.Date, t
 // It is the only writer of rule entries: the worker runs it per user, and a
 // rule save runs it for the rule's owner. q must be inside a transaction; it
 // takes the user's lock for the rest of it. Returns the rows inserted.
-func MaterializeUser(ctx context.Context, q db.Querier, userID uuid.UUID, now time.Time) (int, error) {
+func MaterializeUser(ctx context.Context, q db.Querier, userID uuid.UUID, loc *time.Location, now time.Time) (int, error) {
 	if err := q.LockUserMaterialize(ctx, userID); err != nil {
 		return 0, fmt.Errorf("lock user materialize: %w", err)
 	}
-	loc, err := UserZone(ctx, q, userID, now)
-	if err != nil {
-		return 0, err
-	}
-	today := userDate(now.In(loc), "")
+	today := dateIn(now, loc)
 	rules, err := q.ListUserActiveRules(ctx, userID)
 	if err != nil {
 		return 0, fmt.Errorf("list active rules: %w", err)
@@ -308,15 +305,6 @@ func NextWake(ctx context.Context, q db.Querier, now time.Time) (time.Time, erro
 		return time.Time{}, ErrNothingDue
 	}
 	return t.Time, nil
-}
-
-// TimezoneChanged makes the next pass recompute the user's rules' next due
-// times, since each one is midnight in the user's timezone.
-func TimezoneChanged(ctx context.Context, q db.Querier, userID uuid.UUID) error {
-	if err := q.ClearUserNextDue(ctx, userID); err != nil {
-		return fmt.Errorf("clear next due: %w", err)
-	}
-	return nil
 }
 
 // insertRuleEntry creates the rule's entry for date d in the table for its
@@ -431,21 +419,34 @@ func withMaterializeLock(ctx context.Context, pool *pgxpool.Pool, queries *db.Qu
 	return nil
 }
 
-// MaterializeDue runs MaterializeUser for every user with a rule due by now
+// MaterializeDue runs MaterializeUser for every user with a rule due by now,
+// in the zone zones gives for them
 // (its next_due_at has passed, or isn't computed yet), each
 // in its own short transaction, so one user's pass never waits on another's
 // and a failure for one user doesn't stop the rest. Instance rows use
 // recurring_type='one-time', NULL start/end, source_rule_id set,
 // status='posted'. Returns the rows inserted, and every user's error joined.
-func MaterializeDue(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, now time.Time) (int, error) {
+func MaterializeDue(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones Zones, now time.Time) (int, error) {
+	var errs []error
+	// A zone change at the gateway clears the user's next due times, so they
+	// are due below and recomputed in the new zone.
+	if err := refreshZones(ctx, queries, zones, now); err != nil {
+		errs = append(errs, err)
+	}
 	users, err := queries.ListUsersDue(ctx, pgtype.Timestamptz{Time: now, Valid: true})
 	if err != nil {
-		return 0, fmt.Errorf("list users due: %w", err)
+		return 0, errors.Join(append(errs, fmt.Errorf("list users due: %w", err))...)
 	}
 	inserted := 0
-	var errs []error
 	for _, user := range users {
-		n, err := materializeUserTx(ctx, pool, queries, user, now)
+		// The zone comes from the gateway (ADR-0005): if it can't be had,
+		// skip this user rather than guess; the next pass retries.
+		loc, err := zones.Zone(ctx, user)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("user %s: timezone: %w", user, err))
+			continue
+		}
+		n, err := materializeUserTx(ctx, pool, queries, user, loc, now)
 		inserted += n
 		if err != nil {
 			errs = append(errs, fmt.Errorf("user %s: %w", user, err))
@@ -454,13 +455,17 @@ func MaterializeDue(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries
 	return inserted, errors.Join(errs...)
 }
 
-func materializeUserTx(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, user uuid.UUID, now time.Time) (int, error) {
+func materializeUserTx(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, user uuid.UUID, loc *time.Location, now time.Time) (int, error) {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("begin: %w", err)
 	}
 	defer tx.Rollback(ctx)
-	n, err := MaterializeUser(ctx, queries.WithTx(tx), user, now)
+	q := queries.WithTx(tx)
+	if err := ObserveTimezone(ctx, q, user, loc.String(), now); err != nil {
+		return 0, err
+	}
+	n, err := MaterializeUser(ctx, q, user, loc, now)
 	if err != nil {
 		return 0, err
 	}

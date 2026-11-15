@@ -13,6 +13,9 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/coder/websocket"
+
+	"github.com/ejsadiarin/corefinance/internal/auth"
+	"github.com/ejsadiarin/corefinance/internal/materialize"
 )
 
 func (s *Server) RegisterRoutes() http.Handler {
@@ -34,12 +37,9 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// /priority-groups stays public (reference data, no user scope).
 	r.Route("/api/budget", func(r chi.Router) {
 		r.Use(s.Verifier.Middleware)
+		r.Use(s.observeTimezone)
 		// priority groups (reference data)
 		r.Get("/priority-groups", s.BudgetHandler.PriorityGroups)
-
-		// Per-user settings (#9): the timezone rule entries are dated in.
-		r.Get("/settings", s.SettingsHandler.Get)
-		r.Put("/settings", s.SettingsHandler.Put)
 
 		// Rule-created entries for review (#8).
 		r.Get("/rule-entries", s.RuleEntryHandler.List)
@@ -240,5 +240,28 @@ func slogMiddleware(next http.Handler) http.Handler {
 			"duration", time.Since(start).String(),
 			"request_id", middleware.GetReqID(r.Context()),
 		)
+	})
+}
+
+// observeTimezone records the zone in the request's token (coregateway
+// ADR-0005) for the user it is about: the target of a targeted read,
+// otherwise the caller. When it changed since corefinance last saw it, the
+// user's rules' next due times are recomputed (#16, #18). Best effort: a
+// failure is logged and the request goes on, since the worker re-checks
+// zones itself.
+func (s *Server) observeTimezone(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		userID, ok := auth.UserIDFromContext(ctx)
+		if target, targeted := auth.ActAsFromContext(ctx); targeted {
+			userID, ok = target, true
+		}
+		if ok {
+			tz := materialize.LoadZone(auth.TimezoneFromContext(ctx)).String()
+			if err := materialize.ObserveTimezone(ctx, s.Queries, userID, tz, time.Now()); err != nil {
+				slog.Error("observe timezone failed", "error", err, "user_id", userID)
+			}
+		}
+		next.ServeHTTP(w, r)
 	})
 }

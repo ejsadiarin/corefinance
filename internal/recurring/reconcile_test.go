@@ -36,11 +36,12 @@ func day(s string) time.Time {
 
 func ptr[T any](v T) *T { return &v }
 
-// rel is the server's date n days from today. Saving a rule fills it up to
+// rel is the date n days from today, in UTC: the zone of a request whose
+// token carries no tz. Saving a rule fills it up to
 // today (#14), so the #5 scenario (entries on the 3rd, 10th and 17th, end set
 // to the 8th) is laid out relative to today: entries 14, 7 and 0 days ago,
 // end moved to 10 days ago.
-func rel(n int) string { return time.Now().AddDate(0, 0, n).Format(time.DateOnly) }
+func rel(n int) string { return time.Now().UTC().AddDate(0, 0, n).Format(time.DateOnly) }
 
 func entryDates(entries []StaleEntry) []string {
 	out := []string{}
@@ -182,7 +183,6 @@ func TestUpdateRuleHandler_RejectsUnknownEntriesAfterEnd(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, rec.Code, path)
 	}
 }
-
 
 func expenseRuleWith(t *testing.T, ctx context.Context, s *Service, user uuid.UUID, cadence, start string) (db.RecurringExpenseRule, UpdateExpenseRuleRequest) {
 	t.Helper()

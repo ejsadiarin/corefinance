@@ -21,6 +21,9 @@ type Claims struct {
 	Azp   string `json:"azp"`
 	Scope string `json:"scope,omitempty"`
 	ActAs string `json:"act_as,omitempty"`
+	// Tz is the IANA timezone of the user the request is about (coregateway
+	// ADR-0005); absent on tokens minted before the gateway sent it (UTC).
+	Tz string `json:"tz,omitempty"`
 }
 
 // clockSkewLeeway tolerates clock differences between gateway and verifiers.
@@ -283,6 +286,7 @@ func (v *Verifier) Middleware(next http.Handler) http.Handler {
 			if actAs, err := uuid.Parse(claims.ActAs); err == nil && actAs != uuid.Nil {
 				ctx = WithActAs(ctx, actAs)
 			}
+			ctx = WithTimezone(ctx, claims.Tz)
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}

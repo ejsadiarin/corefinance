@@ -1,6 +1,8 @@
 package materialize
 
 import (
+	"time"
+
 	"context"
 	"testing"
 
@@ -47,13 +49,12 @@ func TestMaterializeDue_PausedIncomeRuleSkippedThenResumed(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, paused.IsActive)
 
-	n, err := MaterializeDue(ctx, pool, q, today)
+	n, err := MaterializeDue(ctx, pool, q, testZones, today)
 	require.NoError(t, err)
 	assert.Equal(t, 0, n, "paused rule must produce no instances")
 	assert.Equal(t, 0, countRuleIncomes(t, ctx, pool, rule.ID))
 
-	through, err := ResumeThrough(ctx, q, rule.UserID, today)
-	require.NoError(t, err)
+	through := ResumeThrough(time.UTC, today)
 	resumed, err := q.UpdateRecurringIncomeRule(ctx, db.UpdateRecurringIncomeRuleParams{
 		ID:            rule.ID,
 		UserID:        rule.UserID,
@@ -69,7 +70,7 @@ func TestMaterializeDue_PausedIncomeRuleSkippedThenResumed(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, resumed.IsActive)
 
-	n, err = MaterializeDue(ctx, pool, q, today)
+	n, err = MaterializeDue(ctx, pool, q, testZones, today)
 	require.NoError(t, err)
 	assert.Equal(t, 1, n, "resumed rule fills from today, not the paused stretch")
 	assert.Equal(t, 1, countRuleIncomes(t, ctx, pool, rule.ID))
@@ -113,7 +114,7 @@ func TestMaterializeIncome_CopiesCategoryNotesPriority_Integration(t *testing.T)
 	t.Run("worker pass", func(t *testing.T) {
 		_, err := pool.Exec(ctx, `DELETE FROM incomes WHERE source_rule_id = $1`, rule.ID)
 		require.NoError(t, err)
-		n, err := MaterializeDue(ctx, pool, q, today)
+		n, err := MaterializeDue(ctx, pool, q, testZones, today)
 		require.NoError(t, err)
 		require.Equal(t, 1, n)
 		check(t)
@@ -142,7 +143,7 @@ func TestGetIncomeOccurrences_AreRuleCreatedIncomes_Integration(t *testing.T) {
 	today := d("2026-09-10")
 
 	rule := seedIncomeRule(t, ctx, q, userID, "daily", "2026-09-10")
-	_, err := MaterializeDue(ctx, pool, q, today)
+	_, err := MaterializeDue(ctx, pool, q, testZones, today)
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `INSERT INTO incomes (user_id, amount, description, date) VALUES ($1, 100, 'gift', '2026-09-10')`, userID)
 	require.NoError(t, err)

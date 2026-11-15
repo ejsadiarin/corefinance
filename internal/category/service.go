@@ -4,9 +4,9 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/google/uuid"
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/helper"
+	"github.com/google/uuid"
 )
 
 type Service struct {

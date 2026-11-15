@@ -6,33 +6,33 @@ import (
 )
 
 type CreateRequest struct {
-	CategoryID    *string  `json:"category_id,omitempty"`
-	Amount        float64  `json:"amount"`
-	Currency      string   `json:"currency"`
-	Description   string   `json:"description"`
-	Notes         *string  `json:"notes,omitempty"`
-	Date          string   `json:"date"`
-	RecurringType string   `json:"recurring_type"`
-	Priority      string   `json:"priority"`
-	Status        string   `json:"status"`
-	StartDate     *string  `json:"start_date,omitempty"`
-	EndDate       *string  `json:"end_date,omitempty"`
-	SourceRuleID  *string  `json:"source_rule_id,omitempty"`
+	CategoryID    *string `json:"category_id,omitempty"`
+	Amount        float64 `json:"amount"`
+	Currency      string  `json:"currency"`
+	Description   string  `json:"description"`
+	Notes         *string `json:"notes,omitempty"`
+	Date          string  `json:"date"`
+	RecurringType string  `json:"recurring_type"`
+	Priority      string  `json:"priority"`
+	Status        string  `json:"status"`
+	StartDate     *string `json:"start_date,omitempty"`
+	EndDate       *string `json:"end_date,omitempty"`
+	SourceRuleID  *string `json:"source_rule_id,omitempty"`
 }
 
 type UpdateRequest struct {
-	CategoryID    *string  `json:"category_id,omitempty"`
-	Amount        float64  `json:"amount"`
-	Currency      string   `json:"currency"`
-	Description   string   `json:"description"`
-	Notes         *string  `json:"notes,omitempty"`
-	Date          string   `json:"date"`
-	RecurringType string   `json:"recurring_type"`
-	Priority      string   `json:"priority"`
-	Status        string   `json:"status"`
-	StartDate     *string  `json:"start_date,omitempty"`
-	EndDate       *string  `json:"end_date,omitempty"`
-	SourceRuleID  *string  `json:"source_rule_id,omitempty"`
+	CategoryID    *string `json:"category_id,omitempty"`
+	Amount        float64 `json:"amount"`
+	Currency      string  `json:"currency"`
+	Description   string  `json:"description"`
+	Notes         *string `json:"notes,omitempty"`
+	Date          string  `json:"date"`
+	RecurringType string  `json:"recurring_type"`
+	Priority      string  `json:"priority"`
+	Status        string  `json:"status"`
+	StartDate     *string `json:"start_date,omitempty"`
+	EndDate       *string `json:"end_date,omitempty"`
+	SourceRuleID  *string `json:"source_rule_id,omitempty"`
 }
 
 type ListParams struct {

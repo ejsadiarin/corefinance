@@ -78,16 +78,16 @@ func TestCatchUp_WeeklyTuesdayMissedWhileDown_Integration(t *testing.T) {
 	ctx := context.Background()
 	rule := seedExpenseRule(t, ctx, q, uuid.New(), "weekly", "2026-11-03", nil) // a Tuesday
 
-	_, err := MaterializeDue(ctx, pool, q, d("2026-11-09")) // Monday
+	_, err := MaterializeDue(ctx, pool, q, testZones, d("2026-11-09")) // Monday
 	require.NoError(t, err)
 	require.Equal(t, []string{"2026-11-03"}, ruleExpenseDates(t, ctx, pool, rule.ID))
 
-	n, err := MaterializeDue(ctx, pool, q, d("2026-11-12")) // Thursday
+	n, err := MaterializeDue(ctx, pool, q, testZones, d("2026-11-12")) // Thursday
 	require.NoError(t, err)
 	assert.Equal(t, 1, n)
 	assert.Equal(t, []string{"2026-11-03", "2026-11-10"}, ruleExpenseDates(t, ctx, pool, rule.ID))
 
-	n, err = MaterializeDue(ctx, pool, q, d("2026-11-12"))
+	n, err = MaterializeDue(ctx, pool, q, testZones, d("2026-11-12"))
 	require.NoError(t, err)
 	assert.Equal(t, 0, n)
 }
@@ -99,10 +99,10 @@ func TestCatchUp_MonthlyGapFromWatermark_Integration(t *testing.T) {
 	ctx := context.Background()
 	rule := seedExpenseRule(t, ctx, q, uuid.New(), "monthly", "2026-02-23", nil)
 
-	_, err := MaterializeDue(ctx, pool, q, d("2026-02-23"))
+	_, err := MaterializeDue(ctx, pool, q, testZones, d("2026-02-23"))
 	require.NoError(t, err)
 
-	n, err := MaterializeDue(ctx, pool, q, d("2026-11-14"))
+	n, err := MaterializeDue(ctx, pool, q, testZones, d("2026-11-14"))
 	require.NoError(t, err)
 	assert.Equal(t, 8, n)
 	assert.Equal(t, []string{
@@ -118,7 +118,7 @@ func TestCatchUp_DeletedEditedSkippedEntriesStay_Integration(t *testing.T) {
 	ctx := context.Background()
 	rule := seedExpenseRule(t, ctx, q, uuid.New(), "daily", "2026-09-01", nil)
 
-	_, err := MaterializeDue(ctx, pool, q, d("2026-09-05"))
+	_, err := MaterializeDue(ctx, pool, q, testZones, d("2026-09-05"))
 	require.NoError(t, err)
 
 	_, err = pool.Exec(ctx, `DELETE FROM expenses WHERE source_rule_id = $1 AND expense_date = '2026-09-03'`, rule.ID)
@@ -129,7 +129,7 @@ func TestCatchUp_DeletedEditedSkippedEntriesStay_Integration(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, day := range []string{"2026-09-05", "2026-09-06", "2026-09-06"} {
-		_, err := MaterializeDue(ctx, pool, q, d(day))
+		_, err := MaterializeDue(ctx, pool, q, testZones, d(day))
 		require.NoError(t, err)
 	}
 
@@ -154,12 +154,12 @@ func TestCatchUp_RuleEndedWhileDown_Integration(t *testing.T) {
 	rule := seedExpenseRule(t, ctx, q, uuid.New(), "daily", "2026-09-01", &end)
 	setExpenseWatermark(t, ctx, pool, rule.ID, "2026-09-02")
 
-	n, err := MaterializeDue(ctx, pool, q, d("2026-09-10"))
+	n, err := MaterializeDue(ctx, pool, q, testZones, d("2026-09-10"))
 	require.NoError(t, err)
 	assert.Equal(t, 3, n)
 	assert.Equal(t, []string{"2026-09-03", "2026-09-04", "2026-09-05"}, ruleExpenseDates(t, ctx, pool, rule.ID))
 
-	n, err = MaterializeDue(ctx, pool, q, d("2026-09-11"))
+	n, err = MaterializeDue(ctx, pool, q, testZones, d("2026-09-11"))
 	require.NoError(t, err)
 	assert.Equal(t, 0, n)
 }
@@ -171,13 +171,12 @@ func TestCatchUp_PausedRuleSkipsPausedStretch_Integration(t *testing.T) {
 	ctx := context.Background()
 	rule := seedExpenseRule(t, ctx, q, uuid.New(), "daily", "2026-09-01", nil)
 
-	_, err := MaterializeDue(ctx, pool, q, d("2026-09-03"))
+	_, err := MaterializeDue(ctx, pool, q, testZones, d("2026-09-03"))
 	require.NoError(t, err)
 
 	update := func(active bool, today time.Time) {
-		through, err := ResumeThrough(ctx, q, rule.UserID, today)
-		require.NoError(t, err)
-		_, err = q.UpdateRecurringExpenseRule(ctx, db.UpdateRecurringExpenseRuleParams{
+		through := ResumeThrough(time.UTC, today)
+		_, err := q.UpdateRecurringExpenseRule(ctx, db.UpdateRecurringExpenseRuleParams{
 			ID: rule.ID, UserID: rule.UserID, Description: rule.Description, Amount: rule.Amount,
 			Currency: rule.Currency, RecurringType: rule.RecurringType, StartDate: rule.StartDate,
 			EndDate: rule.EndDate, Priority: rule.Priority,
@@ -188,12 +187,12 @@ func TestCatchUp_PausedRuleSkipsPausedStretch_Integration(t *testing.T) {
 	}
 
 	update(false, d("2026-09-03"))
-	n, err := MaterializeDue(ctx, pool, q, d("2026-09-08"))
+	n, err := MaterializeDue(ctx, pool, q, testZones, d("2026-09-08"))
 	require.NoError(t, err)
 	assert.Equal(t, 0, n, "paused rule gets nothing")
 
 	update(true, d("2026-09-10"))
-	_, err = MaterializeDue(ctx, pool, q, d("2026-09-11"))
+	_, err = MaterializeDue(ctx, pool, q, testZones, d("2026-09-11"))
 	require.NoError(t, err)
 	assert.Equal(t, []string{"2026-09-01", "2026-09-02", "2026-09-03", "2026-09-10", "2026-09-11"},
 		ruleExpenseDates(t, ctx, pool, rule.ID))
@@ -208,15 +207,15 @@ func TestCatchUp_LongOutageFillsInBatches_Integration(t *testing.T) {
 	total := len(DueDates(d("2025-01-01"), "daily", nil, today))
 	require.Greater(t, total, MaxDatesPerRulePass)
 
-	n, err := MaterializeDue(ctx, pool, q, today)
+	n, err := MaterializeDue(ctx, pool, q, testZones, today)
 	require.NoError(t, err)
 	assert.Equal(t, MaxDatesPerRulePass, n)
 
-	n, err = MaterializeDue(ctx, pool, q, today)
+	n, err = MaterializeDue(ctx, pool, q, testZones, today)
 	require.NoError(t, err)
 	assert.Equal(t, total-MaxDatesPerRulePass, n)
 
-	n, err = MaterializeDue(ctx, pool, q, today)
+	n, err = MaterializeDue(ctx, pool, q, testZones, today)
 	require.NoError(t, err)
 	assert.Equal(t, 0, n)
 	assert.Equal(t, total, countRuleExpenses(t, ctx, pool, rule.ID))

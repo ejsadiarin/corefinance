@@ -36,6 +36,8 @@ internal/db/bootstrap.sql     — one-time role/grants bootstrap (not a migratio
 | `JWT_ISSUER` | Expected internal JWT issuer (default: `https://gateway.internal`) |
 | `JWT_AUDIENCE` | Expected internal JWT audience (default: `corefinance`) |
 | `JWT_JWKS_URL` | Gateway JWKS URL (default: `https://gateway.internal/.well-known/jwks.json`) |
+| `GATEWAY_URL` | Worker only, required: the gateway's base URL, for timezone lookups (see Timezone) |
+| `GATEWAY_API_KEY` | Worker only, required: an admin-owned gateway API key with the `corefinance:admin` scope |
 
 ## API Routes
 
@@ -62,11 +64,21 @@ All routes are prefixed with `/budget`.
 | | `/priority-groups` | Reference data (need/want/savings) |
 | | `/rule-entries` | Entries recurring rules created (expenses and incomes), newest-inserted first; filters `rule_id`, `start_date`/`end_date`, `created_since` (RFC 3339), paged with `page`/`page_size` |
 | | `/rule-entries/feed` | "What's new" feed of rule entries: `{entries, next}`; pass `next` back as `after`. Never skips an entry from a pass that commits late (prefer it over `created_since`) |
-| | `/settings` | `GET`/`PUT` the user's timezone (IANA, e.g. `Asia/Manila`); rule entries are dated in it, unset keeps UTC |
 | | `/remaining` | Current month budget remaining |
 | | `/export` | Export all budget data as JSON |
 | | `/import` | Import budget data (with ID remapping) |
 | `/` | `/health` | Health check (pgxpool ping + stats) |
+
+## Timezone
+
+Rule entries are dated in the user's timezone, which the gateway owns
+(coregateway ADR-0005). API requests read it from the internal token's `tz`
+claim (a token without one is UTC). The worker looks it up from the gateway
+(`GET /api/users/{id}/timezone`) with `GATEWAY_URL` and `GATEWAY_API_KEY`: an
+API key owned by a gateway admin with only the `corefinance:admin` scope. It
+won't start without them, and skips a user whose lookup fails rather than
+guess a zone. corefinance keeps only the zone it last saw per user, to
+recompute a user's schedule when it changes.
 
 ## Auth
 
