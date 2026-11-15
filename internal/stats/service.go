@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/google/uuid"
+	"github.com/ejsadiarin/corefinance/internal/category"
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/helper"
 )
@@ -20,27 +21,30 @@ func NewService(queries db.Querier) *Service {
 func (s *Service) Summary(ctx context.Context, userID uuid.UUID, startDate, endDate *string) (Summary, error) {
 	slog.Debug("stats.Service.Summary", "user_id", userID)
 	row, err := s.queries.GetSummary(ctx, db.GetSummaryParams{
-		UserID:    userID,
-		StartDate: helper.ToPgDatePtr(startDate),
-		EndDate:   helper.ToPgDatePtr(endDate),
+		UserID:          userID,
+		StartDate:       helper.ToPgDatePtr(startDate),
+		EndDate:         helper.ToPgDatePtr(endDate),
+		ReimbursementID: category.Reimbursement,
 	})
 	if err != nil {
 		return Summary{}, err
 	}
 	return Summary{
-		TotalExpenses: helper.ToDecimal(row.TotalExpenses),
-		TotalIncomes:  helper.ToDecimal(row.TotalIncomes),
-		ExpenseCount:  row.ExpenseCount,
-		IncomeCount:   row.IncomeCount,
+		TotalExpenses:       helper.ToDecimal(row.TotalExpenses),
+		TotalIncomes:        helper.ToDecimal(row.TotalIncomes),
+		TotalReimbursements: helper.ToDecimal(row.TotalReimbursements),
+		ExpenseCount:        row.ExpenseCount,
+		IncomeCount:         row.IncomeCount,
 	}, nil
 }
 
 func (s *Service) Trends(ctx context.Context, userID uuid.UUID, startDate, endDate *string) ([]Trend, error) {
 	slog.Debug("stats.Service.Trends", "user_id", userID)
 	rows, err := s.queries.GetTrends(ctx, db.GetTrendsParams{
-		UserID:    userID,
-		StartDate: helper.ToPgDatePtr(startDate),
-		EndDate:   helper.ToPgDatePtr(endDate),
+		UserID:          userID,
+		StartDate:       helper.ToPgDatePtr(startDate),
+		EndDate:         helper.ToPgDatePtr(endDate),
+		ReimbursementID: category.Reimbursement,
 	})
 	if err != nil {
 		return nil, err
@@ -48,9 +52,10 @@ func (s *Service) Trends(ctx context.Context, userID uuid.UUID, startDate, endDa
 	result := make([]Trend, len(rows))
 	for i, row := range rows {
 		result[i] = Trend{
-			Month:         row.Month,
-			TotalExpenses: helper.ToDecimal(row.TotalExpenses),
-			TotalIncomes:  helper.ToDecimal(row.TotalIncomes),
+			Month:               row.Month,
+			TotalExpenses:       helper.ToDecimal(row.TotalExpenses),
+			TotalIncomes:        helper.ToDecimal(row.TotalIncomes),
+			TotalReimbursements: helper.ToDecimal(row.TotalReimbursements),
 		}
 	}
 	return result, nil
@@ -86,39 +91,43 @@ func (s *Service) CategoryBreakdown(ctx context.Context, userID uuid.UUID, start
 func (s *Service) SavingsRate(ctx context.Context, userID uuid.UUID, startDate, endDate *string) (SavingsRate, error) {
 	slog.Debug("stats.Service.SavingsRate", "user_id", userID)
 	row, err := s.queries.GetSavingsRate(ctx, db.GetSavingsRateParams{
-		UserID:    userID,
-		StartDate: helper.ToPgDatePtr(startDate),
-		EndDate:   helper.ToPgDatePtr(endDate),
+		UserID:          userID,
+		StartDate:       helper.ToPgDatePtr(startDate),
+		EndDate:         helper.ToPgDatePtr(endDate),
+		ReimbursementID: category.Reimbursement,
 	})
 	if err != nil {
 		return SavingsRate{}, err
 	}
 	return SavingsRate{
-		TotalIncomes:  helper.ToDecimal(row.TotalIncomes),
-		TotalExpenses: helper.ToDecimal(row.TotalExpenses),
-		SavingsRate:   helper.ToDecimal(row.SavingsRate),
+		TotalIncomes:        helper.ToDecimal(row.TotalIncomes),
+		TotalReimbursements: helper.ToDecimal(row.TotalReimbursements),
+		TotalExpenses:       helper.ToDecimal(row.TotalExpenses),
+		SavingsRate:         helper.ToDecimal(row.SavingsRate),
 	}, nil
 }
 
 func (s *Service) FiftyThirtyTwenty(ctx context.Context, userID uuid.UUID, startDate, endDate *string) (FiftyThirtyTwenty, error) {
 	slog.Debug("stats.Service.FiftyThirtyTwenty", "user_id", userID)
 	row, err := s.queries.GetFiftyThirtyTwenty(ctx, db.GetFiftyThirtyTwentyParams{
-		UserID:    userID,
-		StartDate: helper.ToPgDatePtr(startDate),
-		EndDate:   helper.ToPgDatePtr(endDate),
+		UserID:          userID,
+		StartDate:       helper.ToPgDatePtr(startDate),
+		EndDate:         helper.ToPgDatePtr(endDate),
+		ReimbursementID: category.Reimbursement,
 	})
 	if err != nil {
 		return FiftyThirtyTwenty{}, err
 	}
 	return FiftyThirtyTwenty{
-		TotalIncomes:  helper.ToDecimal(row.TotalIncomes),
-		TotalExpenses: helper.ToDecimal(row.TotalExpenses),
-		Needs:         helper.ToDecimal(row.Needs),
-		Wants:         helper.ToDecimal(row.Wants),
-		Savings:       helper.ToDecimal(row.Savings),
-		NeedsPct:      helper.ToDecimal(row.NeedsPct),
-		WantsPct:      helper.ToDecimal(row.WantsPct),
-		SavingsPct:    helper.ToDecimal(row.SavingsPct),
+		TotalIncomes:        helper.ToDecimal(row.TotalIncomes),
+		TotalReimbursements: helper.ToDecimal(row.TotalReimbursements),
+		TotalExpenses:       helper.ToDecimal(row.TotalExpenses),
+		Needs:               helper.ToDecimal(row.Needs),
+		Wants:               helper.ToDecimal(row.Wants),
+		Savings:             helper.ToDecimal(row.Savings),
+		NeedsPct:            helper.ToDecimal(row.NeedsPct),
+		WantsPct:            helper.ToDecimal(row.WantsPct),
+		SavingsPct:          helper.ToDecimal(row.SavingsPct),
 	}, nil
 }
 
@@ -165,9 +174,10 @@ func (s *Service) MonthOverMonthTrends(ctx context.Context, userID uuid.UUID, st
 		end = *endDate
 	}
 	rows, err := s.queries.GetMonthOverMonthTrends(ctx, db.GetMonthOverMonthTrendsParams{
-		UserID:    userID,
-		StartDate: helper.ToPgDate(start),
-		EndDate:   helper.ToPgDate(end),
+		UserID:          userID,
+		StartDate:       helper.ToPgDate(start),
+		EndDate:         helper.ToPgDate(end),
+		ReimbursementID: category.Reimbursement,
 	})
 	if err != nil {
 		return nil, err

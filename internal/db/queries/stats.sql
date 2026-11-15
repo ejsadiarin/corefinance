@@ -8,6 +8,7 @@ SELECT
     (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
      WHERE i.user_id = @user_id
        AND i.status != 'skipped'
+       AND i.category_id IS DISTINCT FROM @reimbursement_id::uuid
        AND (@start_date::date IS NULL OR i.date >= @start_date)
        AND (@end_date::date IS NULL OR i.date <= @end_date)) AS total_incomes,
     (SELECT COUNT(*)::bigint FROM expenses e
@@ -18,19 +19,28 @@ SELECT
     (SELECT COUNT(*)::bigint FROM incomes i
      WHERE i.user_id = @user_id
        AND i.status != 'skipped'
+       AND i.category_id IS DISTINCT FROM @reimbursement_id::uuid
        AND (@start_date::date IS NULL OR i.date >= @start_date)
-       AND (@end_date::date IS NULL OR i.date <= @end_date)) AS income_count;
+       AND (@end_date::date IS NULL OR i.date <= @end_date)) AS income_count,
+    (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
+     WHERE i.user_id = @user_id
+       AND i.status != 'skipped'
+       AND i.category_id IS NOT DISTINCT FROM @reimbursement_id::uuid
+       AND (@start_date::date IS NULL OR i.date >= @start_date)
+       AND (@end_date::date IS NULL OR i.date <= @end_date)) AS total_reimbursements;
 
 -- name: GetTrends :many
 SELECT
     month,
     COALESCE(SUM(total_expenses), 0)::numeric AS total_expenses,
-    COALESCE(SUM(total_incomes), 0)::numeric AS total_incomes
+    COALESCE(SUM(total_incomes), 0)::numeric AS total_incomes,
+    COALESCE(SUM(total_reimbursements), 0)::numeric AS total_reimbursements
 FROM (
     SELECT
         TO_CHAR(e.expense_date, 'YYYY-MM') AS month,
         COALESCE(SUM(e.amount), 0)::numeric AS total_expenses,
-        0::numeric AS total_incomes
+        0::numeric AS total_incomes,
+        0::numeric AS total_reimbursements
     FROM expenses e
     WHERE e.user_id = @user_id
       AND e.status != 'skipped'
@@ -41,7 +51,8 @@ FROM (
     SELECT
         TO_CHAR(i.date, 'YYYY-MM') AS month,
         0::numeric AS total_expenses,
-        COALESCE(SUM(i.amount), 0)::numeric AS total_incomes
+        COALESCE(SUM(i.amount) FILTER (WHERE i.category_id IS DISTINCT FROM @reimbursement_id::uuid), 0)::numeric AS total_incomes,
+        COALESCE(SUM(i.amount) FILTER (WHERE i.category_id IS NOT DISTINCT FROM @reimbursement_id::uuid), 0)::numeric AS total_reimbursements
     FROM incomes i
     WHERE i.user_id = @user_id
       AND i.status != 'skipped'
@@ -80,11 +91,19 @@ WITH totals AS (
         (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
          WHERE i.user_id = @user_id
            AND i.status != 'skipped'
+           AND i.category_id IS DISTINCT FROM @reimbursement_id::uuid
            AND (@start_date::date IS NULL OR i.date >= @start_date)
-           AND (@end_date::date IS NULL OR i.date <= @end_date)) AS total_incomes
+           AND (@end_date::date IS NULL OR i.date <= @end_date)) AS total_incomes,
+        (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
+         WHERE i.user_id = @user_id
+           AND i.status != 'skipped'
+           AND i.category_id IS NOT DISTINCT FROM @reimbursement_id::uuid
+           AND (@start_date::date IS NULL OR i.date >= @start_date)
+           AND (@end_date::date IS NULL OR i.date <= @end_date)) AS total_reimbursements
 )
 SELECT
     total_incomes,
+    total_reimbursements,
     total_expenses,
     CASE
         WHEN total_incomes = 0 THEN 0
@@ -103,8 +122,15 @@ WITH totals AS (
         (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
          WHERE i.user_id = @user_id
            AND i.status != 'skipped'
+           AND i.category_id IS DISTINCT FROM @reimbursement_id::uuid
            AND (@start_date::date IS NULL OR i.date >= @start_date)
-           AND (@end_date::date IS NULL OR i.date <= @end_date)) AS total_incomes
+           AND (@end_date::date IS NULL OR i.date <= @end_date)) AS total_incomes,
+        (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
+         WHERE i.user_id = @user_id
+           AND i.status != 'skipped'
+           AND i.category_id IS NOT DISTINCT FROM @reimbursement_id::uuid
+           AND (@start_date::date IS NULL OR i.date >= @start_date)
+           AND (@end_date::date IS NULL OR i.date <= @end_date)) AS total_reimbursements
 ),
 category_totals AS (
     SELECT
@@ -118,6 +144,7 @@ category_totals AS (
 )
 SELECT
     t.total_incomes,
+    t.total_reimbursements,
     t.total_expenses,
     c.needs,
     c.wants,
@@ -185,6 +212,7 @@ FROM (
       AND i.date >= @start_date
       AND i.date <= @end_date
       AND i.status != 'skipped'
+      AND i.category_id IS DISTINCT FROM @reimbursement_id::uuid
     GROUP BY TO_CHAR(i.date, 'YYYY-MM')
 ) AS monthly_data
 GROUP BY month

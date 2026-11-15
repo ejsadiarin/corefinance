@@ -5,16 +5,18 @@ import (
 )
 
 type Summary struct {
-	TotalExpenses decimal.Decimal `json:"total_expenses"`
-	TotalIncomes  decimal.Decimal `json:"total_incomes"`
-	ExpenseCount  int64           `json:"expense_count"`
-	IncomeCount   int64           `json:"income_count"`
+	TotalExpenses       decimal.Decimal `json:"total_expenses"`
+	TotalIncomes        decimal.Decimal `json:"total_incomes"`
+	TotalReimbursements decimal.Decimal `json:"total_reimbursements"`
+	ExpenseCount        int64           `json:"expense_count"`
+	IncomeCount         int64           `json:"income_count"`
 }
 
 type Trend struct {
-	Month         string          `json:"month"`
-	TotalExpenses decimal.Decimal `json:"total_expenses"`
-	TotalIncomes  decimal.Decimal `json:"total_incomes"`
+	Month               string          `json:"month"`
+	TotalExpenses       decimal.Decimal `json:"total_expenses"`
+	TotalIncomes        decimal.Decimal `json:"total_incomes"`
+	TotalReimbursements decimal.Decimal `json:"total_reimbursements"`
 }
 
 type CategoryBreakdownItem struct {
@@ -26,20 +28,22 @@ type CategoryBreakdownItem struct {
 }
 
 type SavingsRate struct {
-	TotalIncomes  decimal.Decimal `json:"total_incomes"`
-	TotalExpenses decimal.Decimal `json:"total_expenses"`
-	SavingsRate   decimal.Decimal `json:"savings_rate"`
+	TotalIncomes        decimal.Decimal `json:"total_incomes"`
+	TotalReimbursements decimal.Decimal `json:"total_reimbursements"`
+	TotalExpenses       decimal.Decimal `json:"total_expenses"`
+	SavingsRate         decimal.Decimal `json:"savings_rate"`
 }
 
 type FiftyThirtyTwenty struct {
-	TotalIncomes  decimal.Decimal `json:"total_incomes"`
-	TotalExpenses decimal.Decimal `json:"total_expenses"`
-	Needs         decimal.Decimal `json:"needs"`
-	Wants         decimal.Decimal `json:"wants"`
-	Savings       decimal.Decimal `json:"savings"`
-	NeedsPct      decimal.Decimal `json:"needs_pct"`
-	WantsPct      decimal.Decimal `json:"wants_pct"`
-	SavingsPct    decimal.Decimal `json:"savings_pct"`
+	TotalIncomes        decimal.Decimal `json:"total_incomes"`
+	TotalReimbursements decimal.Decimal `json:"total_reimbursements"`
+	TotalExpenses       decimal.Decimal `json:"total_expenses"`
+	Needs               decimal.Decimal `json:"needs"`
+	Wants               decimal.Decimal `json:"wants"`
+	Savings             decimal.Decimal `json:"savings"`
+	NeedsPct            decimal.Decimal `json:"needs_pct"`
+	WantsPct            decimal.Decimal `json:"wants_pct"`
+	SavingsPct          decimal.Decimal `json:"savings_pct"`
 }
 
 type SpendingVelocity struct {

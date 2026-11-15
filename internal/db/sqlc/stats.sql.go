@@ -98,8 +98,15 @@ WITH totals AS (
         (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
          WHERE i.user_id = $1
            AND i.status != 'skipped'
+           AND i.category_id IS DISTINCT FROM $4::uuid
            AND ($2::date IS NULL OR i.date >= $2)
-           AND ($3::date IS NULL OR i.date <= $3)) AS total_incomes
+           AND ($3::date IS NULL OR i.date <= $3)) AS total_incomes,
+        (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
+         WHERE i.user_id = $1
+           AND i.status != 'skipped'
+           AND i.category_id IS NOT DISTINCT FROM $4::uuid
+           AND ($2::date IS NULL OR i.date >= $2)
+           AND ($3::date IS NULL OR i.date <= $3)) AS total_reimbursements
 ),
 category_totals AS (
     SELECT
@@ -113,6 +120,7 @@ category_totals AS (
 )
 SELECT
     t.total_incomes,
+    t.total_reimbursements,
     t.total_expenses,
     c.needs,
     c.wants,
@@ -124,27 +132,35 @@ FROM totals t, category_totals c
 `
 
 type GetFiftyThirtyTwentyParams struct {
-	UserID    uuid.UUID   `db:"user_id" json:"user_id"`
-	StartDate pgtype.Date `db:"start_date" json:"start_date"`
-	EndDate   pgtype.Date `db:"end_date" json:"end_date"`
+	UserID          uuid.UUID   `db:"user_id" json:"user_id"`
+	StartDate       pgtype.Date `db:"start_date" json:"start_date"`
+	EndDate         pgtype.Date `db:"end_date" json:"end_date"`
+	ReimbursementID uuid.UUID   `db:"reimbursement_id" json:"reimbursement_id"`
 }
 
 type GetFiftyThirtyTwentyRow struct {
-	TotalIncomes  decimal.Decimal `db:"total_incomes" json:"total_incomes"`
-	TotalExpenses decimal.Decimal `db:"total_expenses" json:"total_expenses"`
-	Needs         decimal.Decimal `db:"needs" json:"needs"`
-	Wants         decimal.Decimal `db:"wants" json:"wants"`
-	Savings       decimal.Decimal `db:"savings" json:"savings"`
-	NeedsPct      decimal.Decimal `db:"needs_pct" json:"needs_pct"`
-	WantsPct      decimal.Decimal `db:"wants_pct" json:"wants_pct"`
-	SavingsPct    decimal.Decimal `db:"savings_pct" json:"savings_pct"`
+	TotalIncomes        decimal.Decimal `db:"total_incomes" json:"total_incomes"`
+	TotalReimbursements decimal.Decimal `db:"total_reimbursements" json:"total_reimbursements"`
+	TotalExpenses       decimal.Decimal `db:"total_expenses" json:"total_expenses"`
+	Needs               decimal.Decimal `db:"needs" json:"needs"`
+	Wants               decimal.Decimal `db:"wants" json:"wants"`
+	Savings             decimal.Decimal `db:"savings" json:"savings"`
+	NeedsPct            decimal.Decimal `db:"needs_pct" json:"needs_pct"`
+	WantsPct            decimal.Decimal `db:"wants_pct" json:"wants_pct"`
+	SavingsPct          decimal.Decimal `db:"savings_pct" json:"savings_pct"`
 }
 
 func (q *Queries) GetFiftyThirtyTwenty(ctx context.Context, arg GetFiftyThirtyTwentyParams) (GetFiftyThirtyTwentyRow, error) {
-	row := q.db.QueryRow(ctx, getFiftyThirtyTwenty, arg.UserID, arg.StartDate, arg.EndDate)
+	row := q.db.QueryRow(ctx, getFiftyThirtyTwenty,
+		arg.UserID,
+		arg.StartDate,
+		arg.EndDate,
+		arg.ReimbursementID,
+	)
 	var i GetFiftyThirtyTwentyRow
 	err := row.Scan(
 		&i.TotalIncomes,
+		&i.TotalReimbursements,
 		&i.TotalExpenses,
 		&i.Needs,
 		&i.Wants,
@@ -179,6 +195,7 @@ FROM (
       AND i.date >= $2
       AND i.date <= $3
       AND i.status != 'skipped'
+      AND i.category_id IS DISTINCT FROM $4::uuid
     GROUP BY TO_CHAR(i.date, 'YYYY-MM')
 ) AS monthly_data
 GROUP BY month
@@ -186,9 +203,10 @@ ORDER BY month DESC
 `
 
 type GetMonthOverMonthTrendsParams struct {
-	UserID    uuid.UUID   `db:"user_id" json:"user_id"`
-	StartDate pgtype.Date `db:"start_date" json:"start_date"`
-	EndDate   pgtype.Date `db:"end_date" json:"end_date"`
+	UserID          uuid.UUID   `db:"user_id" json:"user_id"`
+	StartDate       pgtype.Date `db:"start_date" json:"start_date"`
+	EndDate         pgtype.Date `db:"end_date" json:"end_date"`
+	ReimbursementID uuid.UUID   `db:"reimbursement_id" json:"reimbursement_id"`
 }
 
 type GetMonthOverMonthTrendsRow struct {
@@ -197,7 +215,12 @@ type GetMonthOverMonthTrendsRow struct {
 }
 
 func (q *Queries) GetMonthOverMonthTrends(ctx context.Context, arg GetMonthOverMonthTrendsParams) ([]GetMonthOverMonthTrendsRow, error) {
-	rows, err := q.db.Query(ctx, getMonthOverMonthTrends, arg.UserID, arg.StartDate, arg.EndDate)
+	rows, err := q.db.Query(ctx, getMonthOverMonthTrends,
+		arg.UserID,
+		arg.StartDate,
+		arg.EndDate,
+		arg.ReimbursementID,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -227,11 +250,19 @@ WITH totals AS (
         (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
          WHERE i.user_id = $1
            AND i.status != 'skipped'
+           AND i.category_id IS DISTINCT FROM $4::uuid
            AND ($2::date IS NULL OR i.date >= $2)
-           AND ($3::date IS NULL OR i.date <= $3)) AS total_incomes
+           AND ($3::date IS NULL OR i.date <= $3)) AS total_incomes,
+        (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
+         WHERE i.user_id = $1
+           AND i.status != 'skipped'
+           AND i.category_id IS NOT DISTINCT FROM $4::uuid
+           AND ($2::date IS NULL OR i.date >= $2)
+           AND ($3::date IS NULL OR i.date <= $3)) AS total_reimbursements
 )
 SELECT
     total_incomes,
+    total_reimbursements,
     total_expenses,
     CASE
         WHEN total_incomes = 0 THEN 0
@@ -241,21 +272,33 @@ FROM totals
 `
 
 type GetSavingsRateParams struct {
-	UserID    uuid.UUID   `db:"user_id" json:"user_id"`
-	StartDate pgtype.Date `db:"start_date" json:"start_date"`
-	EndDate   pgtype.Date `db:"end_date" json:"end_date"`
+	UserID          uuid.UUID   `db:"user_id" json:"user_id"`
+	StartDate       pgtype.Date `db:"start_date" json:"start_date"`
+	EndDate         pgtype.Date `db:"end_date" json:"end_date"`
+	ReimbursementID uuid.UUID   `db:"reimbursement_id" json:"reimbursement_id"`
 }
 
 type GetSavingsRateRow struct {
-	TotalIncomes  decimal.Decimal `db:"total_incomes" json:"total_incomes"`
-	TotalExpenses decimal.Decimal `db:"total_expenses" json:"total_expenses"`
-	SavingsRate   decimal.Decimal `db:"savings_rate" json:"savings_rate"`
+	TotalIncomes        decimal.Decimal `db:"total_incomes" json:"total_incomes"`
+	TotalReimbursements decimal.Decimal `db:"total_reimbursements" json:"total_reimbursements"`
+	TotalExpenses       decimal.Decimal `db:"total_expenses" json:"total_expenses"`
+	SavingsRate         decimal.Decimal `db:"savings_rate" json:"savings_rate"`
 }
 
 func (q *Queries) GetSavingsRate(ctx context.Context, arg GetSavingsRateParams) (GetSavingsRateRow, error) {
-	row := q.db.QueryRow(ctx, getSavingsRate, arg.UserID, arg.StartDate, arg.EndDate)
+	row := q.db.QueryRow(ctx, getSavingsRate,
+		arg.UserID,
+		arg.StartDate,
+		arg.EndDate,
+		arg.ReimbursementID,
+	)
 	var i GetSavingsRateRow
-	err := row.Scan(&i.TotalIncomes, &i.TotalExpenses, &i.SavingsRate)
+	err := row.Scan(
+		&i.TotalIncomes,
+		&i.TotalReimbursements,
+		&i.TotalExpenses,
+		&i.SavingsRate,
+	)
 	return i, err
 }
 
@@ -305,6 +348,7 @@ SELECT
     (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
      WHERE i.user_id = $1
        AND i.status != 'skipped'
+       AND i.category_id IS DISTINCT FROM $4::uuid
        AND ($2::date IS NULL OR i.date >= $2)
        AND ($3::date IS NULL OR i.date <= $3)) AS total_incomes,
     (SELECT COUNT(*)::bigint FROM expenses e
@@ -315,31 +359,46 @@ SELECT
     (SELECT COUNT(*)::bigint FROM incomes i
      WHERE i.user_id = $1
        AND i.status != 'skipped'
+       AND i.category_id IS DISTINCT FROM $4::uuid
        AND ($2::date IS NULL OR i.date >= $2)
-       AND ($3::date IS NULL OR i.date <= $3)) AS income_count
+       AND ($3::date IS NULL OR i.date <= $3)) AS income_count,
+    (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
+     WHERE i.user_id = $1
+       AND i.status != 'skipped'
+       AND i.category_id IS NOT DISTINCT FROM $4::uuid
+       AND ($2::date IS NULL OR i.date >= $2)
+       AND ($3::date IS NULL OR i.date <= $3)) AS total_reimbursements
 `
 
 type GetSummaryParams struct {
-	UserID    uuid.UUID   `db:"user_id" json:"user_id"`
-	StartDate pgtype.Date `db:"start_date" json:"start_date"`
-	EndDate   pgtype.Date `db:"end_date" json:"end_date"`
+	UserID          uuid.UUID   `db:"user_id" json:"user_id"`
+	StartDate       pgtype.Date `db:"start_date" json:"start_date"`
+	EndDate         pgtype.Date `db:"end_date" json:"end_date"`
+	ReimbursementID uuid.UUID   `db:"reimbursement_id" json:"reimbursement_id"`
 }
 
 type GetSummaryRow struct {
-	TotalExpenses decimal.Decimal `db:"total_expenses" json:"total_expenses"`
-	TotalIncomes  decimal.Decimal `db:"total_incomes" json:"total_incomes"`
-	ExpenseCount  int64           `db:"expense_count" json:"expense_count"`
-	IncomeCount   int64           `db:"income_count" json:"income_count"`
+	TotalExpenses       decimal.Decimal `db:"total_expenses" json:"total_expenses"`
+	TotalIncomes        decimal.Decimal `db:"total_incomes" json:"total_incomes"`
+	ExpenseCount        int64           `db:"expense_count" json:"expense_count"`
+	IncomeCount         int64           `db:"income_count" json:"income_count"`
+	TotalReimbursements decimal.Decimal `db:"total_reimbursements" json:"total_reimbursements"`
 }
 
 func (q *Queries) GetSummary(ctx context.Context, arg GetSummaryParams) (GetSummaryRow, error) {
-	row := q.db.QueryRow(ctx, getSummary, arg.UserID, arg.StartDate, arg.EndDate)
+	row := q.db.QueryRow(ctx, getSummary,
+		arg.UserID,
+		arg.StartDate,
+		arg.EndDate,
+		arg.ReimbursementID,
+	)
 	var i GetSummaryRow
 	err := row.Scan(
 		&i.TotalExpenses,
 		&i.TotalIncomes,
 		&i.ExpenseCount,
 		&i.IncomeCount,
+		&i.TotalReimbursements,
 	)
 	return i, err
 }
@@ -348,12 +407,14 @@ const getTrends = `-- name: GetTrends :many
 SELECT
     month,
     COALESCE(SUM(total_expenses), 0)::numeric AS total_expenses,
-    COALESCE(SUM(total_incomes), 0)::numeric AS total_incomes
+    COALESCE(SUM(total_incomes), 0)::numeric AS total_incomes,
+    COALESCE(SUM(total_reimbursements), 0)::numeric AS total_reimbursements
 FROM (
     SELECT
         TO_CHAR(e.expense_date, 'YYYY-MM') AS month,
         COALESCE(SUM(e.amount), 0)::numeric AS total_expenses,
-        0::numeric AS total_incomes
+        0::numeric AS total_incomes,
+        0::numeric AS total_reimbursements
     FROM expenses e
     WHERE e.user_id = $1
       AND e.status != 'skipped'
@@ -364,7 +425,8 @@ FROM (
     SELECT
         TO_CHAR(i.date, 'YYYY-MM') AS month,
         0::numeric AS total_expenses,
-        COALESCE(SUM(i.amount), 0)::numeric AS total_incomes
+        COALESCE(SUM(i.amount) FILTER (WHERE i.category_id IS DISTINCT FROM $4::uuid), 0)::numeric AS total_incomes,
+        COALESCE(SUM(i.amount) FILTER (WHERE i.category_id IS NOT DISTINCT FROM $4::uuid), 0)::numeric AS total_reimbursements
     FROM incomes i
     WHERE i.user_id = $1
       AND i.status != 'skipped'
@@ -377,19 +439,26 @@ ORDER BY month DESC
 `
 
 type GetTrendsParams struct {
-	UserID    uuid.UUID   `db:"user_id" json:"user_id"`
-	StartDate pgtype.Date `db:"start_date" json:"start_date"`
-	EndDate   pgtype.Date `db:"end_date" json:"end_date"`
+	UserID          uuid.UUID   `db:"user_id" json:"user_id"`
+	StartDate       pgtype.Date `db:"start_date" json:"start_date"`
+	EndDate         pgtype.Date `db:"end_date" json:"end_date"`
+	ReimbursementID uuid.UUID   `db:"reimbursement_id" json:"reimbursement_id"`
 }
 
 type GetTrendsRow struct {
-	Month         string          `db:"month" json:"month"`
-	TotalExpenses decimal.Decimal `db:"total_expenses" json:"total_expenses"`
-	TotalIncomes  decimal.Decimal `db:"total_incomes" json:"total_incomes"`
+	Month               string          `db:"month" json:"month"`
+	TotalExpenses       decimal.Decimal `db:"total_expenses" json:"total_expenses"`
+	TotalIncomes        decimal.Decimal `db:"total_incomes" json:"total_incomes"`
+	TotalReimbursements decimal.Decimal `db:"total_reimbursements" json:"total_reimbursements"`
 }
 
 func (q *Queries) GetTrends(ctx context.Context, arg GetTrendsParams) ([]GetTrendsRow, error) {
-	rows, err := q.db.Query(ctx, getTrends, arg.UserID, arg.StartDate, arg.EndDate)
+	rows, err := q.db.Query(ctx, getTrends,
+		arg.UserID,
+		arg.StartDate,
+		arg.EndDate,
+		arg.ReimbursementID,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -397,7 +466,12 @@ func (q *Queries) GetTrends(ctx context.Context, arg GetTrendsParams) ([]GetTren
 	items := []GetTrendsRow{}
 	for rows.Next() {
 		var i GetTrendsRow
-		if err := rows.Scan(&i.Month, &i.TotalExpenses, &i.TotalIncomes); err != nil {
+		if err := rows.Scan(
+			&i.Month,
+			&i.TotalExpenses,
+			&i.TotalIncomes,
+			&i.TotalReimbursements,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
