@@ -36,6 +36,15 @@ func SetupTestDBThrough(t *testing.T, through string) *pgxpool.Pool {
 // with prefix, as goose would.
 func ApplyMigration(t *testing.T, pool *pgxpool.Pool, prefix string) {
 	t.Helper()
+	if err := ApplyMigrationErr(t, pool, prefix); err != nil {
+		t.Fatalf("apply %s: %v", prefix, err)
+	}
+}
+
+// ApplyMigrationErr is ApplyMigration for a test that expects the migration
+// to refuse the data.
+func ApplyMigrationErr(t *testing.T, pool *pgxpool.Pool, prefix string) error {
+	t.Helper()
 	files, err := migrationFiles()
 	if err != nil {
 		t.Fatalf("list migrations: %v", err)
@@ -46,13 +55,12 @@ func ApplyMigration(t *testing.T, pool *pgxpool.Pool, prefix string) {
 			if err != nil {
 				t.Fatalf("read %s: %v", f, err)
 			}
-			if _, err := pool.Exec(context.Background(), adaptSchemaForTests([]byte(up))); err != nil {
-				t.Fatalf("apply %s: %v", f, err)
-			}
-			return
+			_, err = pool.Exec(context.Background(), adaptSchemaForTests([]byte(up)))
+			return err
 		}
 	}
 	t.Fatalf("no migration starts with %q", prefix)
+	return nil
 }
 
 func setupTestDB(t *testing.T, through string) *pgxpool.Pool {
@@ -207,6 +215,42 @@ func migrationFiles() ([]string, error) {
 
 // upSection keeps only the Up section: goose Down sections start at the
 // marker.
+// ApplyMigrationDown runs the Down section of the migration whose file name
+// starts with prefix.
+func ApplyMigrationDown(t *testing.T, pool *pgxpool.Pool, prefix string) {
+	t.Helper()
+	files, err := migrationFiles()
+	if err != nil {
+		t.Fatalf("list migrations: %v", err)
+	}
+	for _, f := range files {
+		if strings.HasPrefix(filepath.Base(f), prefix) {
+			down, err := downSection(f)
+			if err != nil {
+				t.Fatalf("read %s: %v", f, err)
+			}
+			if _, err := pool.Exec(context.Background(), adaptSchemaForTests([]byte(down))); err != nil {
+				t.Fatalf("apply down %s: %v", f, err)
+			}
+			return
+		}
+	}
+	t.Fatalf("no migration starts with %q", prefix)
+}
+
+func downSection(f string) (string, error) {
+	data, err := os.ReadFile(f)
+	if err != nil {
+		return "", err
+	}
+	marker := "-- +goose Down"
+	idx := strings.Index(string(data), marker)
+	if idx < 0 {
+		return "", nil
+	}
+	return string(data[idx+len(marker):]), nil
+}
+
 func upSection(f string) (string, error) {
 	data, err := os.ReadFile(f)
 	if err != nil {

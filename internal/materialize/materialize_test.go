@@ -3,6 +3,7 @@ package materialize
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -12,8 +13,28 @@ import (
 	"github.com/stretchr/testify/require"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
+	"github.com/ejsadiarin/corefinance/internal/rates"
 	"github.com/ejsadiarin/corefinance/internal/testutil"
 )
+
+type fixedRates struct {
+	rate rates.Rate
+	err  error
+}
+
+func (f fixedRates) Rate(context.Context, string, time.Time) (rates.Rate, error) {
+	return f.rate, f.err
+}
+
+type dateRates map[string]rates.Rate
+
+func (d dateRates) Rate(_ context.Context, _ string, date time.Time) (rates.Rate, error) {
+	r, ok := d[date.Format("2006-01-02")]
+	if !ok {
+		return rates.Rate{}, rates.ErrRateUnavailable
+	}
+	return r, nil
+}
 
 func newMaterializeTest(t *testing.T) (*pgxpool.Pool, *db.Queries) {
 	t.Helper()
@@ -94,6 +115,73 @@ func TestMaterializeDue_DailyCreatesTodaysInstance_Integration(t *testing.T) {
 	assert.Equal(t, rule.ID, uuid.UUID(got.SourceRuleID.Bytes))
 	assert.Equal(t, "posted", got.Status)
 	assert.True(t, got.ExpenseDate.Time.Equal(today))
+}
+
+// A non-PHP rule fixes the rate at each entry's due date. A provider outage
+// writes no entry and leaves the watermark retryable (ADR-0003).
+func TestMaterializeDue_NonPHPUsesDueDateRate_Integration(t *testing.T) {
+	pool, q := newMaterializeTest(t)
+	ctx := context.Background()
+	userID := uuid.New()
+	today := d("2026-09-10")
+
+	rule, err := q.CreateRecurringIncomeRule(ctx, db.CreateRecurringIncomeRuleParams{
+		UserID:        userID,
+		Amount:        decimal.NewFromInt(100),
+		Currency:      "USD",
+		Description:   "gift",
+		RecurringType: "daily",
+		StartDate:     pgtype.Date{Time: d("2026-09-09"), Valid: true},
+		Priority:      pgtype.Text{String: "want", Valid: true},
+	})
+	require.NoError(t, err)
+
+	provider := dateRates{
+		"2026-09-09": {Value: decimal.RequireFromString("60"), Date: d("2026-09-09")},
+		"2026-09-10": {Value: decimal.RequireFromString("61"), Date: d("2026-09-10")},
+	}
+	n, err := MaterializeDueWithRates(ctx, pool, q, testZones, today, provider)
+	require.NoError(t, err)
+	require.Equal(t, 2, n)
+
+	rows, err := pool.Query(ctx, `SELECT amount, currency, exchange_rate, amount_php, rate_date
+		FROM incomes WHERE source_rule_id = $1 ORDER BY date`, rule.ID)
+	require.NoError(t, err)
+	defer rows.Close()
+	var ratesOut []string
+	var php []string
+	var rateDates []string
+	for rows.Next() {
+		var amount, rate, amountPHP decimal.Decimal
+		var currency string
+		var rateDate pgtype.Date
+		require.NoError(t, rows.Scan(&amount, &currency, &rate, &amountPHP, &rateDate))
+		assert.Equal(t, "USD", currency)
+		assert.True(t, decimal.NewFromInt(100).Equal(amount))
+		ratesOut = append(ratesOut, rate.String())
+		php = append(php, amountPHP.String())
+		rateDates = append(rateDates, rateDate.Time.Format("2006-01-02"))
+	}
+	require.NoError(t, rows.Err())
+	assert.Equal(t, []string{"60", "61"}, ratesOut)
+	assert.Equal(t, []string{"6000", "6100"}, php)
+	assert.Equal(t, []string{"2026-09-09", "2026-09-10"}, rateDates)
+
+	// A provider outage leaves the entries and the watermark untouched.
+	_, err = pool.Exec(ctx, `DELETE FROM incomes WHERE source_rule_id = $1`, rule.ID)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `UPDATE rules SET materialized_through = NULL, next_due_at = NULL WHERE id = $1`, rule.ID)
+	require.NoError(t, err)
+
+	n, err = MaterializeDueWithRates(ctx, pool, q, testZones, today, fixedRates{err: rates.ErrRateUnavailable})
+	require.ErrorIs(t, err, rates.ErrRateUnavailable)
+	assert.Equal(t, 0, n)
+	var count int
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM incomes WHERE source_rule_id = $1`, rule.ID).Scan(&count))
+	assert.Equal(t, 0, count)
+	var watermark pgtype.Date
+	require.NoError(t, pool.QueryRow(ctx, `SELECT materialized_through FROM rules WHERE id = $1`, rule.ID).Scan(&watermark))
+	assert.False(t, watermark.Valid)
 }
 
 // Double run for the same day inserts nothing the second time.

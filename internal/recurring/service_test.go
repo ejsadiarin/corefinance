@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -13,7 +14,16 @@ import (
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/mock"
+	"github.com/ejsadiarin/corefinance/internal/rates"
 )
+
+type anyRates struct{}
+
+func (anyRates) Rate(_ context.Context, _ string, date time.Time) (rates.Rate, error) {
+	return rates.Rate{Value: decimal.NewFromInt(1), Date: date}, nil
+}
+
+func (anyRates) Supports(context.Context, string) error { return nil }
 
 func TestRecurringService_CreateIncomeRule(t *testing.T) {
 	userID := uuid.New()
@@ -30,9 +40,9 @@ func TestRecurringService_CreateIncomeRule(t *testing.T) {
 				assert.True(t, arg.StartDate.Valid)
 				assert.False(t, arg.EndDate.Valid)
 				return db.Rule{
-					ID:     ruleID,
-					UserID: userID,
-					Amount: decimal.NewFromFloat(5000.50),
+					ID:            ruleID,
+					UserID:        userID,
+					Amount:        decimal.NewFromFloat(5000.50),
 					Currency:      "PHP",
 					Description:   "Monthly Salary",
 					RecurringType: "monthly",
@@ -60,7 +70,7 @@ func TestRecurringService_CreateIncomeRule(t *testing.T) {
 				return db.Rule{ID: ruleID}, nil
 			},
 		}
-		svc := NewService(mock)
+		svc := NewServiceWithPoolAndRates(mock, nil, anyRates{})
 		_, err := svc.CreateIncomeRule(context.Background(), userID, CreateIncomeRuleRequest{
 			Amount:        1000,
 			Currency:      "USD",
@@ -393,9 +403,9 @@ func TestRecurringService_GetExpenseRule(t *testing.T) {
 				assert.Equal(t, ruleID, arg.ID)
 				assert.Equal(t, userID, arg.UserID)
 				return db.GetRecurringExpenseRuleRow{
-					ID:          ruleID,
-					Description: "Rent",
-					Amount:      decimal.NewFromFloat(1500),
+					ID:           ruleID,
+					Description:  "Rent",
+					Amount:       decimal.NewFromFloat(1500),
 					CategoryName: pgtype.Text{String: "Housing", Valid: true},
 				}, nil
 			},

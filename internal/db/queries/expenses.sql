@@ -1,6 +1,6 @@
 -- name: CreateExpense :one
-INSERT INTO expenses (user_id, category_id, amount, currency, description, notes, expense_date, priority, status, is_debt, source_rule_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+INSERT INTO expenses (user_id, category_id, amount, currency, exchange_rate, amount_php, rate_date, description, notes, expense_date, priority, status, is_debt, source_rule_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 RETURNING *;
 
 -- name: GetExpense :one
@@ -33,9 +33,10 @@ LIMIT @page_limit OFFSET @page_offset;
 
 -- name: UpdateExpense :one
 UPDATE expenses
-SET category_id = $3, amount = $4, currency = $5, description = $6, notes = $7,
-    expense_date = $8, priority = $9, status = $10,
-    is_debt = $11, source_rule_id = $12,
+SET category_id = $3, amount = $4, currency = $5, exchange_rate = $6,
+    amount_php = $7, rate_date = $8, description = $9, notes = $10,
+    expense_date = $11, priority = $12, status = $13,
+    is_debt = $14, source_rule_id = $15,
     updated_at = now(), user_edited_at = now()
 WHERE id = $1 AND user_id = $2
 RETURNING *;
@@ -64,7 +65,7 @@ SELECT
     ec.name AS category_name,
     ec.color AS category_color,
     COUNT(e.id) AS expense_count,
-    COALESCE(SUM(e.amount), 0)::numeric AS total_amount
+    COALESCE(SUM(e.amount_php), 0)::numeric AS total_amount
 FROM expense_categories ec
 LEFT JOIN expenses e ON ec.id = e.category_id
     AND e.user_id = @user_id
@@ -76,7 +77,7 @@ GROUP BY ec.id, ec.name, ec.color
 ORDER BY total_amount DESC;
 
 -- name: GetTotalExpensesByDateRange :one
-SELECT COALESCE(SUM(amount), 0)::numeric AS total
+SELECT COALESCE(SUM(amount_php), 0)::numeric AS total
 FROM expenses
 WHERE user_id = $1
   AND expense_date >= $2

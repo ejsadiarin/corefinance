@@ -32,8 +32,8 @@ func (q *Queries) AdvanceRuleWatermark(ctx context.Context, arg AdvanceRuleWater
 
 const createExpenseInstance = `-- name: CreateExpenseInstance :execrows
 
-INSERT INTO expenses (user_id, category_id, amount, currency, description, notes, expense_date, priority, status, is_debt, source_rule_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'posted', $9, $10)
+INSERT INTO expenses (user_id, category_id, amount, currency, exchange_rate, amount_php, rate_date, description, notes, expense_date, priority, status, is_debt, source_rule_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'posted', $12, $13)
 ON CONFLICT (user_id, source_rule_id, expense_date) WHERE source_rule_id IS NOT NULL DO NOTHING
 `
 
@@ -42,6 +42,9 @@ type CreateExpenseInstanceParams struct {
 	CategoryID   pgtype.UUID     `db:"category_id" json:"category_id"`
 	Amount       decimal.Decimal `db:"amount" json:"amount"`
 	Currency     string          `db:"currency" json:"currency"`
+	ExchangeRate decimal.Decimal `db:"exchange_rate" json:"exchange_rate"`
+	AmountPhp    decimal.Decimal `db:"amount_php" json:"amount_php"`
+	RateDate     pgtype.Date     `db:"rate_date" json:"rate_date"`
 	Description  string          `db:"description" json:"description"`
 	Notes        pgtype.Text     `db:"notes" json:"notes"`
 	ExpenseDate  pgtype.Date     `db:"expense_date" json:"expense_date"`
@@ -57,6 +60,9 @@ func (q *Queries) CreateExpenseInstance(ctx context.Context, arg CreateExpenseIn
 		arg.CategoryID,
 		arg.Amount,
 		arg.Currency,
+		arg.ExchangeRate,
+		arg.AmountPhp,
+		arg.RateDate,
 		arg.Description,
 		arg.Notes,
 		arg.ExpenseDate,
@@ -71,8 +77,8 @@ func (q *Queries) CreateExpenseInstance(ctx context.Context, arg CreateExpenseIn
 }
 
 const createIncomeInstance = `-- name: CreateIncomeInstance :execrows
-INSERT INTO incomes (user_id, category_id, amount, currency, description, notes, date, priority, status, source_rule_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'posted', $9)
+INSERT INTO incomes (user_id, category_id, amount, currency, exchange_rate, amount_php, rate_date, description, notes, date, priority, status, source_rule_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'posted', $12)
 ON CONFLICT (user_id, source_rule_id, date) WHERE source_rule_id IS NOT NULL DO NOTHING
 `
 
@@ -81,6 +87,9 @@ type CreateIncomeInstanceParams struct {
 	CategoryID   pgtype.UUID     `db:"category_id" json:"category_id"`
 	Amount       decimal.Decimal `db:"amount" json:"amount"`
 	Currency     string          `db:"currency" json:"currency"`
+	ExchangeRate decimal.Decimal `db:"exchange_rate" json:"exchange_rate"`
+	AmountPhp    decimal.Decimal `db:"amount_php" json:"amount_php"`
+	RateDate     pgtype.Date     `db:"rate_date" json:"rate_date"`
 	Description  string          `db:"description" json:"description"`
 	Notes        pgtype.Text     `db:"notes" json:"notes"`
 	Date         pgtype.Date     `db:"date" json:"date"`
@@ -94,6 +103,9 @@ func (q *Queries) CreateIncomeInstance(ctx context.Context, arg CreateIncomeInst
 		arg.CategoryID,
 		arg.Amount,
 		arg.Currency,
+		arg.ExchangeRate,
+		arg.AmountPhp,
+		arg.RateDate,
 		arg.Description,
 		arg.Notes,
 		arg.Date,

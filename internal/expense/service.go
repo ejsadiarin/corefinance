@@ -2,30 +2,56 @@ package expense
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/helper"
+	"github.com/ejsadiarin/corefinance/internal/rates"
 )
 
 type Service struct {
 	queries db.Querier
+	rates   rates.Provider
 }
 
 func NewService(queries db.Querier) *Service {
-	return &Service{queries: queries}
+	return NewServiceWithRates(queries, rates.PHPOnly{})
+}
+
+// NewServiceWithRates converts every record through provider (ADR-0003).
+func NewServiceWithRates(queries db.Querier, provider rates.Provider) *Service {
+	return &Service{queries: queries, rates: provider}
+}
+
+func (s *Service) conversion(ctx context.Context, currency, date string, amount decimal.Decimal) (rates.Conversion, error) {
+	d, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return rates.Conversion{}, fmt.Errorf("expense date: %w", err)
+	}
+	return rates.Convert(ctx, s.rates, currency, d, amount)
 }
 
 func (s *Service) Create(ctx context.Context, userID uuid.UUID, req CreateRequest) (db.Expense, error) {
 	slog.Debug("expense.Service.Create", "user_id", userID)
+	amount := decimal.NewFromFloat(req.Amount)
+	conv, err := s.conversion(ctx, req.Currency, req.ExpenseDate, amount)
+	if err != nil {
+		return db.Expense{}, err
+	}
 	return s.queries.CreateExpense(ctx, db.CreateExpenseParams{
 		UserID:       userID,
 		CategoryID:   helper.ToPgUUID(req.CategoryID),
-		Amount:       decimal.NewFromFloat(req.Amount),
-		Currency:     req.Currency,
+		Amount:       amount,
+		Currency:     conv.Currency,
+		ExchangeRate: conv.Rate,
+		AmountPhp:    conv.AmountPHP,
+		RateDate:     pgtype.Date{Time: conv.RateDate, Valid: true},
 		Description:  req.Description,
 		Notes:        helper.ToPgText(req.Notes),
 		ExpenseDate:  helper.ToPgDate(req.ExpenseDate),
@@ -90,12 +116,38 @@ func (s *Service) Search(ctx context.Context, userID uuid.UUID, params SearchPar
 
 func (s *Service) Update(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateRequest) (db.Expense, error) {
 	slog.Debug("expense.Service.Update", "id", id, "user_id", userID)
+	existing, err := s.queries.GetExpense(ctx, db.GetExpenseParams{ID: id, UserID: userID})
+	if err != nil {
+		return db.Expense{}, err
+	}
+
+	amount := decimal.NewFromFloat(req.Amount)
+	date, err := time.Parse("2006-01-02", req.ExpenseDate)
+	if err != nil {
+		return db.Expense{}, fmt.Errorf("expense date: %w", err)
+	}
+	currency := rates.Normalize(req.Currency)
+	if req.Currency == "" {
+		currency = rates.Normalize(existing.Currency)
+	}
+	conv, err := rates.ConvertForUpdate(ctx, s.rates, rates.Existing{
+		Currency: existing.Currency,
+		Date:     existing.ExpenseDate.Time,
+		Rate:     existing.ExchangeRate,
+		RateDate: existing.RateDate.Time,
+	}, currency, date, amount)
+	if err != nil {
+		return db.Expense{}, err
+	}
 	return s.queries.UpdateExpense(ctx, db.UpdateExpenseParams{
 		ID:           id,
 		UserID:       userID,
 		CategoryID:   helper.ToPgUUID(req.CategoryID),
-		Amount:       decimal.NewFromFloat(req.Amount),
-		Currency:     req.Currency,
+		Amount:       amount,
+		Currency:     conv.Currency,
+		ExchangeRate: conv.Rate,
+		AmountPhp:    conv.AmountPHP,
+		RateDate:     pgtype.Date{Time: conv.RateDate, Valid: true},
 		Description:  req.Description,
 		Notes:        helper.ToPgText(req.Notes),
 		ExpenseDate:  helper.ToPgDate(req.ExpenseDate),

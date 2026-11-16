@@ -146,7 +146,7 @@ func TestGetIncomeOccurrences_AreRuleCreatedIncomes_Integration(t *testing.T) {
 	rule := seedIncomeRule(t, ctx, q, userID, "daily", "2026-09-10")
 	_, err := MaterializeDue(ctx, pool, q, testZones, today)
 	require.NoError(t, err)
-	_, err = pool.Exec(ctx, `INSERT INTO incomes (user_id, amount, description, date) VALUES ($1, 100, 'gift', '2026-09-10')`, userID)
+	_, err = pool.Exec(ctx, `INSERT INTO incomes (user_id, amount, exchange_rate, amount_php, rate_date, description, date) VALUES ($1, 100, 1, 100, '2026-09-10', 'gift', '2026-09-10')`, userID)
 	require.NoError(t, err)
 
 	got, err := q.GetIncomeOccurrences(ctx, db.GetIncomeOccurrencesParams{UserID: userID})

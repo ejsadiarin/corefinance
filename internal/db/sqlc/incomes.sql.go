@@ -37,9 +37,9 @@ func (q *Queries) CheckSkippedIncome(ctx context.Context, arg CheckSkippedIncome
 }
 
 const createIncome = `-- name: CreateIncome :one
-INSERT INTO incomes (user_id, category_id, amount, currency, description, notes, date, priority, status, source_rule_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, user_id, category_id, amount, currency, description, notes, date, priority, status, source_rule_id, created_at, updated_at, user_edited_at, txid
+INSERT INTO incomes (user_id, category_id, amount, currency, exchange_rate, amount_php, rate_date, description, notes, date, priority, status, source_rule_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+RETURNING id, user_id, category_id, amount, currency, description, notes, date, priority, status, source_rule_id, created_at, updated_at, user_edited_at, txid, exchange_rate, amount_php, rate_date
 `
 
 type CreateIncomeParams struct {
@@ -47,6 +47,9 @@ type CreateIncomeParams struct {
 	CategoryID   pgtype.UUID     `db:"category_id" json:"category_id"`
 	Amount       decimal.Decimal `db:"amount" json:"amount"`
 	Currency     string          `db:"currency" json:"currency"`
+	ExchangeRate decimal.Decimal `db:"exchange_rate" json:"exchange_rate"`
+	AmountPhp    decimal.Decimal `db:"amount_php" json:"amount_php"`
+	RateDate     pgtype.Date     `db:"rate_date" json:"rate_date"`
 	Description  string          `db:"description" json:"description"`
 	Notes        pgtype.Text     `db:"notes" json:"notes"`
 	Date         pgtype.Date     `db:"date" json:"date"`
@@ -61,6 +64,9 @@ func (q *Queries) CreateIncome(ctx context.Context, arg CreateIncomeParams) (Inc
 		arg.CategoryID,
 		arg.Amount,
 		arg.Currency,
+		arg.ExchangeRate,
+		arg.AmountPhp,
+		arg.RateDate,
 		arg.Description,
 		arg.Notes,
 		arg.Date,
@@ -85,6 +91,9 @@ func (q *Queries) CreateIncome(ctx context.Context, arg CreateIncomeParams) (Inc
 		&i.UpdatedAt,
 		&i.UserEditedAt,
 		&i.Txid,
+		&i.ExchangeRate,
+		&i.AmountPhp,
+		&i.RateDate,
 	)
 	return i, err
 }
@@ -105,7 +114,7 @@ func (q *Queries) DeleteIncome(ctx context.Context, arg DeleteIncomeParams) erro
 }
 
 const getIncome = `-- name: GetIncome :one
-SELECT i.id, i.user_id, i.category_id, i.amount, i.currency, i.description, i.notes, i.date, i.priority, i.status, i.source_rule_id, i.created_at, i.updated_at, i.user_edited_at, i.txid, ic.name AS category_name, ic.color AS category_color, ic.icon AS category_icon
+SELECT i.id, i.user_id, i.category_id, i.amount, i.currency, i.description, i.notes, i.date, i.priority, i.status, i.source_rule_id, i.created_at, i.updated_at, i.user_edited_at, i.txid, i.exchange_rate, i.amount_php, i.rate_date, ic.name AS category_name, ic.color AS category_color, ic.icon AS category_icon
 FROM incomes i
 LEFT JOIN income_categories ic ON i.category_id = ic.id
 WHERE i.id = $1 AND i.user_id = $2
@@ -132,6 +141,9 @@ type GetIncomeRow struct {
 	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	UserEditedAt  pgtype.Timestamptz `db:"user_edited_at" json:"user_edited_at"`
 	Txid          uint64             `db:"txid" json:"-"`
+	ExchangeRate  decimal.Decimal    `db:"exchange_rate" json:"exchange_rate"`
+	AmountPhp     decimal.Decimal    `db:"amount_php" json:"amount_php"`
+	RateDate      pgtype.Date        `db:"rate_date" json:"rate_date"`
 	CategoryName  pgtype.Text        `db:"category_name" json:"category_name"`
 	CategoryColor pgtype.Text        `db:"category_color" json:"category_color"`
 	CategoryIcon  pgtype.Text        `db:"category_icon" json:"category_icon"`
@@ -156,6 +168,9 @@ func (q *Queries) GetIncome(ctx context.Context, arg GetIncomeParams) (GetIncome
 		&i.UpdatedAt,
 		&i.UserEditedAt,
 		&i.Txid,
+		&i.ExchangeRate,
+		&i.AmountPhp,
+		&i.RateDate,
 		&i.CategoryName,
 		&i.CategoryColor,
 		&i.CategoryIcon,
@@ -164,7 +179,7 @@ func (q *Queries) GetIncome(ctx context.Context, arg GetIncomeParams) (GetIncome
 }
 
 const getIncomeOccurrences = `-- name: GetIncomeOccurrences :many
-SELECT id, user_id, category_id, amount, currency, description, notes, date, priority, status, source_rule_id, created_at, updated_at, user_edited_at, txid FROM incomes
+SELECT id, user_id, category_id, amount, currency, description, notes, date, priority, status, source_rule_id, created_at, updated_at, user_edited_at, txid, exchange_rate, amount_php, rate_date FROM incomes
 WHERE user_id = $1
   AND source_rule_id IS NOT NULL
   AND ($2::date IS NULL OR date >= $2)
@@ -205,6 +220,9 @@ func (q *Queries) GetIncomeOccurrences(ctx context.Context, arg GetIncomeOccurre
 			&i.UpdatedAt,
 			&i.UserEditedAt,
 			&i.Txid,
+			&i.ExchangeRate,
+			&i.AmountPhp,
+			&i.RateDate,
 		); err != nil {
 			return nil, err
 		}
@@ -217,7 +235,7 @@ func (q *Queries) GetIncomeOccurrences(ctx context.Context, arg GetIncomeOccurre
 }
 
 const getTotalIncomesByDateRange = `-- name: GetTotalIncomesByDateRange :one
-SELECT COALESCE(SUM(amount), 0)::numeric AS total
+SELECT COALESCE(SUM(amount_php), 0)::numeric AS total
 FROM incomes
 WHERE user_id = $1
   AND date >= $2
@@ -239,7 +257,7 @@ func (q *Queries) GetTotalIncomesByDateRange(ctx context.Context, arg GetTotalIn
 }
 
 const listAllIncomesByUser = `-- name: ListAllIncomesByUser :many
-SELECT id, user_id, category_id, amount, currency, description, notes, date, priority, status, source_rule_id, created_at, updated_at, user_edited_at, txid FROM incomes
+SELECT id, user_id, category_id, amount, currency, description, notes, date, priority, status, source_rule_id, created_at, updated_at, user_edited_at, txid, exchange_rate, amount_php, rate_date FROM incomes
 WHERE user_id = $1
 ORDER BY date DESC, created_at DESC
 `
@@ -269,6 +287,9 @@ func (q *Queries) ListAllIncomesByUser(ctx context.Context, userID uuid.UUID) ([
 			&i.UpdatedAt,
 			&i.UserEditedAt,
 			&i.Txid,
+			&i.ExchangeRate,
+			&i.AmountPhp,
+			&i.RateDate,
 		); err != nil {
 			return nil, err
 		}
@@ -281,7 +302,7 @@ func (q *Queries) ListAllIncomesByUser(ctx context.Context, userID uuid.UUID) ([
 }
 
 const listIncomes = `-- name: ListIncomes :many
-SELECT i.id, i.user_id, i.category_id, i.amount, i.currency, i.description, i.notes, i.date, i.priority, i.status, i.source_rule_id, i.created_at, i.updated_at, i.user_edited_at, i.txid, ic.name AS category_name, ic.color AS category_color, ic.icon AS category_icon
+SELECT i.id, i.user_id, i.category_id, i.amount, i.currency, i.description, i.notes, i.date, i.priority, i.status, i.source_rule_id, i.created_at, i.updated_at, i.user_edited_at, i.txid, i.exchange_rate, i.amount_php, i.rate_date, ic.name AS category_name, ic.color AS category_color, ic.icon AS category_icon
 FROM incomes i
 LEFT JOIN income_categories ic ON i.category_id = ic.id
 WHERE i.user_id = $1
@@ -319,6 +340,9 @@ type ListIncomesRow struct {
 	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	UserEditedAt  pgtype.Timestamptz `db:"user_edited_at" json:"user_edited_at"`
 	Txid          uint64             `db:"txid" json:"-"`
+	ExchangeRate  decimal.Decimal    `db:"exchange_rate" json:"exchange_rate"`
+	AmountPhp     decimal.Decimal    `db:"amount_php" json:"amount_php"`
+	RateDate      pgtype.Date        `db:"rate_date" json:"rate_date"`
 	CategoryName  pgtype.Text        `db:"category_name" json:"category_name"`
 	CategoryColor pgtype.Text        `db:"category_color" json:"category_color"`
 	CategoryIcon  pgtype.Text        `db:"category_icon" json:"category_icon"`
@@ -357,6 +381,9 @@ func (q *Queries) ListIncomes(ctx context.Context, arg ListIncomesParams) ([]Lis
 			&i.UpdatedAt,
 			&i.UserEditedAt,
 			&i.Txid,
+			&i.ExchangeRate,
+			&i.AmountPhp,
+			&i.RateDate,
 			&i.CategoryName,
 			&i.CategoryColor,
 			&i.CategoryIcon,
@@ -372,7 +399,7 @@ func (q *Queries) ListIncomes(ctx context.Context, arg ListIncomesParams) ([]Lis
 }
 
 const listIncomesByIDs = `-- name: ListIncomesByIDs :many
-SELECT i.id, i.user_id, i.category_id, i.amount, i.currency, i.description, i.notes, i.date, i.priority, i.status, i.source_rule_id, i.created_at, i.updated_at, i.user_edited_at, i.txid, ic.name AS category_name, ic.color AS category_color, ic.icon AS category_icon
+SELECT i.id, i.user_id, i.category_id, i.amount, i.currency, i.description, i.notes, i.date, i.priority, i.status, i.source_rule_id, i.created_at, i.updated_at, i.user_edited_at, i.txid, i.exchange_rate, i.amount_php, i.rate_date, ic.name AS category_name, ic.color AS category_color, ic.icon AS category_icon
 FROM incomes i
 LEFT JOIN income_categories ic ON i.category_id = ic.id
 WHERE i.user_id = $1 AND i.id = ANY($2::uuid[])
@@ -400,6 +427,9 @@ type ListIncomesByIDsRow struct {
 	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	UserEditedAt  pgtype.Timestamptz `db:"user_edited_at" json:"user_edited_at"`
 	Txid          uint64             `db:"txid" json:"-"`
+	ExchangeRate  decimal.Decimal    `db:"exchange_rate" json:"exchange_rate"`
+	AmountPhp     decimal.Decimal    `db:"amount_php" json:"amount_php"`
+	RateDate      pgtype.Date        `db:"rate_date" json:"rate_date"`
 	CategoryName  pgtype.Text        `db:"category_name" json:"category_name"`
 	CategoryColor pgtype.Text        `db:"category_color" json:"category_color"`
 	CategoryIcon  pgtype.Text        `db:"category_icon" json:"category_icon"`
@@ -432,6 +462,9 @@ func (q *Queries) ListIncomesByIDs(ctx context.Context, arg ListIncomesByIDsPara
 			&i.UpdatedAt,
 			&i.UserEditedAt,
 			&i.Txid,
+			&i.ExchangeRate,
+			&i.AmountPhp,
+			&i.RateDate,
 			&i.CategoryName,
 			&i.CategoryColor,
 			&i.CategoryIcon,
@@ -464,11 +497,12 @@ func (q *Queries) SkipIncome(ctx context.Context, arg SkipIncomeParams) error {
 
 const updateIncome = `-- name: UpdateIncome :one
 UPDATE incomes
-SET category_id = $3, amount = $4, currency = $5, description = $6, notes = $7,
-    date = $8, priority = $9, status = $10, source_rule_id = $11,
+SET category_id = $3, amount = $4, currency = $5, exchange_rate = $6,
+    amount_php = $7, rate_date = $8, description = $9, notes = $10,
+    date = $11, priority = $12, status = $13, source_rule_id = $14,
     updated_at = now(), user_edited_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, category_id, amount, currency, description, notes, date, priority, status, source_rule_id, created_at, updated_at, user_edited_at, txid
+RETURNING id, user_id, category_id, amount, currency, description, notes, date, priority, status, source_rule_id, created_at, updated_at, user_edited_at, txid, exchange_rate, amount_php, rate_date
 `
 
 type UpdateIncomeParams struct {
@@ -477,6 +511,9 @@ type UpdateIncomeParams struct {
 	CategoryID   pgtype.UUID     `db:"category_id" json:"category_id"`
 	Amount       decimal.Decimal `db:"amount" json:"amount"`
 	Currency     string          `db:"currency" json:"currency"`
+	ExchangeRate decimal.Decimal `db:"exchange_rate" json:"exchange_rate"`
+	AmountPhp    decimal.Decimal `db:"amount_php" json:"amount_php"`
+	RateDate     pgtype.Date     `db:"rate_date" json:"rate_date"`
 	Description  string          `db:"description" json:"description"`
 	Notes        pgtype.Text     `db:"notes" json:"notes"`
 	Date         pgtype.Date     `db:"date" json:"date"`
@@ -492,6 +529,9 @@ func (q *Queries) UpdateIncome(ctx context.Context, arg UpdateIncomeParams) (Inc
 		arg.CategoryID,
 		arg.Amount,
 		arg.Currency,
+		arg.ExchangeRate,
+		arg.AmountPhp,
+		arg.RateDate,
 		arg.Description,
 		arg.Notes,
 		arg.Date,
@@ -516,6 +556,9 @@ func (q *Queries) UpdateIncome(ctx context.Context, arg UpdateIncomeParams) (Inc
 		&i.UpdatedAt,
 		&i.UserEditedAt,
 		&i.Txid,
+		&i.ExchangeRate,
+		&i.AmountPhp,
+		&i.RateDate,
 	)
 	return i, err
 }

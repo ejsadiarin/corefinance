@@ -42,7 +42,7 @@ func (h *Handler) CreateIncomeRule(w http.ResponseWriter, r *http.Request) {
 	rule, err := h.service.CreateIncomeRule(r.Context(), userID, req)
 	if err != nil {
 		slog.Error("recurring.CreateIncomeRule: failed", "error", err, "user_id", userID)
-		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
+		helper.RespondServiceError(w, err)
 		return
 	}
 	slog.Info("recurring.CreateIncomeRule: rule created", "id", rule.ID, "user_id", userID)
@@ -117,7 +117,7 @@ func (h *Handler) UpdateIncomeRule(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		slog.Error("recurring.UpdateIncomeRule: failed", "error", err, "id", id, "user_id", userID)
-		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
+		helper.RespondServiceError(w, err)
 		return
 	}
 	slog.Info("recurring.UpdateIncomeRule: rule updated", "id", id, "user_id", userID)
@@ -163,7 +163,7 @@ func (h *Handler) CreateExpenseRule(w http.ResponseWriter, r *http.Request) {
 	rule, err := h.service.CreateExpenseRule(r.Context(), userID, req)
 	if err != nil {
 		slog.Error("recurring.CreateExpenseRule: failed", "error", err, "user_id", userID)
-		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
+		helper.RespondServiceError(w, err)
 		return
 	}
 	slog.Info("recurring.CreateExpenseRule: rule created", "id", rule.ID, "user_id", userID)
@@ -238,7 +238,7 @@ func (h *Handler) UpdateExpenseRule(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		slog.Error("recurring.UpdateExpenseRule: failed", "error", err, "id", id, "user_id", userID)
-		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
+		helper.RespondServiceError(w, err)
 		return
 	}
 	slog.Info("recurring.UpdateExpenseRule: rule updated", "id", id, "user_id", userID)

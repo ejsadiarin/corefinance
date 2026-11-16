@@ -2,6 +2,7 @@ package budget
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -78,7 +79,11 @@ func (h *Handler) Import(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.service.Import(r.Context(), userID, &export); err != nil {
 		slog.Error("budget.Handler.Import: failed", "error", err, "user_id", userID)
-		helper.RespondErrorJSON(w, http.StatusInternalServerError, "failed to import: "+err.Error())
+		if errors.Is(err, ErrLegacyCurrency) {
+			helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		helper.RespondServiceError(w, err)
 		return
 	}
 

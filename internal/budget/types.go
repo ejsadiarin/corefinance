@@ -1,8 +1,15 @@
 package budget
 
 import (
+	"errors"
+
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 )
+
+// ErrLegacyCurrency is an import row in a non-PHP currency without the rate
+// fields ADR-0003 added; the file predates the conversion and cannot be
+// trusted.
+var ErrLegacyCurrency = errors.New("legacy export has a non-PHP row without an exchange rate")
 
 type BudgetExport struct {
 	ExpenseCategories []db.ExpenseCategory              `json:"expense_categories"`

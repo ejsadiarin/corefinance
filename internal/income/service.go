@@ -2,29 +2,56 @@ package income
 
 import (
 	"context"
-	"github.com/google/uuid"
-	"github.com/shopspring/decimal"
+	"fmt"
 	"log/slog"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/helper"
+	"github.com/ejsadiarin/corefinance/internal/rates"
 )
 
 type Service struct {
 	queries db.Querier
+	rates   rates.Provider
 }
 
 func NewService(queries db.Querier) *Service {
-	return &Service{queries: queries}
+	return NewServiceWithRates(queries, rates.PHPOnly{})
+}
+
+// NewServiceWithRates converts every record through provider (ADR-0003).
+func NewServiceWithRates(queries db.Querier, provider rates.Provider) *Service {
+	return &Service{queries: queries, rates: provider}
+}
+
+func (s *Service) conversion(ctx context.Context, currency, date string, amount decimal.Decimal) (rates.Conversion, error) {
+	d, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return rates.Conversion{}, fmt.Errorf("income date: %w", err)
+	}
+	return rates.Convert(ctx, s.rates, currency, d, amount)
 }
 
 func (s *Service) Create(ctx context.Context, userID uuid.UUID, req CreateRequest) (db.Income, error) {
 	slog.Debug("income.Service.Create", "user_id", userID)
+	amount := decimal.NewFromFloat(req.Amount)
+	conv, err := s.conversion(ctx, req.Currency, req.Date, amount)
+	if err != nil {
+		return db.Income{}, err
+	}
 	return s.queries.CreateIncome(ctx, db.CreateIncomeParams{
 		UserID:       userID,
 		CategoryID:   helper.ToPgUUID(req.CategoryID),
-		Amount:       decimal.NewFromFloat(req.Amount),
-		Currency:     req.Currency,
+		Amount:       amount,
+		Currency:     conv.Currency,
+		ExchangeRate: conv.Rate,
+		AmountPhp:    conv.AmountPHP,
+		RateDate:     pgtype.Date{Time: conv.RateDate, Valid: true},
 		Description:  req.Description,
 		Notes:        helper.ToPgText(req.Notes),
 		Date:         helper.ToPgDate(req.Date),
@@ -70,12 +97,38 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID, params ListParams)
 
 func (s *Service) Update(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateRequest) (db.Income, error) {
 	slog.Debug("income.Service.Update", "id", id, "user_id", userID)
+	existing, err := s.queries.GetIncome(ctx, db.GetIncomeParams{ID: id, UserID: userID})
+	if err != nil {
+		return db.Income{}, err
+	}
+
+	amount := decimal.NewFromFloat(req.Amount)
+	date, err := time.Parse("2006-01-02", req.Date)
+	if err != nil {
+		return db.Income{}, fmt.Errorf("income date: %w", err)
+	}
+	currency := rates.Normalize(req.Currency)
+	if req.Currency == "" {
+		currency = rates.Normalize(existing.Currency)
+	}
+	conv, err := rates.ConvertForUpdate(ctx, s.rates, rates.Existing{
+		Currency: existing.Currency,
+		Date:     existing.Date.Time,
+		Rate:     existing.ExchangeRate,
+		RateDate: existing.RateDate.Time,
+	}, currency, date, amount)
+	if err != nil {
+		return db.Income{}, err
+	}
 	return s.queries.UpdateIncome(ctx, db.UpdateIncomeParams{
 		ID:           id,
 		UserID:       userID,
 		CategoryID:   helper.ToPgUUID(req.CategoryID),
-		Amount:       decimal.NewFromFloat(req.Amount),
-		Currency:     req.Currency,
+		Amount:       amount,
+		Currency:     conv.Currency,
+		ExchangeRate: conv.Rate,
+		AmountPhp:    conv.AmountPHP,
+		RateDate:     pgtype.Date{Time: conv.RateDate, Valid: true},
 		Description:  req.Description,
 		Notes:        helper.ToPgText(req.Notes),
 		Date:         helper.ToPgDate(req.Date),

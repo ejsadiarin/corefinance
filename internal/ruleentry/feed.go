@@ -104,7 +104,8 @@ func (h *Handler) Feed(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		out.Entries = append(out.Entries, toEntry(db.ListRuleEntriesRow{
 			Kind: row.Kind, ID: row.ID, RuleID: row.RuleID, Date: row.Date, Amount: row.Amount,
-			Currency: row.Currency, Description: row.Description, Notes: row.Notes,
+			Currency: row.Currency, ExchangeRate: row.ExchangeRate, AmountPhp: row.AmountPhp,
+			RateDate: row.RateDate, Description: row.Description, Notes: row.Notes,
 			CategoryID: row.CategoryID, CategoryName: row.CategoryName, Priority: row.Priority,
 			Status: row.Status, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 			UserEditedAt: row.UserEditedAt,

@@ -75,10 +75,10 @@ func TestTagLinksListEveryTaggedRecord_Integration(t *testing.T) {
 	require.NoError(t, err)
 	var expenseID, incomeID uuid.UUID
 	require.NoError(t, pool.QueryRow(ctx,
-		`INSERT INTO expenses (user_id, description, amount, currency, expense_date) VALUES ($1, 'lunch', 160, 'PHP', '2026-11-13') RETURNING id`,
+		`INSERT INTO expenses (user_id, description, amount, currency, exchange_rate, amount_php, rate_date, expense_date) VALUES ($1, 'lunch', 160, 'PHP', 1, 160, '2026-11-13', '2026-11-13') RETURNING id`,
 		user).Scan(&expenseID))
 	require.NoError(t, pool.QueryRow(ctx,
-		`INSERT INTO incomes (user_id, description, amount, currency, date) VALUES ($1, 'gift', 200, 'PHP', '2026-11-13') RETURNING id`,
+		`INSERT INTO incomes (user_id, description, amount, currency, exchange_rate, amount_php, rate_date, date) VALUES ($1, 'gift', 200, 'PHP', 1, 200, '2026-11-13', '2026-11-13') RETURNING id`,
 		user).Scan(&incomeID))
 	require.NoError(t, tags.AddTagToExpense(ctx, expenseID, her.ID))
 	require.NoError(t, tags.AddTagToIncome(ctx, incomeID, her.ID))

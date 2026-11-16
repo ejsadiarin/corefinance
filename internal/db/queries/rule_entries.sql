@@ -6,7 +6,7 @@
 -- name: ListRuleEntries :many
 SELECT * FROM (
     SELECT 'expense'::text AS kind, e.id, e.source_rule_id::uuid AS rule_id, e.expense_date AS date,
-           e.amount, e.currency, e.description, e.notes, e.category_id, ec.name AS category_name,
+           e.amount, e.currency, e.exchange_rate, e.amount_php, e.rate_date, e.description, e.notes, e.category_id, ec.name AS category_name,
            e.priority, e.status, e.created_at, e.updated_at, e.user_edited_at
     FROM expenses e
     LEFT JOIN expense_categories ec ON ec.id = e.category_id
@@ -18,7 +18,7 @@ SELECT * FROM (
       AND (sqlc.narg(created_since)::timestamptz IS NULL OR e.created_at > sqlc.narg(created_since)::timestamptz)
     UNION ALL
     SELECT 'income'::text AS kind, i.id, i.source_rule_id::uuid AS rule_id, i.date,
-           i.amount, i.currency, i.description, i.notes, i.category_id, ic.name AS category_name,
+           i.amount, i.currency, i.exchange_rate, i.amount_php, i.rate_date, i.description, i.notes, i.category_id, ic.name AS category_name,
            i.priority, i.status, i.created_at, i.updated_at, i.user_edited_at
     FROM incomes i
     LEFT JOIN income_categories ic ON ic.id = i.category_id
@@ -42,7 +42,7 @@ SELECT pg_snapshot_xmin(pg_current_snapshot())::xid8 AS horizon;
 -- name: ListRuleEntriesFeed :many
 SELECT * FROM (
     SELECT 'expense'::text AS kind, e.id, e.source_rule_id::uuid AS rule_id, e.expense_date AS date,
-           e.amount, e.currency, e.description, e.notes, e.category_id, ec.name AS category_name,
+           e.amount, e.currency, e.exchange_rate, e.amount_php, e.rate_date, e.description, e.notes, e.category_id, ec.name AS category_name,
            e.priority, e.status, e.created_at, e.updated_at, e.user_edited_at, e.txid
     FROM expenses e
     LEFT JOIN expense_categories ec ON ec.id = e.category_id
@@ -55,7 +55,7 @@ SELECT * FROM (
       AND (sqlc.narg(end_date)::date IS NULL OR e.expense_date <= sqlc.narg(end_date)::date)
     UNION ALL
     SELECT 'income'::text AS kind, i.id, i.source_rule_id::uuid AS rule_id, i.date,
-           i.amount, i.currency, i.description, i.notes, i.category_id, ic.name AS category_name,
+           i.amount, i.currency, i.exchange_rate, i.amount_php, i.rate_date, i.description, i.notes, i.category_id, ic.name AS category_name,
            i.priority, i.status, i.created_at, i.updated_at, i.user_edited_at, i.txid
     FROM incomes i
     LEFT JOIN income_categories ic ON ic.id = i.category_id

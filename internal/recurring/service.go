@@ -15,6 +15,7 @@ import (
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/helper"
 	"github.com/ejsadiarin/corefinance/internal/materialize"
+	"github.com/ejsadiarin/corefinance/internal/rates"
 )
 
 type Service struct {
@@ -22,16 +23,23 @@ type Service struct {
 	// pool, when set, runs a rule update and what it does to the rule's
 	// entries in one transaction (#5). Without it (unit tests on a mock) the
 	// same steps run on queries directly.
-	pool *pgxpool.Pool
+	pool  *pgxpool.Pool
+	rates rates.Provider
 }
 
 func NewService(queries db.Querier) *Service {
-	return &Service{queries: queries}
+	return NewServiceWithPoolAndRates(queries, nil, rates.PHPOnly{})
 }
 
 // NewServiceWithPool is NewService with transactions for rule updates.
 func NewServiceWithPool(queries db.Querier, pool *pgxpool.Pool) *Service {
-	return &Service{queries: queries, pool: pool}
+	return NewServiceWithPoolAndRates(queries, pool, rates.PHPOnly{})
+}
+
+// NewServiceWithPoolAndRates fixes each rule entry's rate at its due date
+// (ADR-0003).
+func NewServiceWithPoolAndRates(queries db.Querier, pool *pgxpool.Pool, provider rates.Provider) *Service {
+	return &Service{queries: queries, pool: pool, rates: provider}
 }
 
 // inTx runs fn in one transaction when the service has a pool.
@@ -54,8 +62,8 @@ func (s *Service) inTx(ctx context.Context, fn func(q db.Querier) error) error {
 // the one writer of rule entries, the same code the worker runs. Rule saves
 // call lockOwner first, so they take the owner's lock before any rule row,
 // in the same order the worker does.
-func fill(ctx context.Context, q db.Querier, userID uuid.UUID, loc *time.Location) error {
-	n, err := materialize.MaterializeUser(ctx, q, userID, loc, time.Now())
+func (s *Service) fill(ctx context.Context, q db.Querier, userID uuid.UUID, loc *time.Location) error {
+	n, err := materialize.MaterializeUserWithRates(ctx, q, userID, loc, time.Now(), s.rates)
 	if err != nil {
 		return fmt.Errorf("fill rule entries: %w", err)
 	}
@@ -95,12 +103,29 @@ func lockOwner(ctx context.Context, q db.Querier, userID uuid.UUID) error {
 	return nil
 }
 
+// validateRuleCurrency refuses an unsupported code at the boundary without
+// fetching a rate for a rule that may have no entry yet.
+func (s *Service) validateRuleCurrency(ctx context.Context, currency, start string) (string, error) {
+	c := rates.Normalize(currency)
+	if _, err := time.Parse("2006-01-02", start); err != nil {
+		return "", fmt.Errorf("rule start date: %w", err)
+	}
+	if err := rates.Supports(ctx, s.rates, c); err != nil {
+		return "", err
+	}
+	return c, nil
+}
+
 // --- Income Rules ---
 
 func (s *Service) CreateIncomeRule(ctx context.Context, userID uuid.UUID, req CreateIncomeRuleRequest) (db.Rule, error) {
 	slog.Debug("recurring.Service.CreateIncomeRule", "user_id", userID)
+	currency, err := s.validateRuleCurrency(ctx, req.Currency, req.StartDate)
+	if err != nil {
+		return db.Rule{}, err
+	}
 	var rule db.Rule
-	err := s.inTx(ctx, func(q db.Querier) error {
+	err = s.inTx(ctx, func(q db.Querier) error {
 		loc, err := lockOwnerInZone(ctx, q, userID)
 		if err != nil {
 			return err
@@ -108,7 +133,7 @@ func (s *Service) CreateIncomeRule(ctx context.Context, userID uuid.UUID, req Cr
 		r, err := q.CreateRecurringIncomeRule(ctx, db.CreateRecurringIncomeRuleParams{
 			UserID:        userID,
 			Amount:        decimal.NewFromFloat(req.Amount),
-			Currency:      req.Currency,
+			Currency:      currency,
 			Description:   req.Description,
 			RecurringType: req.RecurringType,
 			StartDate:     helper.ToPgDate(req.StartDate),
@@ -121,7 +146,7 @@ func (s *Service) CreateIncomeRule(ctx context.Context, userID uuid.UUID, req Cr
 			return err
 		}
 		rule = r
-		return fill(ctx, q, userID, loc)
+		return s.fill(ctx, q, userID, loc)
 	})
 	if err != nil {
 		return db.Rule{}, err
@@ -157,10 +182,14 @@ func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 	if err := validStaleChoice(choice); err != nil {
 		return IncomeRuleUpdate{}, err
 	}
+	currency, err := s.validateRuleCurrency(ctx, req.Currency, req.StartDate)
+	if err != nil {
+		return IncomeRuleUpdate{}, err
+	}
 	var out IncomeRuleUpdate
 	// The rule and its entries change together: if reconciling fails, the
 	// schedule change isn't saved either, so a retry still sees it (#15).
-	err := s.inTx(ctx, func(q db.Querier) error {
+	err = s.inTx(ctx, func(q db.Querier) error {
 		loc, err := lockOwnerInZone(ctx, q, userID)
 		if err != nil {
 			return err
@@ -176,7 +205,7 @@ func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 			ID:            id,
 			UserID:        userID,
 			Amount:        decimal.NewFromFloat(req.Amount),
-			Currency:      req.Currency,
+			Currency:      currency,
 			Description:   req.Description,
 			RecurringType: req.RecurringType,
 			StartDate:     helper.ToPgDate(req.StartDate),
@@ -200,7 +229,7 @@ func (s *Service) UpdateIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 			return err
 		}
 		out = IncomeRuleUpdate{Rule: rule, StaleEntries: stale}
-		return fill(ctx, q, userID, loc)
+		return s.fill(ctx, q, userID, loc)
 	})
 	if err != nil {
 		return IncomeRuleUpdate{}, err
@@ -220,8 +249,12 @@ func (s *Service) DeleteIncomeRule(ctx context.Context, id uuid.UUID, userID uui
 
 func (s *Service) CreateExpenseRule(ctx context.Context, userID uuid.UUID, req CreateExpenseRuleRequest) (db.Rule, error) {
 	slog.Debug("recurring.Service.CreateExpenseRule", "user_id", userID)
+	currency, err := s.validateRuleCurrency(ctx, req.Currency, req.StartDate)
+	if err != nil {
+		return db.Rule{}, err
+	}
 	var rule db.Rule
-	err := s.inTx(ctx, func(q db.Querier) error {
+	err = s.inTx(ctx, func(q db.Querier) error {
 		loc, err := lockOwnerInZone(ctx, q, userID)
 		if err != nil {
 			return err
@@ -230,7 +263,7 @@ func (s *Service) CreateExpenseRule(ctx context.Context, userID uuid.UUID, req C
 			UserID:        userID,
 			Description:   req.Description,
 			Amount:        decimal.NewFromFloat(req.Amount),
-			Currency:      req.Currency,
+			Currency:      currency,
 			CategoryID:    helper.ToPgUUID(req.CategoryID),
 			Notes:         helper.ToPgText(req.Notes),
 			RecurringType: req.RecurringType,
@@ -242,7 +275,7 @@ func (s *Service) CreateExpenseRule(ctx context.Context, userID uuid.UUID, req C
 			return err
 		}
 		rule = r
-		return fill(ctx, q, userID, loc)
+		return s.fill(ctx, q, userID, loc)
 	})
 	if err != nil {
 		return db.Rule{}, err
@@ -268,10 +301,14 @@ func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uu
 	if err := validStaleChoice(choice); err != nil {
 		return ExpenseRuleUpdate{}, err
 	}
+	currency, err := s.validateRuleCurrency(ctx, req.Currency, req.StartDate)
+	if err != nil {
+		return ExpenseRuleUpdate{}, err
+	}
 	var out ExpenseRuleUpdate
 	// The rule and its entries change together: if reconciling fails, the
 	// schedule change isn't saved either, so a retry still sees it (#15).
-	err := s.inTx(ctx, func(q db.Querier) error {
+	err = s.inTx(ctx, func(q db.Querier) error {
 		loc, err := lockOwnerInZone(ctx, q, userID)
 		if err != nil {
 			return err
@@ -288,7 +325,7 @@ func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uu
 			UserID:        userID,
 			Description:   req.Description,
 			Amount:        decimal.NewFromFloat(req.Amount),
-			Currency:      req.Currency,
+			Currency:      currency,
 			CategoryID:    helper.ToPgUUID(req.CategoryID),
 			Notes:         helper.ToPgText(req.Notes),
 			RecurringType: req.RecurringType,
@@ -311,7 +348,7 @@ func (s *Service) UpdateExpenseRule(ctx context.Context, id uuid.UUID, userID uu
 			return err
 		}
 		out = ExpenseRuleUpdate{Rule: rule, StaleEntries: stale}
-		return fill(ctx, q, userID, loc)
+		return s.fill(ctx, q, userID, loc)
 	})
 	if err != nil {
 		return ExpenseRuleUpdate{}, err

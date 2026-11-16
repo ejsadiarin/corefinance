@@ -246,6 +246,7 @@ func TestReconcile_EditedEntryIsReportedNotSkipped_Integration(t *testing.T) {
 	edited := entryOn(t, ctx, q, user, rule.ID, rel(-7))
 	_, err := q.UpdateExpense(ctx, db.UpdateExpenseParams{
 		ID: edited.ID, UserID: user, Amount: edited.Amount, Currency: edited.Currency,
+		ExchangeRate: edited.ExchangeRate, AmountPhp: edited.AmountPhp, RateDate: edited.RateDate,
 		Description: "groceries (big week)", ExpenseDate: edited.ExpenseDate,
 		Priority: edited.Priority, Status: edited.Status, SourceRuleID: edited.SourceRuleID,
 	})

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -13,7 +14,18 @@ import (
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/mock"
+	"github.com/ejsadiarin/corefinance/internal/rates"
 )
+
+type importRates struct {
+	err error
+}
+
+func (importRates) Rate(context.Context, string, time.Time) (rates.Rate, error) {
+	return rates.Rate{Value: decimal.NewFromInt(1)}, nil
+}
+
+func (r importRates) Supports(context.Context, string) error { return r.err }
 
 func TestService_PriorityGroups(t *testing.T) {
 	svc := &Service{}
@@ -417,5 +429,49 @@ func TestService_Export(t *testing.T) {
 		assert.Len(t, result.Expenses, 1)
 		assert.Equal(t, "500", result.Expenses[0].Amount.String())
 		assert.Len(t, result.ExpenseTags, 1)
+	})
+}
+
+func TestImportCurrencyValidation(t *testing.T) {
+	allow := NewServiceWithRates(nil, nil, importRates{})
+	require.NoError(t, allow.checkImportCurrency(context.Background(), "PHP"))
+	require.NoError(t, allow.checkImportCurrency(context.Background(), "usd"))
+
+	reject := NewServiceWithRates(nil, nil, importRates{err: rates.ErrUnsupportedCurrency})
+	err := reject.checkImportCurrency(context.Background(), "XYZ")
+	require.ErrorIs(t, err, rates.ErrUnsupportedCurrency)
+}
+
+func TestImportedConversion(t *testing.T) {
+	recordDate := pgtype.Date{Time: time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC), Valid: true}
+
+	t.Run("PHP falls back to rate 1", func(t *testing.T) {
+		conv, err := importedConversion(
+			decimal.NewFromInt(100), "php", decimal.Zero, decimal.Zero, pgtype.Date{}, recordDate,
+		)
+		require.NoError(t, err)
+		assert.Equal(t, "PHP", conv.Currency)
+		assert.True(t, decimal.NewFromInt(1).Equal(conv.Rate))
+		assert.True(t, decimal.NewFromInt(100).Equal(conv.AmountPHP))
+		assert.Equal(t, "2026-07-12", conv.RateDate.Format("2006-01-02"))
+	})
+
+	t.Run("non-PHP trusts the file's conversion", func(t *testing.T) {
+		conv, err := importedConversion(
+			decimal.NewFromInt(100), "USD", decimal.RequireFromString("61.573"),
+			decimal.RequireFromString("6157.30"),
+			pgtype.Date{Time: time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC), Valid: true}, recordDate,
+		)
+		require.NoError(t, err)
+		assert.Equal(t, "USD", conv.Currency)
+		assert.True(t, decimal.RequireFromString("6157.30").Equal(conv.AmountPHP))
+		assert.Equal(t, "2026-07-10", conv.RateDate.Format("2006-01-02"))
+	})
+
+	t.Run("legacy non-PHP is refused", func(t *testing.T) {
+		_, err := importedConversion(
+			decimal.NewFromInt(100), "USD", decimal.Zero, decimal.Zero, pgtype.Date{}, recordDate,
+		)
+		require.ErrorIs(t, err, ErrLegacyCurrency)
 	})
 }

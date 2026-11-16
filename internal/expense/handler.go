@@ -40,6 +40,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if err := helper.ValidateDate(req.ExpenseDate, "expense_date"); err != nil {
+		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	userID, ok := helper.GetUserID(w, r)
 	if !ok {
 		return
@@ -48,7 +52,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	expense, err := h.service.Create(r.Context(), userID, req)
 	if err != nil {
 		slog.Error("expense.Create: failed", "error", err, "user_id", userID)
-		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
+		helper.RespondServiceError(w, err)
 		return
 	}
 	slog.Info("expense.Create: expense created", "id", expense.ID, "user_id", userID)
@@ -175,6 +179,10 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if err := helper.ValidateDate(req.ExpenseDate, "expense_date"); err != nil {
+		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	userID, ok := helper.GetUserID(w, r)
 	if !ok {
 		return
@@ -183,7 +191,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	expense, err := h.service.Update(r.Context(), id, userID, req)
 	if err != nil {
 		slog.Error("expense.Update: failed", "error", err, "id", id, "user_id", userID)
-		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
+		helper.RespondServiceError(w, err)
 		return
 	}
 	slog.Info("expense.Update: expense updated", "id", id, "user_id", userID)

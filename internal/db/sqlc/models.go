@@ -27,6 +27,9 @@ type Expense struct {
 	UpdatedAt    pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	UserEditedAt pgtype.Timestamptz `db:"user_edited_at" json:"user_edited_at"`
 	Txid         uint64             `db:"txid" json:"-"`
+	ExchangeRate decimal.Decimal    `db:"exchange_rate" json:"exchange_rate"`
+	AmountPhp    decimal.Decimal    `db:"amount_php" json:"amount_php"`
+	RateDate     pgtype.Date        `db:"rate_date" json:"rate_date"`
 }
 
 type ExpenseCategory struct {
@@ -61,6 +64,9 @@ type Income struct {
 	UpdatedAt    pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	UserEditedAt pgtype.Timestamptz `db:"user_edited_at" json:"user_edited_at"`
 	Txid         uint64             `db:"txid" json:"-"`
+	ExchangeRate decimal.Decimal    `db:"exchange_rate" json:"exchange_rate"`
+	AmountPhp    decimal.Decimal    `db:"amount_php" json:"amount_php"`
+	RateDate     pgtype.Date        `db:"rate_date" json:"rate_date"`
 }
 
 type IncomeCategory struct {

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -34,6 +35,9 @@ func TestRuleEntries_EditedMark_Integration(t *testing.T) {
 	require.Len(t, before, 4)
 	for k, e := range before {
 		assert.Nil(t, e.UserEditedAt, "%s: the worker's entries start unmarked", k)
+		assert.True(t, decimal.NewFromInt(1).Equal(e.ExchangeRate), "%s: PHP rate", k)
+		assert.True(t, e.Amount.Equal(e.AmountPHP), "%s: PHP amount", k)
+		assert.Equal(t, e.Date, e.RateDate, "%s: PHP rate date", k)
 	}
 
 	edited := before["expense 2026-09-01"]

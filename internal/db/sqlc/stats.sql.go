@@ -19,7 +19,7 @@ SELECT
     ec.name AS category_name,
     ec.color AS category_color,
     COUNT(e.id) AS expense_count,
-    COALESCE(SUM(e.amount), 0)::numeric AS total_amount
+    COALESCE(SUM(e.amount_php), 0)::numeric AS total_amount
 FROM expense_categories ec
 LEFT JOIN expenses e ON ec.id = e.category_id
     AND e.user_id = $1
@@ -73,9 +73,9 @@ func (q *Queries) GetCategoryBreakdown(ctx context.Context, arg GetCategoryBreak
 
 const getCurrentTotalMoney = `-- name: GetCurrentTotalMoney :one
 SELECT (
-    (SELECT COALESCE(SUM(i.amount), 0) FROM incomes i
+    (SELECT COALESCE(SUM(i.amount_php), 0) FROM incomes i
      WHERE i.user_id = $1 AND i.status != 'skipped')
-    - (SELECT COALESCE(SUM(e.amount), 0) FROM expenses e
+    - (SELECT COALESCE(SUM(e.amount_php), 0) FROM expenses e
      WHERE e.user_id = $1 AND e.status != 'skipped')
 )::numeric AS total_money
 `
@@ -90,18 +90,18 @@ func (q *Queries) GetCurrentTotalMoney(ctx context.Context, userID uuid.UUID) (d
 const getFiftyThirtyTwenty = `-- name: GetFiftyThirtyTwenty :one
 WITH totals AS (
     SELECT
-        (SELECT COALESCE(SUM(e.amount), 0)::numeric FROM expenses e
+        (SELECT COALESCE(SUM(e.amount_php), 0)::numeric FROM expenses e
          WHERE e.user_id = $1
            AND e.status != 'skipped'
            AND ($2::date IS NULL OR e.expense_date >= $2)
            AND ($3::date IS NULL OR e.expense_date <= $3)) AS total_expenses,
-        (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
+        (SELECT COALESCE(SUM(i.amount_php), 0)::numeric FROM incomes i
          WHERE i.user_id = $1
            AND i.status != 'skipped'
            AND i.category_id IS DISTINCT FROM $4::uuid
            AND ($2::date IS NULL OR i.date >= $2)
            AND ($3::date IS NULL OR i.date <= $3)) AS total_incomes,
-        (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
+        (SELECT COALESCE(SUM(i.amount_php), 0)::numeric FROM incomes i
          WHERE i.user_id = $1
            AND i.status != 'skipped'
            AND i.category_id IS NOT DISTINCT FROM $4::uuid
@@ -110,9 +110,9 @@ WITH totals AS (
 ),
 category_totals AS (
     SELECT
-        COALESCE(SUM(CASE WHEN e.priority = 'need' AND e.status != 'skipped' THEN e.amount ELSE 0 END), 0)::numeric AS needs,
-        COALESCE(SUM(CASE WHEN e.priority = 'want' AND e.status != 'skipped' THEN e.amount ELSE 0 END), 0)::numeric AS wants,
-        COALESCE(SUM(CASE WHEN e.priority = 'savings' AND e.status != 'skipped' THEN e.amount ELSE 0 END), 0)::numeric AS savings
+        COALESCE(SUM(CASE WHEN e.priority = 'need' AND e.status != 'skipped' THEN e.amount_php ELSE 0 END), 0)::numeric AS needs,
+        COALESCE(SUM(CASE WHEN e.priority = 'want' AND e.status != 'skipped' THEN e.amount_php ELSE 0 END), 0)::numeric AS wants,
+        COALESCE(SUM(CASE WHEN e.priority = 'savings' AND e.status != 'skipped' THEN e.amount_php ELSE 0 END), 0)::numeric AS savings
     FROM expenses e
     WHERE e.user_id = $1
       AND ($2::date IS NULL OR e.expense_date >= $2)
@@ -179,7 +179,7 @@ SELECT
 FROM (
     SELECT
         TO_CHAR(e.expense_date, 'YYYY-MM') AS month,
-        COALESCE(SUM(e.amount), 0)::numeric AS total
+        COALESCE(SUM(e.amount_php), 0)::numeric AS total
     FROM expenses e
     WHERE e.user_id = $1
       AND e.expense_date >= $2
@@ -189,7 +189,7 @@ FROM (
     UNION ALL
     SELECT
         TO_CHAR(i.date, 'YYYY-MM') AS month,
-        COALESCE(SUM(i.amount), 0)::numeric AS total
+        COALESCE(SUM(i.amount_php), 0)::numeric AS total
     FROM incomes i
     WHERE i.user_id = $1
       AND i.date >= $2
@@ -242,18 +242,18 @@ func (q *Queries) GetMonthOverMonthTrends(ctx context.Context, arg GetMonthOverM
 const getSavingsRate = `-- name: GetSavingsRate :one
 WITH totals AS (
     SELECT
-        (SELECT COALESCE(SUM(e.amount), 0)::numeric FROM expenses e
+        (SELECT COALESCE(SUM(e.amount_php), 0)::numeric FROM expenses e
          WHERE e.user_id = $1
            AND e.status != 'skipped'
            AND ($2::date IS NULL OR e.expense_date >= $2)
            AND ($3::date IS NULL OR e.expense_date <= $3)) AS total_expenses,
-        (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
+        (SELECT COALESCE(SUM(i.amount_php), 0)::numeric FROM incomes i
          WHERE i.user_id = $1
            AND i.status != 'skipped'
            AND i.category_id IS DISTINCT FROM $4::uuid
            AND ($2::date IS NULL OR i.date >= $2)
            AND ($3::date IS NULL OR i.date <= $3)) AS total_incomes,
-        (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
+        (SELECT COALESCE(SUM(i.amount_php), 0)::numeric FROM incomes i
          WHERE i.user_id = $1
            AND i.status != 'skipped'
            AND i.category_id IS NOT DISTINCT FROM $4::uuid
@@ -309,7 +309,7 @@ SELECT
 FROM (
     SELECT
         DATE_TRUNC('month', e.expense_date) AS month,
-        SUM(e.amount)::numeric AS monthly_total
+        SUM(e.amount_php)::numeric AS monthly_total
     FROM expenses e
     WHERE e.user_id = $1
       AND e.expense_date >= $2
@@ -340,12 +340,12 @@ func (q *Queries) GetSpendingVelocity(ctx context.Context, arg GetSpendingVeloci
 
 const getSummary = `-- name: GetSummary :one
 SELECT
-    (SELECT COALESCE(SUM(e.amount), 0)::numeric FROM expenses e
+    (SELECT COALESCE(SUM(e.amount_php), 0)::numeric FROM expenses e
      WHERE e.user_id = $1
        AND e.status != 'skipped'
        AND ($2::date IS NULL OR e.expense_date >= $2)
        AND ($3::date IS NULL OR e.expense_date <= $3)) AS total_expenses,
-    (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
+    (SELECT COALESCE(SUM(i.amount_php), 0)::numeric FROM incomes i
      WHERE i.user_id = $1
        AND i.status != 'skipped'
        AND i.category_id IS DISTINCT FROM $4::uuid
@@ -362,7 +362,7 @@ SELECT
        AND i.category_id IS DISTINCT FROM $4::uuid
        AND ($2::date IS NULL OR i.date >= $2)
        AND ($3::date IS NULL OR i.date <= $3)) AS income_count,
-    (SELECT COALESCE(SUM(i.amount), 0)::numeric FROM incomes i
+    (SELECT COALESCE(SUM(i.amount_php), 0)::numeric FROM incomes i
      WHERE i.user_id = $1
        AND i.status != 'skipped'
        AND i.category_id IS NOT DISTINCT FROM $4::uuid
@@ -412,7 +412,7 @@ SELECT
 FROM (
     SELECT
         TO_CHAR(e.expense_date, 'YYYY-MM') AS month,
-        COALESCE(SUM(e.amount), 0)::numeric AS total_expenses,
+        COALESCE(SUM(e.amount_php), 0)::numeric AS total_expenses,
         0::numeric AS total_incomes,
         0::numeric AS total_reimbursements
     FROM expenses e
@@ -425,8 +425,8 @@ FROM (
     SELECT
         TO_CHAR(i.date, 'YYYY-MM') AS month,
         0::numeric AS total_expenses,
-        COALESCE(SUM(i.amount) FILTER (WHERE i.category_id IS DISTINCT FROM $4::uuid), 0)::numeric AS total_incomes,
-        COALESCE(SUM(i.amount) FILTER (WHERE i.category_id IS NOT DISTINCT FROM $4::uuid), 0)::numeric AS total_reimbursements
+        COALESCE(SUM(i.amount_php) FILTER (WHERE i.category_id IS DISTINCT FROM $4::uuid), 0)::numeric AS total_incomes,
+        COALESCE(SUM(i.amount_php) FILTER (WHERE i.category_id IS NOT DISTINCT FROM $4::uuid), 0)::numeric AS total_reimbursements
     FROM incomes i
     WHERE i.user_id = $1
       AND i.status != 'skipped'

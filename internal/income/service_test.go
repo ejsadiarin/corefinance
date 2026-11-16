@@ -4,15 +4,29 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/mock"
+	"github.com/ejsadiarin/corefinance/internal/rates"
 )
+
+type stubRates struct {
+	rate  rates.Rate
+	err   error
+	calls int
+}
+
+func (s *stubRates) Rate(context.Context, string, time.Time) (rates.Rate, error) {
+	s.calls++
+	return s.rate, s.err
+}
 
 func TestCreate_Success(t *testing.T) {
 	userID := uuid.New()
@@ -27,6 +41,9 @@ func TestCreate_Success(t *testing.T) {
 			assert.True(t, arg.CategoryID.Valid)
 			assert.Equal(t, decimal.NewFromFloat(50000), arg.Amount)
 			assert.Equal(t, "PHP", arg.Currency)
+			assert.True(t, decimal.NewFromInt(1).Equal(arg.ExchangeRate))
+			assert.True(t, decimal.RequireFromString("50000.00").Equal(arg.AmountPhp))
+			assert.True(t, arg.RateDate.Valid)
 			assert.Equal(t, "Salary", arg.Description)
 			assert.True(t, arg.Notes.Valid)
 			assert.Equal(t, notes, arg.Notes.String)
@@ -59,6 +76,57 @@ func TestCreate_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, incomeID, result.ID)
 	assert.Equal(t, "PHP", result.Currency)
+}
+
+func TestCreate_USDConvertsAtTheRecordDate(t *testing.T) {
+	var captured db.CreateIncomeParams
+	mq := &mock.MockQuerier{
+		CreateIncomeFn: func(ctx context.Context, arg db.CreateIncomeParams) (db.Income, error) {
+			captured = arg
+			return db.Income{ID: uuid.New()}, nil
+		},
+	}
+	provider := &stubRates{rate: rates.Rate{
+		Value: decimal.RequireFromString("61.573"),
+		Date:  time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC),
+	}}
+	svc := NewServiceWithRates(mq, provider)
+
+	_, err := svc.Create(context.Background(), uuid.New(), CreateRequest{
+		Amount: 100, Currency: "usd", Description: "gift", Date: "2026-07-12",
+		Priority: "want", Status: "posted",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "USD", captured.Currency)
+	assert.True(t, decimal.RequireFromString("61.573").Equal(captured.ExchangeRate))
+	assert.True(t, decimal.RequireFromString("6157.30").Equal(captured.AmountPhp))
+	assert.Equal(t, "2026-07-10", captured.RateDate.Time.Format("2006-01-02"))
+}
+
+func TestUpdate_AmountOnlyKeepsTheRate(t *testing.T) {
+	userID, incomeID := uuid.New(), uuid.New()
+	mq := &mock.MockQuerier{
+		GetIncomeFn: func(context.Context, db.GetIncomeParams) (db.GetIncomeRow, error) {
+			return db.GetIncomeRow{
+				ID: incomeID, UserID: userID, Currency: "USD",
+				Date:         pgtype.Date{Time: time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC), Valid: true},
+				ExchangeRate: decimal.RequireFromString("61.573"),
+				RateDate:     pgtype.Date{Time: time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC), Valid: true},
+			}, nil
+		},
+		UpdateIncomeFn: func(context.Context, db.UpdateIncomeParams) (db.Income, error) {
+			return db.Income{ID: incomeID}, nil
+		},
+	}
+	provider := &stubRates{err: errors.New("must not fetch")}
+	svc := NewServiceWithRates(mq, provider)
+
+	_, err := svc.Update(context.Background(), incomeID, userID, UpdateRequest{
+		Amount: 200, Currency: "USD", Description: "gift", Date: "2026-07-12",
+		Priority: "want", Status: "posted",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 0, provider.calls)
 }
 
 func TestCreate_Error(t *testing.T) {
@@ -257,6 +325,14 @@ func TestUpdate_Success(t *testing.T) {
 	var capturedArg db.UpdateIncomeParams
 
 	mq := &mock.MockQuerier{
+		GetIncomeFn: func(ctx context.Context, arg db.GetIncomeParams) (db.GetIncomeRow, error) {
+			return db.GetIncomeRow{
+				ID: incomeID, UserID: userID, Currency: "USD",
+				Date:         pgtype.Date{Time: time.Date(2026, 9, 5, 0, 0, 0, 0, time.UTC), Valid: true},
+				ExchangeRate: decimal.NewFromFloat(50),
+				RateDate:     pgtype.Date{Time: time.Date(2026, 9, 5, 0, 0, 0, 0, time.UTC), Valid: true},
+			}, nil
+		},
 		UpdateIncomeFn: func(ctx context.Context, arg db.UpdateIncomeParams) (db.Income, error) {
 			capturedArg = arg
 			return db.Income{
@@ -287,6 +363,9 @@ func TestUpdate_Success(t *testing.T) {
 
 func TestUpdate_Error(t *testing.T) {
 	mq := &mock.MockQuerier{
+		GetIncomeFn: func(ctx context.Context, arg db.GetIncomeParams) (db.GetIncomeRow, error) {
+			return db.GetIncomeRow{Currency: "PHP"}, nil
+		},
 		UpdateIncomeFn: func(ctx context.Context, arg db.UpdateIncomeParams) (db.Income, error) {
 			return db.Income{}, errors.New("update failed")
 		},
@@ -307,6 +386,14 @@ func TestUpdate_NilOptionalFields(t *testing.T) {
 	userID := uuid.New()
 	incomeID := uuid.New()
 	mq := &mock.MockQuerier{
+		GetIncomeFn: func(ctx context.Context, arg db.GetIncomeParams) (db.GetIncomeRow, error) {
+			return db.GetIncomeRow{
+				ID: incomeID, UserID: userID, Currency: "USD",
+				Date:         pgtype.Date{Time: time.Date(2026, 9, 5, 0, 0, 0, 0, time.UTC), Valid: true},
+				ExchangeRate: decimal.NewFromFloat(50),
+				RateDate:     pgtype.Date{Time: time.Date(2026, 9, 5, 0, 0, 0, 0, time.UTC), Valid: true},
+			}, nil
+		},
 		UpdateIncomeFn: func(ctx context.Context, arg db.UpdateIncomeParams) (db.Income, error) {
 			assert.False(t, arg.CategoryID.Valid)
 			assert.False(t, arg.Notes.Valid)

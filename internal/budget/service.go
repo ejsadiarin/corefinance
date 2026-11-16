@@ -2,16 +2,20 @@ package budget
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 
 	"github.com/ejsadiarin/corefinance/internal/category"
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/helper"
+	"github.com/ejsadiarin/corefinance/internal/rates"
 )
 
 type Transactioner interface {
@@ -21,13 +25,24 @@ type Transactioner interface {
 type Service struct {
 	queries db.Querier
 	db      Transactioner
+	rates   rates.Provider
 }
 
 func NewService(queries db.Querier, db Transactioner) *Service {
-	return &Service{
-		queries: queries,
-		db:      db,
+	return NewServiceWithRates(queries, db, rates.PHPOnly{})
+}
+
+// NewServiceWithRates validates imported currencies against the provider.
+func NewServiceWithRates(queries db.Querier, db Transactioner, provider rates.Provider) *Service {
+	return &Service{queries: queries, db: db, rates: provider}
+}
+
+func (s *Service) checkImportCurrency(ctx context.Context, currency string) error {
+	c := rates.Normalize(currency)
+	if c == "PHP" {
+		return nil
 	}
+	return rates.Supports(ctx, s.rates, c)
 }
 
 // PriorityGroups returns the hardcoded reference data for priority groups.
@@ -220,16 +235,28 @@ func (s *Service) Import(ctx context.Context, userID uuid.UUID, export *BudgetEx
 
 	// Import expenses
 	for _, exp := range export.Expenses {
+		if err := s.checkImportCurrency(ctx, exp.Currency); err != nil {
+			return err
+		}
 		cat := expenseCategory.target(exp.CategoryID)
 		newRuleID := uuid.Nil
 		if exp.SourceRuleID.Valid {
 			newRuleID = exp.SourceRuleID.Bytes
 		}
+		conv, err := importedConversion(
+			exp.Amount, exp.Currency, exp.ExchangeRate, exp.AmountPhp, exp.RateDate, exp.ExpenseDate,
+		)
+		if err != nil {
+			return err
+		}
 		newExp, err := q.CreateExpense(ctx, db.CreateExpenseParams{
 			UserID:       userID,
 			CategoryID:   helper.ToPgUUIDFromUUID(cat.ID),
 			Amount:       exp.Amount,
-			Currency:     exp.Currency,
+			Currency:     conv.Currency,
+			ExchangeRate: conv.Rate,
+			AmountPhp:    conv.AmountPHP,
+			RateDate:     pgtype.Date{Time: conv.RateDate, Valid: true},
 			Description:  exp.Description,
 			Notes:        exp.Notes,
 			ExpenseDate:  exp.ExpenseDate,
@@ -256,16 +283,28 @@ func (s *Service) Import(ctx context.Context, userID uuid.UUID, export *BudgetEx
 
 	// Import incomes
 	for _, inc := range export.Incomes {
+		if err := s.checkImportCurrency(ctx, inc.Currency); err != nil {
+			return err
+		}
 		cat := incomeCategory.target(inc.CategoryID)
 		newRuleID := uuid.Nil
 		if inc.SourceRuleID.Valid {
 			newRuleID = inc.SourceRuleID.Bytes
 		}
+		conv, err := importedConversion(
+			inc.Amount, inc.Currency, inc.ExchangeRate, inc.AmountPhp, inc.RateDate, inc.Date,
+		)
+		if err != nil {
+			return err
+		}
 		newInc, err := q.CreateIncome(ctx, db.CreateIncomeParams{
 			UserID:       userID,
 			CategoryID:   helper.ToPgUUIDFromUUID(cat.ID),
 			Amount:       inc.Amount,
-			Currency:     inc.Currency,
+			Currency:     conv.Currency,
+			ExchangeRate: conv.Rate,
+			AmountPhp:    conv.AmountPHP,
+			RateDate:     pgtype.Date{Time: conv.RateDate, Valid: true},
 			Description:  inc.Description,
 			Notes:        inc.Notes,
 			Date:         inc.Date,
@@ -364,4 +403,35 @@ func (s *Service) Import(ctx context.Context, userID uuid.UUID, export *BudgetEx
 
 	slog.Info("budget.Service.Import: completed", "user_id", userID)
 	return nil
+}
+
+// importedConversion trusts a file's conversion fields for non-PHP rows and
+// falls back to rate 1 for PHP. A non-PHP row without them predates ADR-0003
+// and is refused rather than fetched again.
+func importedConversion(
+	amount decimal.Decimal,
+	currency string,
+	rate decimal.Decimal,
+	amountPHP decimal.Decimal,
+	rateDate pgtype.Date,
+	recordDate pgtype.Date,
+) (rates.Conversion, error) {
+	c := rates.Normalize(currency)
+	if c == "PHP" {
+		return rates.Conversion{
+			Currency:  c,
+			Rate:      decimal.NewFromInt(1),
+			AmountPHP: amount.Round(2),
+			RateDate:  recordDate.Time,
+		}, nil
+	}
+	if !rate.IsPositive() || !amountPHP.IsPositive() || !rateDate.Valid {
+		return rates.Conversion{}, fmt.Errorf("%w: %s", ErrLegacyCurrency, c)
+	}
+	return rates.Conversion{
+		Currency:  c,
+		Rate:      rate,
+		AmountPHP: amountPHP,
+		RateDate:  rateDate.Time,
+	}, nil
 }

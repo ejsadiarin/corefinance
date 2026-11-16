@@ -3,16 +3,36 @@ package stats
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ejsadiarin/corefinance/internal/category"
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
+	"github.com/ejsadiarin/corefinance/internal/expense"
+	"github.com/ejsadiarin/corefinance/internal/income"
+	"github.com/ejsadiarin/corefinance/internal/rates"
 	"github.com/ejsadiarin/corefinance/internal/testutil"
 )
+
+// tripRates is the synthetic provider for the November 2026 Japan trip
+// fixture; it never touches the network.
+type tripRates struct{}
+
+func (tripRates) Rate(_ context.Context, currency string, date time.Time) (rates.Rate, error) {
+	switch currency {
+	case "USD":
+		return rates.Rate{Value: decimal.RequireFromString("63.813"), Date: date}, nil
+	case "JPY":
+		return rates.Rate{Value: decimal.RequireFromString("0.39884"), Date: date}, nil
+	}
+	return rates.Rate{}, rates.ErrUnsupportedCurrency
+}
 
 func newStatsIntegrationService(t *testing.T) (*Service, *pgxpool.Pool) {
 	t.Helper()
@@ -23,8 +43,8 @@ func newStatsIntegrationService(t *testing.T) (*Service, *pgxpool.Pool) {
 func seedExpense(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, amount, date, status string) {
 	t.Helper()
 	_, err := pool.Exec(ctx, `INSERT INTO expenses
-		(user_id, amount, currency, description, expense_date, priority, status)
-		VALUES ($1::uuid, $2::numeric, 'PHP', 'test expense', $3::date, 'want', $4)`,
+		(user_id, amount, currency, exchange_rate, amount_php, rate_date, description, expense_date, priority, status)
+		VALUES ($1::uuid, $2::numeric, 'PHP', 1, $2::numeric, $3::date, 'test expense', $3::date, 'want', $4)`,
 		userID.String(), amount, date, status)
 	require.NoError(t, err)
 }
@@ -32,8 +52,8 @@ func seedExpense(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID u
 func seedIncome(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, amount, date, status string) {
 	t.Helper()
 	_, err := pool.Exec(ctx, `INSERT INTO incomes
-		(user_id, amount, currency, description, date, priority, status)
-		VALUES ($1::uuid, $2::numeric, 'PHP', 'test income', $3::date, 'want', $4)`,
+		(user_id, amount, currency, exchange_rate, amount_php, rate_date, description, date, priority, status)
+		VALUES ($1::uuid, $2::numeric, 'PHP', 1, $2::numeric, $3::date, 'test income', $3::date, 'want', $4)`,
 		userID.String(), amount, date, status)
 	require.NoError(t, err)
 }
@@ -45,8 +65,8 @@ func seedIncomeInCategory(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 		cat = *categoryID
 	}
 	_, err := pool.Exec(ctx, `INSERT INTO incomes
-		(user_id, amount, currency, description, date, priority, status, category_id)
-		VALUES ($1::uuid, $2::numeric, 'PHP', 'test income', $3::date, 'want', $4, $5::uuid)`,
+		(user_id, amount, currency, exchange_rate, amount_php, rate_date, description, date, priority, status, category_id)
+		VALUES ($1::uuid, $2::numeric, 'PHP', 1, $2::numeric, $3::date, 'test income', $3::date, 'want', $4, $5::uuid)`,
 		userID.String(), amount, date, status, cat)
 	require.NoError(t, err)
 }
@@ -212,4 +232,110 @@ func TestStatsService_CurrentTotalMoney_Integration_Lifetime(t *testing.T) {
 	res, err := svc.CurrentTotalMoney(ctx, userID)
 	require.NoError(t, err)
 	require.True(t, expected.Equal(res.TotalMoney), "expected lifetime total_money=800, got %s", res.TotalMoney.String())
+}
+
+// Reports total the fixed PHP amount, not the original amount (#3,
+// ADR-0003).
+func TestStatsService_MultiCurrencyUsesPHPAmount_Integration(t *testing.T) {
+	svc, pool := newStatsIntegrationService(t)
+	ctx := context.Background()
+	user := uuid.New()
+	rate := decimal.RequireFromString("61.573")
+	php := decimal.RequireFromString("6157.30")
+	rateDate := pgtype.Date{Time: time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC), Valid: true}
+	day := pgtype.Date{Time: time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC), Valid: true}
+	food, _ := category.ByName(category.Expenses, "food")
+	salary, _ := category.ByName(category.Incomes, "salary")
+
+	_, err := pool.Exec(ctx, `INSERT INTO expenses
+		(user_id, category_id, amount, currency, exchange_rate, amount_php, rate_date, description, expense_date, priority, status)
+		VALUES ($1, $2, 100, 'USD', $3, $4, $5, 'gift', $6, 'want', 'posted')`,
+		user, food.ID, rate, php, rateDate, day)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `INSERT INTO incomes
+		(user_id, category_id, amount, currency, exchange_rate, amount_php, rate_date, description, date, priority, status)
+		VALUES ($1, $2, 100, 'USD', $3, $4, $5, 'gift', $6, 'want', 'posted')`,
+		user, salary.ID, rate, php, rateDate, day)
+	require.NoError(t, err)
+
+	summary, err := svc.Summary(ctx, user, nil, nil)
+	require.NoError(t, err)
+	assert.True(t, php.Equal(summary.TotalExpenses), summary.TotalExpenses.String())
+	assert.True(t, php.Equal(summary.TotalIncomes), summary.TotalIncomes.String())
+
+	trends, err := svc.Trends(ctx, user, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, trends, 1)
+	assert.True(t, php.Equal(trends[0].TotalExpenses))
+	assert.True(t, php.Equal(trends[0].TotalIncomes))
+
+	money, err := svc.CurrentTotalMoney(ctx, user)
+	require.NoError(t, err)
+	assert.True(t, decimal.Zero.Equal(money.TotalMoney), money.TotalMoney.String())
+
+	savings, err := svc.SavingsRate(ctx, user, nil, nil)
+	require.NoError(t, err)
+	assert.True(t, php.Equal(savings.TotalIncomes))
+	assert.True(t, php.Equal(savings.TotalExpenses))
+
+	split, err := svc.FiftyThirtyTwenty(ctx, user, nil, nil)
+	require.NoError(t, err)
+	assert.True(t, php.Equal(split.TotalIncomes))
+	assert.True(t, php.Equal(split.TotalExpenses))
+	assert.True(t, php.Equal(split.Wants))
+
+	byCategory, err := svc.CategoryBreakdown(ctx, user, nil, nil)
+	require.NoError(t, err)
+	var foodTotal decimal.Decimal
+	for _, c := range byCategory {
+		if c.CategoryName == "food" {
+			foodTotal = c.TotalAmount
+		}
+	}
+	assert.True(t, php.Equal(foodTotal), foodTotal.String())
+
+	start, end := "2026-07-01", "2026-07-31"
+	monthly, err := svc.MonthOverMonthTrends(ctx, user, &start, &end)
+	require.NoError(t, err)
+	require.Len(t, monthly, 1)
+	assert.True(t, decimal.RequireFromString("12314.60").Equal(monthly[0].TotalAmount), monthly[0].TotalAmount.String())
+
+	velocity, err := svc.SpendingVelocity(ctx, user, start, end)
+	require.NoError(t, err)
+	assert.True(t, php.Equal(velocity.AvgMonthlySpending))
+}
+
+// Synthetic trip fixture (#3): a USD 1,000 income and JPY expenses for
+// 18-23 November 2026 total at their fixed PHP amounts. Never production
+// data.
+func TestStatsService_MultiCurrencyTripFixture_Integration(t *testing.T) {
+	svc, pool := newStatsIntegrationService(t)
+	ctx := context.Background()
+	user := uuid.New()
+	q := db.New(pool)
+	incomeSvc := income.NewServiceWithRates(q, tripRates{})
+	expenseSvc := expense.NewServiceWithRates(q, tripRates{})
+
+	_, err := incomeSvc.Create(ctx, user, income.CreateRequest{
+		Amount: 1000, Currency: "USD", Description: "trip fund", Date: "2026-11-16",
+		Priority: "need", Status: "posted",
+	})
+	require.NoError(t, err)
+	for day := 18; day <= 23; day++ {
+		_, err := expenseSvc.Create(ctx, user, expense.CreateRequest{
+			Amount: 10000, Currency: "JPY", Description: "Japan trip",
+			ExpenseDate: time.Date(2026, 11, day, 0, 0, 0, 0, time.UTC).Format("2006-01-02"),
+			Priority:    "want", Status: "posted",
+		})
+		require.NoError(t, err)
+	}
+
+	summary, err := svc.Summary(ctx, user, nil, nil)
+	require.NoError(t, err)
+	assert.True(t, decimal.RequireFromString("63813").Equal(summary.TotalIncomes), summary.TotalIncomes.String())
+	assert.True(t, decimal.RequireFromString("23930.40").Equal(summary.TotalExpenses), summary.TotalExpenses.String())
+
+	money, err := svc.CurrentTotalMoney(ctx, user)
+	require.NoError(t, err)
+	assert.True(t, decimal.RequireFromString("39882.60").Equal(money.TotalMoney), money.TotalMoney.String())
 }

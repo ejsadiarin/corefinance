@@ -39,6 +39,9 @@ type Entry struct {
 	Date         string          `json:"date"`
 	Amount       decimal.Decimal `json:"amount"`
 	Currency     string          `json:"currency"`
+	ExchangeRate decimal.Decimal `json:"exchange_rate"`
+	AmountPHP    decimal.Decimal `json:"amount_php"`
+	RateDate     string          `json:"rate_date"`
 	Description  string          `json:"description"`
 	Notes        *string         `json:"notes"`
 	CategoryID   *string         `json:"category_id"`
@@ -83,6 +86,9 @@ func toEntry(r db.ListRuleEntriesRow) Entry {
 		Date:         r.Date.Time.Format(time.DateOnly),
 		Amount:       r.Amount,
 		Currency:     r.Currency,
+		ExchangeRate: r.ExchangeRate,
+		AmountPHP:    r.AmountPhp,
+		RateDate:     r.RateDate.Time.Format(time.DateOnly),
 		Description:  r.Description,
 		Notes:        nullableText(r.Notes),
 		CategoryID:   nullableUUID(r.CategoryID),

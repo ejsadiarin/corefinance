@@ -13,6 +13,7 @@ import (
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/expense"
 	"github.com/ejsadiarin/corefinance/internal/income"
+	"github.com/ejsadiarin/corefinance/internal/rates"
 	"github.com/ejsadiarin/corefinance/internal/recurring"
 	"github.com/ejsadiarin/corefinance/internal/ruleentry"
 	"github.com/ejsadiarin/corefinance/internal/stats"
@@ -37,9 +38,12 @@ type Server struct {
 
 // New builds the server. verifier must be non-nil: without JWT
 // verification the service refuses to serve budget routes.
-func New(port int, pool *pgxpool.Pool, queries *db.Queries, verifier *auth.Verifier) *http.Server {
+func New(port int, pool *pgxpool.Pool, queries *db.Queries, verifier *auth.Verifier, provider rates.Provider) *http.Server {
 	if verifier == nil {
 		panic("server: auth verifier is required")
+	}
+	if provider == nil {
+		provider = rates.PHPOnly{}
 	}
 	s := &Server{
 		port:     port,
@@ -48,13 +52,13 @@ func New(port int, pool *pgxpool.Pool, queries *db.Queries, verifier *auth.Verif
 		Verifier: verifier,
 	}
 
-	s.ExpenseHandler = expense.NewHandler(expense.NewService(queries))
-	s.IncomeHandler = income.NewHandler(income.NewService(queries))
+	s.ExpenseHandler = expense.NewHandler(expense.NewServiceWithRates(queries, provider))
+	s.IncomeHandler = income.NewHandler(income.NewServiceWithRates(queries, provider))
 	s.CategoryHandler = category.NewHandler(category.NewService(queries))
 	s.TagHandler = tag.NewHandler(tag.NewService(queries))
 	s.StatsHandler = stats.NewHandler(stats.NewService(queries))
-	s.RecurringHandler = recurring.NewHandler(recurring.NewServiceWithPool(queries, pool))
-	s.BudgetHandler = budget.NewHandler(budget.NewService(queries, pool))
+	s.RecurringHandler = recurring.NewHandler(recurring.NewServiceWithPoolAndRates(queries, pool, provider))
+	s.BudgetHandler = budget.NewHandler(budget.NewServiceWithRates(queries, pool, provider))
 	s.RuleEntryHandler = ruleentry.NewHandler(queries)
 
 	return &http.Server{

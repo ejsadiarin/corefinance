@@ -16,6 +16,7 @@ import (
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/logger"
 	"github.com/ejsadiarin/corefinance/internal/materialize"
+	"github.com/ejsadiarin/corefinance/internal/rates"
 
 	_ "github.com/joho/godotenv/autoload"
 )
@@ -64,9 +65,9 @@ func buildPool() *pgxpool.Pool {
 	return pool
 }
 
-func runOnce(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones materialize.Zones) int {
+func runOnce(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones materialize.Zones, provider rates.Provider) int {
 	today := time.Now()
-	n, err := materialize.MaterializeDue(ctx, pool, queries, zones, today)
+	n, err := materialize.MaterializeDueWithRates(ctx, pool, queries, zones, today, provider)
 	if err != nil {
 		// Some users were skipped (a failed zone read, a failed write); the
 		// rest were filled, and the skipped ones are retried next pass.
@@ -93,9 +94,10 @@ func main() {
 	queries := db.New(pool)
 
 	zones := materialize.SeenZones{Queries: queries}
+	provider := rates.FromEnv()
 
 	if *once {
-		os.Exit(runOnce(context.Background(), pool, queries, zones))
+		os.Exit(runOnce(context.Background(), pool, queries, zones, provider))
 	}
 
 	// Long-running mode (#16): a pass, then sleep until the earliest rule's
@@ -106,7 +108,7 @@ func main() {
 
 	slog.Info("main: worker started, filling rules as they fall due")
 	for {
-		if code := runOnce(ctx, pool, queries, zones); code != 0 {
+		if code := runOnce(ctx, pool, queries, zones, provider); code != 0 {
 			slog.Info("main: retrying skipped users at the next wake")
 		}
 		wait := untilNextWake(ctx, queries, time.Now())

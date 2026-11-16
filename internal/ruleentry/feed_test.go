@@ -37,8 +37,9 @@ func (f fixture) feed(t *testing.T, user uuid.UUID, params url.Values) Feed {
 func insertEntry(t *testing.T, q *db.Queries, user, rule uuid.UUID, date string) {
 	t.Helper()
 	n, err := q.CreateExpenseInstance(context.Background(), db.CreateExpenseInstanceParams{
-		UserID: user, Amount: decimal.NewFromInt(1), Currency: "PHP", Description: "x",
-		ExpenseDate: pgDay(date), Priority: "need", SourceRuleID: pgtype.UUID{Bytes: rule, Valid: true},
+		UserID: user, Amount: decimal.NewFromInt(1), Currency: "PHP",
+		ExchangeRate: decimal.NewFromInt(1), AmountPhp: decimal.NewFromInt(1), RateDate: pgDay(date),
+		Description: "x", ExpenseDate: pgDay(date), Priority: "need", SourceRuleID: pgtype.UUID{Bytes: rule, Valid: true},
 	})
 	require.NoError(t, err)
 	require.Equal(t, int64(1), n)

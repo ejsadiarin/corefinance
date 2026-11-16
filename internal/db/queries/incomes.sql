@@ -1,6 +1,6 @@
 -- name: CreateIncome :one
-INSERT INTO incomes (user_id, category_id, amount, currency, description, notes, date, priority, status, source_rule_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+INSERT INTO incomes (user_id, category_id, amount, currency, exchange_rate, amount_php, rate_date, description, notes, date, priority, status, source_rule_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 RETURNING *;
 
 -- name: GetIncome :one
@@ -23,8 +23,9 @@ LIMIT @page_limit OFFSET @page_offset;
 
 -- name: UpdateIncome :one
 UPDATE incomes
-SET category_id = $3, amount = $4, currency = $5, description = $6, notes = $7,
-    date = $8, priority = $9, status = $10, source_rule_id = $11,
+SET category_id = $3, amount = $4, currency = $5, exchange_rate = $6,
+    amount_php = $7, rate_date = $8, description = $9, notes = $10,
+    date = $11, priority = $12, status = $13, source_rule_id = $14,
     updated_at = now(), user_edited_at = now()
 WHERE id = $1 AND user_id = $2
 RETURNING *;
@@ -58,7 +59,7 @@ WHERE user_id = @user_id
 ORDER BY date DESC;
 
 -- name: GetTotalIncomesByDateRange :one
-SELECT COALESCE(SUM(amount), 0)::numeric AS total
+SELECT COALESCE(SUM(amount_php), 0)::numeric AS total
 FROM incomes
 WHERE user_id = $1
   AND date >= $2

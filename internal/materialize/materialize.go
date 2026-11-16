@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
+	"github.com/ejsadiarin/corefinance/internal/rates"
 )
 
 // truncateDate drops any sub-day component, preserving location.
@@ -202,6 +203,13 @@ func PendingDates(start time.Time, cadence string, watermark, end pgtype.Date, t
 // rule save runs it for the rule's owner. q must be inside a transaction; it
 // takes the user's lock for the rest of it. Returns the rows inserted.
 func MaterializeUser(ctx context.Context, q db.Querier, userID uuid.UUID, loc *time.Location, now time.Time) (int, error) {
+	return MaterializeUserWithRates(ctx, q, userID, loc, now, rates.PHPOnly{})
+}
+
+// MaterializeUserWithRates is MaterializeUser with the exchange-rate provider
+// that fixes each entry's PHP amount at its due date (ADR-0003). A non-PHP
+// entry waits, unwritten, until its rate is available.
+func MaterializeUserWithRates(ctx context.Context, q db.Querier, userID uuid.UUID, loc *time.Location, now time.Time, provider rates.Provider) (int, error) {
 	if err := q.LockUserMaterialize(ctx, userID); err != nil {
 		return 0, fmt.Errorf("lock user materialize: %w", err)
 	}
@@ -214,7 +222,7 @@ func MaterializeUser(ctx context.Context, q db.Querier, userID uuid.UUID, loc *t
 	for _, r := range rules {
 		dates, through := PendingDates(r.StartDate.Time, r.RecurringType, r.MaterializedThrough, r.EndDate, today, MaxDatesPerRulePass)
 		for _, d := range dates {
-			n, err := insertRuleEntry(ctx, q, r, d)
+			n, err := insertRuleEntry(ctx, q, r, d, provider)
 			if err != nil {
 				return inserted, err
 			}
@@ -268,12 +276,17 @@ func NextWake(ctx context.Context, q db.Querier, now time.Time) (time.Time, erro
 
 // insertRuleEntry creates the rule's entry for date d in the table for its
 // kind; an existing entry for that rule and date is left alone.
-func insertRuleEntry(ctx context.Context, q db.Querier, r db.Rule, d time.Time) (int64, error) {
+func insertRuleEntry(ctx context.Context, q db.Querier, r db.Rule, d time.Time, provider rates.Provider) (int64, error) {
 	source := pgtype.UUID{Bytes: r.ID, Valid: true}
+	conv, err := rates.Convert(ctx, provider, r.Currency, d, r.Amount)
+	if err != nil {
+		return 0, fmt.Errorf("rule %s on %s: %w", r.ID, d.Format("2006-01-02"), err)
+	}
 	switch r.Kind {
 	case "expense":
 		n, err := q.CreateExpenseInstance(ctx, db.CreateExpenseInstanceParams{
-			UserID: r.UserID, CategoryID: r.CategoryID, Amount: r.Amount, Currency: r.Currency,
+			UserID: r.UserID, CategoryID: r.CategoryID, Amount: r.Amount, Currency: conv.Currency,
+			ExchangeRate: conv.Rate, AmountPhp: conv.AmountPHP, RateDate: pgDate(conv.RateDate),
 			Description: r.Description, Notes: r.Notes, ExpenseDate: pgDate(d), Priority: r.Priority,
 			IsDebt: false, SourceRuleID: source,
 		})
@@ -283,7 +296,8 @@ func insertRuleEntry(ctx context.Context, q db.Querier, r db.Rule, d time.Time) 
 		return n, nil
 	case "income":
 		n, err := q.CreateIncomeInstance(ctx, db.CreateIncomeInstanceParams{
-			UserID: r.UserID, CategoryID: r.CategoryID, Amount: r.Amount, Currency: r.Currency,
+			UserID: r.UserID, CategoryID: r.CategoryID, Amount: r.Amount, Currency: conv.Currency,
+			ExchangeRate: conv.Rate, AmountPhp: conv.AmountPHP, RateDate: pgDate(conv.RateDate),
 			Description: r.Description, Notes: r.Notes, Date: pgDate(d), Priority: r.Priority,
 			SourceRuleID: source,
 		})
@@ -302,6 +316,11 @@ func insertRuleEntry(ctx context.Context, q db.Querier, r db.Rule, d time.Time) 
 // carry source_rule_id and status='posted'. Returns the rows inserted, and
 // every user's error joined.
 func MaterializeDue(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones Zones, now time.Time) (int, error) {
+	return MaterializeDueWithRates(ctx, pool, queries, zones, now, rates.PHPOnly{})
+}
+
+// MaterializeDueWithRates is MaterializeDue with the exchange-rate provider.
+func MaterializeDueWithRates(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones Zones, now time.Time, provider rates.Provider) (int, error) {
 	users, err := queries.ListUsersDue(ctx, pgtype.Timestamptz{Time: now, Valid: true})
 	if err != nil {
 		return 0, fmt.Errorf("list users due: %w", err)
@@ -309,7 +328,7 @@ func MaterializeDue(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries
 	var errs []error
 	inserted := 0
 	for _, user := range users {
-		n, err := materializeUserTx(ctx, pool, queries, zones, user, now)
+		n, err := materializeUserTx(ctx, pool, queries, zones, user, now, provider)
 		inserted += n
 		if err != nil {
 			errs = append(errs, fmt.Errorf("user %s: %w", user, err))
@@ -322,7 +341,7 @@ func MaterializeDue(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries
 // recorded meanwhile (which takes the same lock) is committed and seen, and
 // its reset of the next due times isn't overwritten with times in the old
 // zone. A failed read skips the user rather than guess; the next pass retries.
-func materializeUserTx(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones Zones, user uuid.UUID, now time.Time) (int, error) {
+func materializeUserTx(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones Zones, user uuid.UUID, now time.Time, provider rates.Provider) (int, error) {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("begin: %w", err)
@@ -336,7 +355,7 @@ func materializeUserTx(ctx context.Context, pool *pgxpool.Pool, queries *db.Quer
 	if err != nil {
 		return 0, fmt.Errorf("timezone: %w", err)
 	}
-	n, err := MaterializeUser(ctx, q, user, loc, now)
+	n, err := MaterializeUserWithRates(ctx, q, user, loc, now, provider)
 	if err != nil {
 		return 0, err
 	}

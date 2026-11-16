@@ -30,9 +30,9 @@ func (q *Queries) GetFeedHorizon(ctx context.Context) (uint64, error) {
 
 const listRuleEntries = `-- name: ListRuleEntries :many
 
-SELECT kind, id, rule_id, date, amount, currency, description, notes, category_id, category_name, priority, status, created_at, updated_at, user_edited_at FROM (
+SELECT kind, id, rule_id, date, amount, currency, exchange_rate, amount_php, rate_date, description, notes, category_id, category_name, priority, status, created_at, updated_at, user_edited_at FROM (
     SELECT 'expense'::text AS kind, e.id, e.source_rule_id::uuid AS rule_id, e.expense_date AS date,
-           e.amount, e.currency, e.description, e.notes, e.category_id, ec.name AS category_name,
+           e.amount, e.currency, e.exchange_rate, e.amount_php, e.rate_date, e.description, e.notes, e.category_id, ec.name AS category_name,
            e.priority, e.status, e.created_at, e.updated_at, e.user_edited_at
     FROM expenses e
     LEFT JOIN expense_categories ec ON ec.id = e.category_id
@@ -44,7 +44,7 @@ SELECT kind, id, rule_id, date, amount, currency, description, notes, category_i
       AND ($5::timestamptz IS NULL OR e.created_at > $5::timestamptz)
     UNION ALL
     SELECT 'income'::text AS kind, i.id, i.source_rule_id::uuid AS rule_id, i.date,
-           i.amount, i.currency, i.description, i.notes, i.category_id, ic.name AS category_name,
+           i.amount, i.currency, i.exchange_rate, i.amount_php, i.rate_date, i.description, i.notes, i.category_id, ic.name AS category_name,
            i.priority, i.status, i.created_at, i.updated_at, i.user_edited_at
     FROM incomes i
     LEFT JOIN income_categories ic ON ic.id = i.category_id
@@ -76,6 +76,9 @@ type ListRuleEntriesRow struct {
 	Date         pgtype.Date        `db:"date" json:"date"`
 	Amount       decimal.Decimal    `db:"amount" json:"amount"`
 	Currency     string             `db:"currency" json:"currency"`
+	ExchangeRate decimal.Decimal    `db:"exchange_rate" json:"exchange_rate"`
+	AmountPhp    decimal.Decimal    `db:"amount_php" json:"amount_php"`
+	RateDate     pgtype.Date        `db:"rate_date" json:"rate_date"`
 	Description  string             `db:"description" json:"description"`
 	Notes        pgtype.Text        `db:"notes" json:"notes"`
 	CategoryID   pgtype.UUID        `db:"category_id" json:"category_id"`
@@ -115,6 +118,9 @@ func (q *Queries) ListRuleEntries(ctx context.Context, arg ListRuleEntriesParams
 			&i.Date,
 			&i.Amount,
 			&i.Currency,
+			&i.ExchangeRate,
+			&i.AmountPhp,
+			&i.RateDate,
 			&i.Description,
 			&i.Notes,
 			&i.CategoryID,
@@ -136,9 +142,9 @@ func (q *Queries) ListRuleEntries(ctx context.Context, arg ListRuleEntriesParams
 }
 
 const listRuleEntriesFeed = `-- name: ListRuleEntriesFeed :many
-SELECT kind, id, rule_id, date, amount, currency, description, notes, category_id, category_name, priority, status, created_at, updated_at, user_edited_at, txid FROM (
+SELECT kind, id, rule_id, date, amount, currency, exchange_rate, amount_php, rate_date, description, notes, category_id, category_name, priority, status, created_at, updated_at, user_edited_at, txid FROM (
     SELECT 'expense'::text AS kind, e.id, e.source_rule_id::uuid AS rule_id, e.expense_date AS date,
-           e.amount, e.currency, e.description, e.notes, e.category_id, ec.name AS category_name,
+           e.amount, e.currency, e.exchange_rate, e.amount_php, e.rate_date, e.description, e.notes, e.category_id, ec.name AS category_name,
            e.priority, e.status, e.created_at, e.updated_at, e.user_edited_at, e.txid
     FROM expenses e
     LEFT JOIN expense_categories ec ON ec.id = e.category_id
@@ -151,7 +157,7 @@ SELECT kind, id, rule_id, date, amount, currency, description, notes, category_i
       AND ($7::date IS NULL OR e.expense_date <= $7::date)
     UNION ALL
     SELECT 'income'::text AS kind, i.id, i.source_rule_id::uuid AS rule_id, i.date,
-           i.amount, i.currency, i.description, i.notes, i.category_id, ic.name AS category_name,
+           i.amount, i.currency, i.exchange_rate, i.amount_php, i.rate_date, i.description, i.notes, i.category_id, ic.name AS category_name,
            i.priority, i.status, i.created_at, i.updated_at, i.user_edited_at, i.txid
     FROM incomes i
     LEFT JOIN income_categories ic ON ic.id = i.category_id
@@ -185,6 +191,9 @@ type ListRuleEntriesFeedRow struct {
 	Date         pgtype.Date        `db:"date" json:"date"`
 	Amount       decimal.Decimal    `db:"amount" json:"amount"`
 	Currency     string             `db:"currency" json:"currency"`
+	ExchangeRate decimal.Decimal    `db:"exchange_rate" json:"exchange_rate"`
+	AmountPhp    decimal.Decimal    `db:"amount_php" json:"amount_php"`
+	RateDate     pgtype.Date        `db:"rate_date" json:"rate_date"`
 	Description  string             `db:"description" json:"description"`
 	Notes        pgtype.Text        `db:"notes" json:"notes"`
 	CategoryID   pgtype.UUID        `db:"category_id" json:"category_id"`
@@ -222,6 +231,9 @@ func (q *Queries) ListRuleEntriesFeed(ctx context.Context, arg ListRuleEntriesFe
 			&i.Date,
 			&i.Amount,
 			&i.Currency,
+			&i.ExchangeRate,
+			&i.AmountPhp,
+			&i.RateDate,
 			&i.Description,
 			&i.Notes,
 			&i.CategoryID,

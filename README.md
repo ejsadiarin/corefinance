@@ -64,6 +64,7 @@ internal/category/            — the fixed expense/income category lists (ADR-0
 internal/tag/                 — tags + tag associations
 internal/recurring/           — recurring expense/income rules
 internal/stats/               — analytics (summary, trends, 50/30/20, velocity)
+internal/rates/               — fixed exchange rates (frankfurter.dev/ECB, ADR-0003)
 internal/helper/              — shared utilities
 internal/auth/                — internal JWT verification (JWKS), identity injection
 internal/db/sqlc/             — generated sqlc code
@@ -89,6 +90,7 @@ internal/db/bootstrap.sql     — one-time role/grants bootstrap (not a migratio
 | `JWT_ISSUER` | Expected internal JWT issuer (default: `https://gateway.internal`) |
 | `JWT_AUDIENCE` | Expected internal JWT audience (default: `corefinance`) |
 | `JWT_JWKS_URL` | Gateway JWKS URL (default: `https://gateway.internal/.well-known/jwks.json`) |
+| `RATE_URL` | Exchange-rate provider base URL (default: `https://api.frankfurter.dev/v1`) |
 
 ## API Routes
 

@@ -16,6 +16,7 @@ import (
 	"github.com/ejsadiarin/corefinance/internal/auth"
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/logger"
+	"github.com/ejsadiarin/corefinance/internal/rates"
 	"github.com/ejsadiarin/corefinance/internal/server"
 
 	_ "github.com/joho/godotenv/autoload"
@@ -124,7 +125,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	srv := server.New(port, pool, queries, verifier)
+	srv := server.New(port, pool, queries, verifier, rates.FromEnv())
 
 	done := make(chan bool, 1)
 	go gracefulShutdown(srv, pool, done)

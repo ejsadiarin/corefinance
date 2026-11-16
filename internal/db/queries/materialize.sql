@@ -1,13 +1,13 @@
 -- Rule-entry inserts (ADR-0001). The materialize pass is their only caller.
 
 -- name: CreateExpenseInstance :execrows
-INSERT INTO expenses (user_id, category_id, amount, currency, description, notes, expense_date, priority, status, is_debt, source_rule_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'posted', $9, $10)
+INSERT INTO expenses (user_id, category_id, amount, currency, exchange_rate, amount_php, rate_date, description, notes, expense_date, priority, status, is_debt, source_rule_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'posted', $12, $13)
 ON CONFLICT (user_id, source_rule_id, expense_date) WHERE source_rule_id IS NOT NULL DO NOTHING;
 
 -- name: CreateIncomeInstance :execrows
-INSERT INTO incomes (user_id, category_id, amount, currency, description, notes, date, priority, status, source_rule_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'posted', $9)
+INSERT INTO incomes (user_id, category_id, amount, currency, exchange_rate, amount_php, rate_date, description, notes, date, priority, status, source_rule_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'posted', $12)
 ON CONFLICT (user_id, source_rule_id, date) WHERE source_rule_id IS NOT NULL DO NOTHING;
 
 -- The materialize pass runs one user at a time under a per-user lock (#14,
