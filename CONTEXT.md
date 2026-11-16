@@ -48,6 +48,32 @@ _Avoid_: importance, tier, class
 A budget record the owner has marked as not happening. It is kept, but it no longer counts in the totals.
 _Avoid_: deleted, cancelled, voided
 
+### Money
+
+**Currency**:
+The ISO 4217 code an amount is entered in. It must be one the exchange-rate source publishes.
+_Avoid_: denomination, unit
+
+**Reporting currency**:
+PHP, the one currency every report totals in.
+_Avoid_: base currency, home currency
+
+**Original amount**:
+The amount of a budget record in the currency it was entered in.
+_Avoid_: gross amount, foreign amount
+
+**Exchange rate**:
+The PHP value of one unit of a record's original currency on its rate date.
+_Avoid_: conversion rate, FX rate
+
+**Rate date**:
+The date whose published exchange rate a record uses: its own date, or the previous business day with a published rate.
+_Avoid_: effective date, conversion date
+
+**PHP amount**:
+The original amount converted at the exchange rate and rounded to centavos, fixed when the record is saved.
+_Avoid_: converted amount, local amount
+
 ### Recurring rules
 
 **Recurring rule**:
