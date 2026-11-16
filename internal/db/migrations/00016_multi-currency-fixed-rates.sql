@@ -31,6 +31,7 @@ SET exchange_rate = 1, amount_php = amount, rate_date = date
 WHERE currency = 'PHP';
 
 -- The migration cannot invent a historical rate for any other non-PHP row.
+-- +goose StatementBegin
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM expenses WHERE currency <> 'PHP')
@@ -38,11 +39,13 @@ BEGIN
         RAISE EXCEPTION 'multi-currency migration: unexpected non-PHP row; convert it before migrating';
     END IF;
 END $$;
+-- +goose StatementEnd
 
 -- The one known production gift: 2026-07-12, notes naming USD 100. It is
 -- stored today as PHP 100 with the USD amount in its notes. Convert it to
 -- USD 100 at the ECB rate published for 2026-07-10 (61.573), giving
 -- PHP 6,157.30. Match either table; skip silently when the row is absent.
+-- +goose StatementBegin
 DO $$
 DECLARE
     inc_id uuid;
@@ -80,6 +83,7 @@ BEGIN
         WHERE id = exp_id;
     END IF;
 END $$;
+-- +goose StatementEnd
 
 ALTER TABLE expenses
     ALTER COLUMN exchange_rate SET NOT NULL,
