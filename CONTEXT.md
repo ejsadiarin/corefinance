@@ -48,6 +48,22 @@ _Avoid_: importance, tier, class
 A budget record the owner has marked as not happening. It is kept, but it no longer counts in the totals.
 _Avoid_: deleted, cancelled, voided
 
+**Period budget**:
+The budget for the day, week or month containing a date, read in the owner's timezone. Weeks run Monday to Sunday. It is funded by the period's income, spends through today, and sets aside bills still due.
+_Avoid_: monthly budget, allocation, spending limit
+
+**Funded**:
+The money a period budget has: posted income in the period, excluding reimbursements, plus projected income.
+_Avoid_: budget total, allowance, income total
+
+**Projected income**:
+Income an active recurring rule will still write in the rest of the period. It uses the same due dates and exchange rates the materialize pass writes with, and skips dates an entry already exists for.
+_Avoid_: expected income, forecast, estimate
+
+**Safe to spend**:
+What is left in a period budget divided by the days remaining in the period, counting today. For a future period every day is remaining; for a past period it is empty.
+_Avoid_: daily budget, spend per day, allowance
+
 ### Money
 
 **Currency**:

@@ -37,6 +37,7 @@ type MockQuerier struct {
 	GetFiftyThirtyTwentyFn                func(ctx context.Context, arg db.GetFiftyThirtyTwentyParams) (db.GetFiftyThirtyTwentyRow, error)
 	GetIncomeFn                           func(ctx context.Context, arg db.GetIncomeParams) (db.GetIncomeRow, error)
 	ListRuleEntriesFn                     func(ctx context.Context, arg db.ListRuleEntriesParams) ([]db.ListRuleEntriesRow, error)
+	ListRuleEntryDatesFn                  func(ctx context.Context, arg db.ListRuleEntryDatesParams) ([]db.ListRuleEntryDatesRow, error)
 	GetFeedHorizonFn                      func(ctx context.Context) (uint64, error)
 	ListRuleEntriesFeedFn                 func(ctx context.Context, arg db.ListRuleEntriesFeedParams) ([]db.ListRuleEntriesFeedRow, error)
 	LockUserMaterializeFn                 func(ctx context.Context, userID uuid.UUID) error
@@ -54,6 +55,7 @@ type MockQuerier struct {
 	GetNextWakeFn                         func(ctx context.Context, now pgtype.Timestamptz) (pgtype.Timestamptz, error)
 	GetIncomeOccurrencesFn                func(ctx context.Context, arg db.GetIncomeOccurrencesParams) ([]db.Income, error)
 	GetMonthOverMonthTrendsFn             func(ctx context.Context, arg db.GetMonthOverMonthTrendsParams) ([]db.GetMonthOverMonthTrendsRow, error)
+	GetPeriodBudgetTotalsFn               func(ctx context.Context, arg db.GetPeriodBudgetTotalsParams) (db.GetPeriodBudgetTotalsRow, error)
 	GetRecurringExpenseRuleFn             func(ctx context.Context, arg db.GetRecurringExpenseRuleParams) (db.GetRecurringExpenseRuleRow, error)
 	GetRecurringIncomeRuleFn              func(ctx context.Context, arg db.GetRecurringIncomeRuleParams) (db.Rule, error)
 	GetSavingsRateFn                      func(ctx context.Context, arg db.GetSavingsRateParams) (db.GetSavingsRateRow, error)
@@ -191,6 +193,10 @@ func (m *MockQuerier) GetIncomeOccurrences(ctx context.Context, arg db.GetIncome
 
 func (m *MockQuerier) GetMonthOverMonthTrends(ctx context.Context, arg db.GetMonthOverMonthTrendsParams) ([]db.GetMonthOverMonthTrendsRow, error) {
 	return m.GetMonthOverMonthTrendsFn(ctx, arg)
+}
+
+func (m *MockQuerier) GetPeriodBudgetTotals(ctx context.Context, arg db.GetPeriodBudgetTotalsParams) (db.GetPeriodBudgetTotalsRow, error) {
+	return m.GetPeriodBudgetTotalsFn(ctx, arg)
 }
 
 // GetRecurringExpenseRule defaults to an open-ended rule, which a rule
@@ -368,6 +374,13 @@ func (m *MockQuerier) GetFeedHorizon(ctx context.Context) (uint64, error) {
 }
 
 // ListRuleEntriesFeed defaults to no entries.
+func (m *MockQuerier) ListRuleEntryDates(ctx context.Context, arg db.ListRuleEntryDatesParams) ([]db.ListRuleEntryDatesRow, error) {
+	if m.ListRuleEntryDatesFn == nil {
+		return nil, nil
+	}
+	return m.ListRuleEntryDatesFn(ctx, arg)
+}
+
 func (m *MockQuerier) ListRuleEntriesFeed(ctx context.Context, arg db.ListRuleEntriesFeedParams) ([]db.ListRuleEntriesFeedRow, error) {
 	if m.ListRuleEntriesFeedFn == nil {
 		return nil, nil

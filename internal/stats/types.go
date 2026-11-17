@@ -58,6 +58,22 @@ type CurrentTotalMoney struct {
 	RunwayDays        *int64          `json:"runway_days"`
 }
 
+type PeriodBudget struct {
+	Period               string           `json:"period"`
+	StartDate            string           `json:"start_date"`
+	EndDate              string           `json:"end_date"`
+	Funded               decimal.Decimal  `json:"funded"`
+	ProjectedIncome      decimal.Decimal  `json:"projected_income"`
+	Spent                decimal.Decimal  `json:"spent"`
+	BillsStillDue        decimal.Decimal  `json:"bills_still_due"`
+	Left                 decimal.Decimal  `json:"left"`
+	SafeToSpendPerDay    *decimal.Decimal `json:"safe_to_spend_per_day"`
+	PreviousPeriodStart  string           `json:"previous_period_start"`
+	PreviousPeriodEnd    string           `json:"previous_period_end"`
+	PreviousSpentToPoint decimal.Decimal  `json:"previous_spent_to_point"`
+	PreviousSpentTotal   decimal.Decimal  `json:"previous_spent_total"`
+}
+
 type MonthOverMonthTrend struct {
 	Month       string          `json:"month"`
 	TotalAmount decimal.Decimal `json:"total_amount"`

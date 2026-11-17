@@ -15,15 +15,26 @@ import (
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/helper"
 	"github.com/ejsadiarin/corefinance/internal/materialize"
+	"github.com/ejsadiarin/corefinance/internal/rates"
 )
 
 type Service struct {
 	queries db.Querier
 	now     func() time.Time
+	rates   rates.Provider
 }
 
 func NewService(queries db.Querier) *Service {
-	return &Service{queries: queries, now: time.Now}
+	return NewServiceWithRates(queries, rates.PHPOnly{})
+}
+
+// NewServiceWithRates projects rule entries at their due dates through the
+// same exchange-rate provider the materialize pass writes them with (ADR-0003).
+func NewServiceWithRates(queries db.Querier, provider rates.Provider) *Service {
+	if provider == nil {
+		provider = rates.PHPOnly{}
+	}
+	return &Service{queries: queries, now: time.Now, rates: provider}
 }
 
 // ownerZone is the zone a read dates "today" in (coregateway ADR-0005): the
@@ -204,6 +215,163 @@ func (s *Service) CurrentTotalMoney(ctx context.Context, userID uuid.UUID) (Curr
 		AverageDailySpend: average.Round(2),
 		RunwayDays:        runway,
 	}, nil
+}
+
+func (s *Service) PeriodBudget(ctx context.Context, userID uuid.UUID, kind, anchor string) (PeriodBudget, error) {
+	slog.Debug("stats.Service.PeriodBudget", "user_id", userID, "period", kind, "anchor", anchor)
+	loc, err := ownerZone(ctx, s.queries, userID)
+	if err != nil {
+		return PeriodBudget{}, err
+	}
+	today := materialize.DateIn(s.now(), loc)
+	anchorDate := today
+	if anchor != "" {
+		anchorDate, err = time.Parse("2006-01-02", anchor)
+		if err != nil {
+			return PeriodBudget{}, fmt.Errorf("date must be YYYY-MM-DD")
+		}
+	}
+	period, err := periodRange(kind, anchorDate)
+	if err != nil {
+		return PeriodBudget{}, err
+	}
+	previous := previousRange(kind, period)
+
+	// Spent through the same point in the previous period: clamp the elapsed
+	// days to the period so a past period compares in full and a future one
+	// has none yet.
+	elapsed := int(today.Sub(period.start).Hours()/24) + 1
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	if days := daysInRange(period); elapsed > days {
+		elapsed = days
+	}
+	previousToPointEnd := previous.start.AddDate(0, 0, -1)
+	if elapsed > 0 {
+		previousToPointEnd = previous.start.AddDate(0, 0, elapsed-1)
+		if previousToPointEnd.After(previous.end) {
+			previousToPointEnd = previous.end
+		}
+	}
+
+	row, err := s.queries.GetPeriodBudgetTotals(ctx, db.GetPeriodBudgetTotalsParams{
+		UserID:             userID,
+		ReimbursementID:    category.Reimbursement,
+		PeriodStart:        pgDate(period.start),
+		PeriodEnd:          pgDate(period.end),
+		Today:              pgDate(today),
+		Tomorrow:           pgDate(today.AddDate(0, 0, 1)),
+		PreviousStart:      pgDate(previous.start),
+		PreviousToPointEnd: pgDate(previousToPointEnd),
+		PreviousEnd:        pgDate(previous.end),
+	})
+	if err != nil {
+		return PeriodBudget{}, err
+	}
+
+	projectedIncome, projectedExpenses, err := s.projectRuleOccurrences(ctx, userID, today, period.end)
+	if err != nil {
+		return PeriodBudget{}, err
+	}
+
+	spent := row.SpentExpenses.Sub(row.SpentReimbursements)
+	funded := row.PostedIncome.Add(projectedIncome)
+	bills := row.FutureExpenses.Add(projectedExpenses)
+	left := funded.Sub(spent).Sub(bills)
+
+	// Safe to spend is empty for a past period. A future period counts every
+	// day as remaining; the current one counts from today.
+	var safe *decimal.Decimal
+	if !period.end.Before(today) {
+		remaining := daysInRange(period)
+		if !period.start.After(today) {
+			remaining = int(period.end.Sub(today).Hours()/24) + 1
+		}
+		value := left.DivRound(decimal.NewFromInt(int64(remaining)), 2)
+		safe = &value
+	}
+
+	return PeriodBudget{
+		Period:               kind,
+		StartDate:            formatDate(period.start),
+		EndDate:              formatDate(period.end),
+		Funded:               funded,
+		ProjectedIncome:      projectedIncome,
+		Spent:                spent,
+		BillsStillDue:        bills,
+		Left:                 left,
+		SafeToSpendPerDay:    safe,
+		PreviousPeriodStart:  formatDate(previous.start),
+		PreviousPeriodEnd:    formatDate(previous.end),
+		PreviousSpentToPoint: row.PreviousSpentExpenses.Sub(row.PreviousSpentReimbursements),
+		PreviousSpentTotal:   row.PreviousTotalExpenses.Sub(row.PreviousTotalReimbursements),
+	}, nil
+}
+
+// ruleEntryKey identifies a rule's entry on one date.
+type ruleEntryKey struct {
+	ruleID uuid.UUID
+	date   string
+}
+
+// projectRuleOccurrences sums the PHP amounts of active rules' due dates
+// after `after` through `through`, the dates the materialize pass will still
+// write. Dates with an entry already are skipped, and a rule's projected
+// reimbursement income is not funding.
+func (s *Service) projectRuleOccurrences(ctx context.Context, userID uuid.UUID, after, through time.Time) (income, expense decimal.Decimal, err error) {
+	income, expense = decimal.Zero, decimal.Zero
+	if !through.After(after) {
+		return income, expense, nil
+	}
+	rules, err := s.queries.ListUserActiveRules(ctx, userID)
+	if err != nil {
+		return income, expense, fmt.Errorf("list active rules: %w", err)
+	}
+	if len(rules) == 0 {
+		return income, expense, nil
+	}
+	writtenRows, err := s.queries.ListRuleEntryDates(ctx, db.ListRuleEntryDatesParams{
+		UserID:    userID,
+		StartDate: pgDate(after.AddDate(0, 0, 1)),
+		EndDate:   pgDate(through),
+	})
+	if err != nil {
+		return income, expense, fmt.Errorf("list rule entry dates: %w", err)
+	}
+	written := make(map[ruleEntryKey]struct{}, len(writtenRows))
+	for _, row := range writtenRows {
+		written[ruleEntryKey{ruleID: row.SourceRuleID, date: formatDate(row.EntryDate.Time)}] = struct{}{}
+	}
+
+	for _, rule := range rules {
+		var end *time.Time
+		if rule.EndDate.Valid {
+			end = &rule.EndDate.Time
+		}
+		for _, due := range materialize.OccurrencesBetween(rule.StartDate.Time, rule.RecurringType, end, after, through) {
+			if _, exists := written[ruleEntryKey{ruleID: rule.ID, date: formatDate(due)}]; exists {
+				continue
+			}
+			conv, err := rates.Convert(ctx, s.rates, rule.Currency, due, rule.Amount)
+			if err != nil {
+				// Materialize can't write this entry either without a rate.
+				slog.Warn("stats.PeriodBudget: skipped projected occurrence",
+					"rule_id", rule.ID, "date", formatDate(due), "error", err)
+				continue
+			}
+			switch rule.Kind {
+			case "income":
+				if rule.CategoryID.Valid && uuid.UUID(rule.CategoryID.Bytes) == category.Reimbursement {
+					continue
+				}
+				income = income.Add(conv.AmountPHP)
+			case "expense":
+				expense = expense.Add(conv.AmountPHP)
+			}
+		}
+	}
+	return income, expense, nil
 }
 
 func (s *Service) MonthOverMonthTrends(ctx context.Context, userID uuid.UUID, startDate, endDate *string) ([]MonthOverMonthTrend, error) {

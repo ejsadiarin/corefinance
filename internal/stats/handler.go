@@ -3,6 +3,7 @@ package stats
 import (
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/ejsadiarin/corefinance/internal/helper"
 )
@@ -157,6 +158,34 @@ func (h *Handler) CurrentTotalMoney(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Debug("stats.CurrentTotalMoney: success", "user_id", userID)
 	helper.RespondJSON(w, http.StatusOK, total)
+}
+
+func (h *Handler) PeriodBudget(w http.ResponseWriter, r *http.Request) {
+	period := r.URL.Query().Get("period")
+	if period != "day" && period != "week" && period != "month" {
+		helper.RespondErrorJSON(w, http.StatusBadRequest, "period must be day, week or month")
+		return
+	}
+	anchor := r.URL.Query().Get("date")
+	if anchor != "" {
+		if _, err := time.Parse("2006-01-02", anchor); err != nil {
+			helper.RespondErrorJSON(w, http.StatusBadRequest, "date must be YYYY-MM-DD")
+			return
+		}
+	}
+	userID, ok := helper.ResolveTargetUser(w, r)
+	if !ok {
+		return
+	}
+	slog.Debug("stats.PeriodBudget: request received", "user_id", userID, "period", period, "date", anchor)
+	budget, err := h.service.PeriodBudget(r.Context(), userID, period, anchor)
+	if err != nil {
+		slog.Error("stats.PeriodBudget: failed", "error", err, "user_id", userID)
+		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	slog.Debug("stats.PeriodBudget: success", "user_id", userID)
+	helper.RespondJSON(w, http.StatusOK, budget)
 }
 
 func (h *Handler) MonthOverMonthTrends(w http.ResponseWriter, r *http.Request) {

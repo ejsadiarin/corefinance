@@ -212,6 +212,65 @@ SELECT
              AND i.date BETWEEN @window_start::date AND @today::date)
     )::numeric AS net_spend;
 
+-- name: GetPeriodBudgetTotals :one
+-- The period's posted income, what is spent through today, expenses still
+-- ahead in the period, and the previous period's spent at the same point and
+-- in full. Reimbursements are returned separately so the service can net
+-- them out of spent.
+SELECT
+    (SELECT COALESCE(SUM(i.amount_php), 0)::numeric FROM incomes i
+     WHERE i.user_id = @user_id
+       AND i.status != 'skipped'
+       AND i.category_id IS DISTINCT FROM @reimbursement_id::uuid
+       AND i.date BETWEEN @period_start::date AND @period_end::date) AS posted_income,
+    (SELECT COALESCE(SUM(e.amount_php), 0)::numeric FROM expenses e
+     WHERE e.user_id = @user_id
+       AND e.status != 'skipped'
+       AND e.expense_date BETWEEN @period_start::date AND LEAST(@period_end::date, @today::date)) AS spent_expenses,
+    (SELECT COALESCE(SUM(i.amount_php), 0)::numeric FROM incomes i
+     WHERE i.user_id = @user_id
+       AND i.status != 'skipped'
+       AND i.category_id = @reimbursement_id::uuid
+       AND i.date BETWEEN @period_start::date AND LEAST(@period_end::date, @today::date)) AS spent_reimbursements,
+    (SELECT COALESCE(SUM(e.amount_php), 0)::numeric FROM expenses e
+     WHERE e.user_id = @user_id
+       AND e.status != 'skipped'
+       AND e.expense_date BETWEEN GREATEST(@period_start::date, @tomorrow::date) AND @period_end::date) AS future_expenses,
+    (SELECT COALESCE(SUM(e.amount_php), 0)::numeric FROM expenses e
+     WHERE e.user_id = @user_id
+       AND e.status != 'skipped'
+       AND e.expense_date BETWEEN @previous_start::date AND @previous_to_point_end::date) AS previous_spent_expenses,
+    (SELECT COALESCE(SUM(i.amount_php), 0)::numeric FROM incomes i
+     WHERE i.user_id = @user_id
+       AND i.status != 'skipped'
+       AND i.category_id = @reimbursement_id::uuid
+       AND i.date BETWEEN @previous_start::date AND @previous_to_point_end::date) AS previous_spent_reimbursements,
+    (SELECT COALESCE(SUM(e.amount_php), 0)::numeric FROM expenses e
+     WHERE e.user_id = @user_id
+       AND e.status != 'skipped'
+       AND e.expense_date BETWEEN @previous_start::date AND @previous_end::date) AS previous_total_expenses,
+    (SELECT COALESCE(SUM(i.amount_php), 0)::numeric FROM incomes i
+     WHERE i.user_id = @user_id
+       AND i.status != 'skipped'
+       AND i.category_id = @reimbursement_id::uuid
+       AND i.date BETWEEN @previous_start::date AND @previous_end::date) AS previous_total_reimbursements;
+
+-- name: ListRuleEntryDates :many
+-- Rule entries already written in a date range, skipped ones included: a
+-- skipped entry is still the owner's decision, and the materialize pass does
+-- not write it again. The projection skips these dates.
+SELECT e.source_rule_id::uuid AS source_rule_id, e.expense_date AS entry_date
+FROM expenses e
+WHERE e.user_id = @user_id
+  AND e.source_rule_id IS NOT NULL
+  AND e.expense_date BETWEEN @start_date::date AND @end_date::date
+UNION ALL
+SELECT i.source_rule_id::uuid AS source_rule_id, i.date AS entry_date
+FROM incomes i
+WHERE i.user_id = @user_id
+  AND i.source_rule_id IS NOT NULL
+  AND i.date BETWEEN @start_date::date AND @end_date::date;
+
 -- name: GetMonthOverMonthTrends :many
 SELECT
     month,

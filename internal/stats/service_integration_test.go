@@ -300,6 +300,239 @@ func TestStatsService_MoneyOnHand_Integration(t *testing.T) {
 	})
 }
 
+// Spec (#26): a period budget is funded by the period's income, spent only
+// through today, and holds future expenses as bills still due. Reimbursements
+// reduce spent, skipped records count nowhere.
+func TestStatsService_PeriodBudget_Integration(t *testing.T) {
+	svc, pool := newStatsIntegrationService(t)
+	svc.now = func() time.Time { return time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC) }
+	ctx := auth.WithTimezone(context.Background(), "Asia/Manila")
+	reimbursementID := category.Reimbursement.String()
+
+	t.Run("day nets reimbursements and excludes skipped records", func(t *testing.T) {
+		userID := uuid.New()
+		seedIncome(t, ctx, pool, userID, "1000", "2026-11-18", "posted")
+		seedIncomeInCategory(t, ctx, pool, userID, "200", "2026-11-18", "posted", &reimbursementID)
+		seedExpense(t, ctx, pool, userID, "300", "2026-11-18", "posted")
+		seedExpense(t, ctx, pool, userID, "999", "2026-11-18", "skipped")
+		seedExpense(t, ctx, pool, userID, "500", "2026-11-19", "posted")
+
+		budget, err := svc.PeriodBudget(ctx, userID, "day", "2026-11-18")
+		require.NoError(t, err)
+		assert.Equal(t, "day", budget.Period)
+		assert.Equal(t, "2026-11-18", budget.StartDate)
+		assert.Equal(t, "2026-11-18", budget.EndDate)
+		assert.True(t, decimal.NewFromInt(1000).Equal(budget.Funded), budget.Funded.String())
+		assert.True(t, decimal.Zero.Equal(budget.ProjectedIncome), budget.ProjectedIncome.String())
+		assert.True(t, decimal.NewFromInt(100).Equal(budget.Spent), budget.Spent.String())
+		assert.True(t, decimal.Zero.Equal(budget.BillsStillDue), budget.BillsStillDue.String())
+		assert.True(t, decimal.NewFromInt(900).Equal(budget.Left), budget.Left.String())
+		require.NotNil(t, budget.SafeToSpendPerDay)
+		assert.True(t, decimal.NewFromInt(900).Equal(*budget.SafeToSpendPerDay), budget.SafeToSpendPerDay.String())
+		assert.Equal(t, "2026-11-17", budget.PreviousPeriodStart)
+		assert.Equal(t, "2026-11-17", budget.PreviousPeriodEnd)
+		assert.True(t, decimal.Zero.Equal(budget.PreviousSpentToPoint), budget.PreviousSpentToPoint.String())
+		assert.True(t, decimal.Zero.Equal(budget.PreviousSpentTotal), budget.PreviousSpentTotal.String())
+	})
+
+	t.Run("week bounds, bills and previous period to the same point", func(t *testing.T) {
+		userID := uuid.New()
+		seedIncome(t, ctx, pool, userID, "1000", "2026-11-16", "posted")
+		seedExpense(t, ctx, pool, userID, "100", "2026-11-16", "posted")
+		seedIncomeInCategory(t, ctx, pool, userID, "50", "2026-11-17", "posted", &reimbursementID)
+		seedExpense(t, ctx, pool, userID, "999", "2026-11-17", "skipped")
+		seedExpense(t, ctx, pool, userID, "200", "2026-11-18", "posted")
+		seedExpense(t, ctx, pool, userID, "300", "2026-11-20", "posted")
+		seedExpense(t, ctx, pool, userID, "400", "2026-11-23", "posted")
+
+		// The previous week: 450 in total, 210 of it in its first 3 days.
+		seedExpense(t, ctx, pool, userID, "50", "2026-11-09", "posted")
+		seedExpense(t, ctx, pool, userID, "70", "2026-11-10", "posted")
+		seedExpense(t, ctx, pool, userID, "90", "2026-11-11", "posted")
+		seedExpense(t, ctx, pool, userID, "110", "2026-11-12", "posted")
+		seedExpense(t, ctx, pool, userID, "130", "2026-11-13", "posted")
+
+		budget, err := svc.PeriodBudget(ctx, userID, "week", "2026-11-18")
+		require.NoError(t, err)
+		assert.Equal(t, "2026-11-16", budget.StartDate)
+		assert.Equal(t, "2026-11-22", budget.EndDate)
+		assert.True(t, decimal.NewFromInt(1000).Equal(budget.Funded), budget.Funded.String())
+		assert.True(t, decimal.NewFromInt(250).Equal(budget.Spent), budget.Spent.String())
+		assert.True(t, decimal.NewFromInt(300).Equal(budget.BillsStillDue), budget.BillsStillDue.String())
+		assert.True(t, decimal.NewFromInt(450).Equal(budget.Left), budget.Left.String())
+		require.NotNil(t, budget.SafeToSpendPerDay)
+		assert.True(t, decimal.NewFromInt(90).Equal(*budget.SafeToSpendPerDay), budget.SafeToSpendPerDay.String())
+		assert.Equal(t, "2026-11-09", budget.PreviousPeriodStart)
+		assert.Equal(t, "2026-11-15", budget.PreviousPeriodEnd)
+		assert.True(t, decimal.NewFromInt(210).Equal(budget.PreviousSpentToPoint), budget.PreviousSpentToPoint.String())
+		assert.True(t, decimal.NewFromInt(450).Equal(budget.PreviousSpentTotal), budget.PreviousSpentTotal.String())
+	})
+
+	t.Run("past period has no safe to spend", func(t *testing.T) {
+		userID := uuid.New()
+		seedIncome(t, ctx, pool, userID, "1000", "2026-11-17", "posted")
+		seedIncome(t, ctx, pool, userID, "500", "2026-11-17", "posted")
+		seedExpense(t, ctx, pool, userID, "200", "2026-11-17", "posted")
+		seedExpense(t, ctx, pool, userID, "999", "2026-11-17", "skipped")
+		seedExpense(t, ctx, pool, userID, "50", "2026-11-16", "posted")
+
+		budget, err := svc.PeriodBudget(ctx, userID, "day", "2026-11-17")
+		require.NoError(t, err)
+		assert.True(t, decimal.NewFromInt(1500).Equal(budget.Funded), budget.Funded.String())
+		assert.True(t, decimal.NewFromInt(200).Equal(budget.Spent), budget.Spent.String())
+		assert.True(t, decimal.Zero.Equal(budget.BillsStillDue), budget.BillsStillDue.String())
+		assert.True(t, decimal.NewFromInt(1300).Equal(budget.Left), budget.Left.String())
+		assert.Nil(t, budget.SafeToSpendPerDay)
+		assert.Equal(t, "2026-11-16", budget.PreviousPeriodStart)
+		assert.True(t, decimal.NewFromInt(50).Equal(budget.PreviousSpentToPoint), budget.PreviousSpentToPoint.String())
+		assert.True(t, decimal.NewFromInt(50).Equal(budget.PreviousSpentTotal), budget.PreviousSpentTotal.String())
+	})
+
+	t.Run("future period counts every day as remaining", func(t *testing.T) {
+		userID := uuid.New()
+		seedIncome(t, ctx, pool, userID, "3100", "2026-12-01", "posted")
+		seedExpense(t, ctx, pool, userID, "310", "2026-12-15", "posted")
+		seedIncomeInCategory(t, ctx, pool, userID, "100", "2026-12-20", "posted", &reimbursementID)
+		seedExpense(t, ctx, pool, userID, "500", "2026-11-05", "posted")
+		seedExpense(t, ctx, pool, userID, "700", "2026-11-25", "posted")
+
+		budget, err := svc.PeriodBudget(ctx, userID, "month", "2026-12-01")
+		require.NoError(t, err)
+		assert.Equal(t, "2026-12-01", budget.StartDate)
+		assert.Equal(t, "2026-12-31", budget.EndDate)
+		assert.True(t, decimal.NewFromInt(3100).Equal(budget.Funded), budget.Funded.String())
+		assert.True(t, decimal.Zero.Equal(budget.Spent), budget.Spent.String())
+		assert.True(t, decimal.NewFromInt(310).Equal(budget.BillsStillDue), budget.BillsStillDue.String())
+		assert.True(t, decimal.NewFromInt(2790).Equal(budget.Left), budget.Left.String())
+		require.NotNil(t, budget.SafeToSpendPerDay)
+		assert.True(t, decimal.NewFromInt(90).Equal(*budget.SafeToSpendPerDay), budget.SafeToSpendPerDay.String())
+		assert.Equal(t, "2026-11-01", budget.PreviousPeriodStart)
+		assert.Equal(t, "2026-11-30", budget.PreviousPeriodEnd)
+		assert.True(t, decimal.Zero.Equal(budget.PreviousSpentToPoint), budget.PreviousSpentToPoint.String())
+		assert.True(t, decimal.NewFromInt(1200).Equal(budget.PreviousSpentTotal), budget.PreviousSpentTotal.String())
+	})
+
+	t.Run("projects the rules' remaining occurrences in the period", func(t *testing.T) {
+		// 20:00 on 15 February in Manila; the month runs to the 28th.
+		svc.now = func() time.Time { return time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC) }
+		userID := uuid.New()
+		salary, found := category.ByName(category.Incomes, "salary")
+		require.True(t, found)
+		salaryID := salary.ID.String()
+
+		seedRule(t, ctx, pool, userID, "income", "daily", "2026-02-01", "10", true, nil, &salaryID)
+		weeklyExpense := seedRule(t, ctx, pool, userID, "expense", "weekly", "2026-01-26", "100", true, nil, nil)
+		seedRule(t, ctx, pool, userID, "income", "monthly", "2026-01-31", "700", true, nil, &salaryID)
+		seedRule(t, ctx, pool, userID, "expense", "yearly", "2024-02-29", "1200", true, nil, nil)
+		// Paused, ended and not-yet-started rules project nothing.
+		seedRule(t, ctx, pool, userID, "income", "daily", "2026-02-01", "999", false, nil, &salaryID)
+		ended := "2026-02-10"
+		seedRule(t, ctx, pool, userID, "expense", "daily", "2026-02-01", "50", true, &ended, nil)
+		seedRule(t, ctx, pool, userID, "expense", "daily", "2026-03-01", "999", true, nil, nil)
+		// A projected reimbursement is not funding.
+		reimbursementRuleCategory := category.Reimbursement.String()
+		seedRule(t, ctx, pool, userID, "income", "daily", "2026-02-01", "500", true, nil, &reimbursementRuleCategory)
+
+		// The weekly expense's 16 February entry is already written; the
+		// projection must not count that date again.
+		seedRuleExpense(t, ctx, pool, userID, "100", "2026-02-16", weeklyExpense)
+		seedExpense(t, ctx, pool, userID, "50", "2026-02-20", "posted")
+
+		seedIncome(t, ctx, pool, userID, "2000", "2026-02-10", "posted")
+		seedExpense(t, ctx, pool, userID, "300", "2026-02-10", "posted")
+		seedIncomeInCategory(t, ctx, pool, userID, "100", "2026-02-12", "posted", &reimbursementID)
+		seedExpense(t, ctx, pool, userID, "999", "2026-02-12", "skipped")
+
+		seedExpense(t, ctx, pool, userID, "100", "2026-01-05", "posted")
+		seedIncomeInCategory(t, ctx, pool, userID, "50", "2026-01-10", "posted", &reimbursementID)
+		seedExpense(t, ctx, pool, userID, "200", "2026-01-15", "posted")
+		seedExpense(t, ctx, pool, userID, "300", "2026-01-20", "posted")
+
+		budget, err := svc.PeriodBudget(ctx, userID, "month", "2026-02-15")
+		require.NoError(t, err)
+		assert.Equal(t, "2026-02-01", budget.StartDate)
+		assert.Equal(t, "2026-02-28", budget.EndDate)
+		assert.True(t, decimal.NewFromInt(830).Equal(budget.ProjectedIncome), budget.ProjectedIncome.String())
+		assert.True(t, decimal.NewFromInt(2830).Equal(budget.Funded), budget.Funded.String())
+		assert.True(t, decimal.NewFromInt(200).Equal(budget.Spent), budget.Spent.String())
+		assert.True(t, decimal.NewFromInt(1450).Equal(budget.BillsStillDue), budget.BillsStillDue.String())
+		assert.True(t, decimal.NewFromInt(1180).Equal(budget.Left), budget.Left.String())
+		require.NotNil(t, budget.SafeToSpendPerDay)
+		assert.True(t, decimal.RequireFromString("84.29").Equal(*budget.SafeToSpendPerDay), budget.SafeToSpendPerDay.String())
+		assert.True(t, decimal.NewFromInt(250).Equal(budget.PreviousSpentToPoint), budget.PreviousSpentToPoint.String())
+		assert.True(t, decimal.NewFromInt(550).Equal(budget.PreviousSpentTotal), budget.PreviousSpentTotal.String())
+	})
+
+	t.Run("bounds cross month and year edges and default to today", func(t *testing.T) {
+		svc.now = func() time.Time { return time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC) }
+		userID := uuid.New()
+
+		today, err := svc.PeriodBudget(ctx, userID, "day", "")
+		require.NoError(t, err)
+		assert.Equal(t, "2026-11-18", today.StartDate)
+		assert.Equal(t, "2026-11-18", today.EndDate)
+
+		week, err := svc.PeriodBudget(ctx, userID, "week", "2026-12-31")
+		require.NoError(t, err)
+		assert.Equal(t, "2026-12-28", week.StartDate)
+		assert.Equal(t, "2027-01-03", week.EndDate)
+		assert.Equal(t, "2026-12-21", week.PreviousPeriodStart)
+		assert.Equal(t, "2026-12-27", week.PreviousPeriodEnd)
+
+		february, err := svc.PeriodBudget(ctx, userID, "month", "2026-02-10")
+		require.NoError(t, err)
+		assert.Equal(t, "2026-02-01", february.StartDate)
+		assert.Equal(t, "2026-02-28", february.EndDate)
+		assert.Equal(t, "2026-01-01", february.PreviousPeriodStart)
+		assert.Equal(t, "2026-01-31", february.PreviousPeriodEnd)
+
+		leap, err := svc.PeriodBudget(ctx, userID, "month", "2028-02-10")
+		require.NoError(t, err)
+		assert.Equal(t, "2028-02-29", leap.EndDate)
+	})
+
+	t.Run("previous to-point stays inside a shorter month", func(t *testing.T) {
+		svc.now = func() time.Time { return time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC) }
+		userID := uuid.New()
+		seedExpense(t, ctx, pool, userID, "100", "2026-02-28", "posted")
+		seedExpense(t, ctx, pool, userID, "900", "2026-03-01", "posted")
+
+		budget, err := svc.PeriodBudget(ctx, userID, "month", "2026-03-05")
+		require.NoError(t, err)
+		assert.Equal(t, "2026-02-01", budget.PreviousPeriodStart)
+		assert.Equal(t, "2026-02-28", budget.PreviousPeriodEnd)
+		assert.True(t, decimal.NewFromInt(100).Equal(budget.PreviousSpentToPoint), budget.PreviousSpentToPoint.String())
+		assert.True(t, decimal.NewFromInt(100).Equal(budget.PreviousSpentTotal), budget.PreviousSpentTotal.String())
+	})
+}
+
+func seedRule(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, kind, cadence, start, amount string, active bool, end, categoryID *string) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	var endValue, categoryValue any
+	if end != nil {
+		endValue = *end
+	}
+	if categoryID != nil {
+		categoryValue = *categoryID
+	}
+	_, err := pool.Exec(ctx, `INSERT INTO rules
+		(id, kind, user_id, description, amount, currency, category_id, recurring_type, start_date, end_date, priority, is_active)
+		VALUES ($1, $2, $3, 'test rule', $4::numeric, 'PHP', $5::uuid, $6, $7::date, $8::date, 'want', $9)`,
+		id, kind, userID, amount, categoryValue, cadence, start, endValue, active)
+	require.NoError(t, err)
+	return id
+}
+
+func seedRuleExpense(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, amount, date string, ruleID uuid.UUID) {
+	t.Helper()
+	_, err := pool.Exec(ctx, `INSERT INTO expenses
+		(user_id, amount, currency, exchange_rate, amount_php, rate_date, description, expense_date, priority, status, source_rule_id)
+		VALUES ($1::uuid, $2::numeric, 'PHP', 1, $2::numeric, $3::date, 'rule entry', $3::date, 'want', 'posted', $4::uuid)`,
+		userID.String(), amount, date, ruleID)
+	require.NoError(t, err)
+}
+
 // Reports total the fixed PHP amount, not the original amount (#3,
 // ADR-0003).
 func TestStatsService_MultiCurrencyUsesPHPAmount_Integration(t *testing.T) {

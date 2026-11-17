@@ -121,6 +121,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 		r.Get("/velocity", s.StatsHandler.SpendingVelocity)
 		r.Get("/forecast/upcoming", s.StatsHandler.UpcomingBills)
 		r.Get("/current-total-money", s.StatsHandler.CurrentTotalMoney)
+		r.Get("/period-budget", s.StatsHandler.PeriodBudget)
 
 		// trends
 		r.Get("/trends/month-over-month", s.StatsHandler.MonthOverMonthTrends)

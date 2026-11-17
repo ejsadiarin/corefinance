@@ -280,6 +280,99 @@ func (q *Queries) GetMonthOverMonthTrends(ctx context.Context, arg GetMonthOverM
 	return items, nil
 }
 
+const getPeriodBudgetTotals = `-- name: GetPeriodBudgetTotals :one
+SELECT
+    (SELECT COALESCE(SUM(i.amount_php), 0)::numeric FROM incomes i
+     WHERE i.user_id = $1
+       AND i.status != 'skipped'
+       AND i.category_id IS DISTINCT FROM $2::uuid
+       AND i.date BETWEEN $3::date AND $4::date) AS posted_income,
+    (SELECT COALESCE(SUM(e.amount_php), 0)::numeric FROM expenses e
+     WHERE e.user_id = $1
+       AND e.status != 'skipped'
+       AND e.expense_date BETWEEN $3::date AND LEAST($4::date, $5::date)) AS spent_expenses,
+    (SELECT COALESCE(SUM(i.amount_php), 0)::numeric FROM incomes i
+     WHERE i.user_id = $1
+       AND i.status != 'skipped'
+       AND i.category_id = $2::uuid
+       AND i.date BETWEEN $3::date AND LEAST($4::date, $5::date)) AS spent_reimbursements,
+    (SELECT COALESCE(SUM(e.amount_php), 0)::numeric FROM expenses e
+     WHERE e.user_id = $1
+       AND e.status != 'skipped'
+       AND e.expense_date BETWEEN GREATEST($3::date, $6::date) AND $4::date) AS future_expenses,
+    (SELECT COALESCE(SUM(e.amount_php), 0)::numeric FROM expenses e
+     WHERE e.user_id = $1
+       AND e.status != 'skipped'
+       AND e.expense_date BETWEEN $7::date AND $8::date) AS previous_spent_expenses,
+    (SELECT COALESCE(SUM(i.amount_php), 0)::numeric FROM incomes i
+     WHERE i.user_id = $1
+       AND i.status != 'skipped'
+       AND i.category_id = $2::uuid
+       AND i.date BETWEEN $7::date AND $8::date) AS previous_spent_reimbursements,
+    (SELECT COALESCE(SUM(e.amount_php), 0)::numeric FROM expenses e
+     WHERE e.user_id = $1
+       AND e.status != 'skipped'
+       AND e.expense_date BETWEEN $7::date AND $9::date) AS previous_total_expenses,
+    (SELECT COALESCE(SUM(i.amount_php), 0)::numeric FROM incomes i
+     WHERE i.user_id = $1
+       AND i.status != 'skipped'
+       AND i.category_id = $2::uuid
+       AND i.date BETWEEN $7::date AND $9::date) AS previous_total_reimbursements
+`
+
+type GetPeriodBudgetTotalsParams struct {
+	UserID             uuid.UUID   `db:"user_id" json:"user_id"`
+	ReimbursementID    uuid.UUID   `db:"reimbursement_id" json:"reimbursement_id"`
+	PeriodStart        pgtype.Date `db:"period_start" json:"period_start"`
+	PeriodEnd          pgtype.Date `db:"period_end" json:"period_end"`
+	Today              pgtype.Date `db:"today" json:"today"`
+	Tomorrow           pgtype.Date `db:"tomorrow" json:"tomorrow"`
+	PreviousStart      pgtype.Date `db:"previous_start" json:"previous_start"`
+	PreviousToPointEnd pgtype.Date `db:"previous_to_point_end" json:"previous_to_point_end"`
+	PreviousEnd        pgtype.Date `db:"previous_end" json:"previous_end"`
+}
+
+type GetPeriodBudgetTotalsRow struct {
+	PostedIncome                decimal.Decimal `db:"posted_income" json:"posted_income"`
+	SpentExpenses               decimal.Decimal `db:"spent_expenses" json:"spent_expenses"`
+	SpentReimbursements         decimal.Decimal `db:"spent_reimbursements" json:"spent_reimbursements"`
+	FutureExpenses              decimal.Decimal `db:"future_expenses" json:"future_expenses"`
+	PreviousSpentExpenses       decimal.Decimal `db:"previous_spent_expenses" json:"previous_spent_expenses"`
+	PreviousSpentReimbursements decimal.Decimal `db:"previous_spent_reimbursements" json:"previous_spent_reimbursements"`
+	PreviousTotalExpenses       decimal.Decimal `db:"previous_total_expenses" json:"previous_total_expenses"`
+	PreviousTotalReimbursements decimal.Decimal `db:"previous_total_reimbursements" json:"previous_total_reimbursements"`
+}
+
+// The period's posted income, what is spent through today, expenses still
+// ahead in the period, and the previous period's spent at the same point and
+// in full. Reimbursements are returned separately so the service can net
+// them out of spent.
+func (q *Queries) GetPeriodBudgetTotals(ctx context.Context, arg GetPeriodBudgetTotalsParams) (GetPeriodBudgetTotalsRow, error) {
+	row := q.db.QueryRow(ctx, getPeriodBudgetTotals,
+		arg.UserID,
+		arg.ReimbursementID,
+		arg.PeriodStart,
+		arg.PeriodEnd,
+		arg.Today,
+		arg.Tomorrow,
+		arg.PreviousStart,
+		arg.PreviousToPointEnd,
+		arg.PreviousEnd,
+	)
+	var i GetPeriodBudgetTotalsRow
+	err := row.Scan(
+		&i.PostedIncome,
+		&i.SpentExpenses,
+		&i.SpentReimbursements,
+		&i.FutureExpenses,
+		&i.PreviousSpentExpenses,
+		&i.PreviousSpentReimbursements,
+		&i.PreviousTotalExpenses,
+		&i.PreviousTotalReimbursements,
+	)
+	return i, err
+}
+
 const getSavingsRate = `-- name: GetSavingsRate :one
 WITH totals AS (
     SELECT
@@ -586,6 +679,54 @@ func (q *Queries) GetUpcomingRecurringExpenses(ctx context.Context, userID uuid.
 			&i.CategoryName,
 			&i.CategoryColor,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRuleEntryDates = `-- name: ListRuleEntryDates :many
+SELECT e.source_rule_id::uuid AS source_rule_id, e.expense_date AS entry_date
+FROM expenses e
+WHERE e.user_id = $1
+  AND e.source_rule_id IS NOT NULL
+  AND e.expense_date BETWEEN $2::date AND $3::date
+UNION ALL
+SELECT i.source_rule_id::uuid AS source_rule_id, i.date AS entry_date
+FROM incomes i
+WHERE i.user_id = $1
+  AND i.source_rule_id IS NOT NULL
+  AND i.date BETWEEN $2::date AND $3::date
+`
+
+type ListRuleEntryDatesParams struct {
+	UserID    uuid.UUID   `db:"user_id" json:"user_id"`
+	StartDate pgtype.Date `db:"start_date" json:"start_date"`
+	EndDate   pgtype.Date `db:"end_date" json:"end_date"`
+}
+
+type ListRuleEntryDatesRow struct {
+	SourceRuleID uuid.UUID   `db:"source_rule_id" json:"source_rule_id"`
+	EntryDate    pgtype.Date `db:"entry_date" json:"entry_date"`
+}
+
+// Rule entries already written in a date range, skipped ones included: a
+// skipped entry is still the owner's decision, and the materialize pass does
+// not write it again. The projection skips these dates.
+func (q *Queries) ListRuleEntryDates(ctx context.Context, arg ListRuleEntryDatesParams) ([]ListRuleEntryDatesRow, error) {
+	rows, err := q.db.Query(ctx, listRuleEntryDates, arg.UserID, arg.StartDate, arg.EndDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRuleEntryDatesRow{}
+	for rows.Next() {
+		var i ListRuleEntryDatesRow
+		if err := rows.Scan(&i.SourceRuleID, &i.EntryDate); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

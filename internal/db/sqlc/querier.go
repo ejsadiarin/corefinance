@@ -55,6 +55,11 @@ type Querier interface {
 	GetMonthOverMonthTrends(ctx context.Context, arg GetMonthOverMonthTrendsParams) ([]GetMonthOverMonthTrendsRow, error)
 	// The earliest next occurrence still to come, if any (NULL when none).
 	GetNextWake(ctx context.Context, now pgtype.Timestamptz) (pgtype.Timestamptz, error)
+	// The period's posted income, what is spent through today, expenses still
+	// ahead in the period, and the previous period's spent at the same point and
+	// in full. Reimbursements are returned separately so the service can net
+	// them out of spent.
+	GetPeriodBudgetTotals(ctx context.Context, arg GetPeriodBudgetTotalsParams) (GetPeriodBudgetTotalsRow, error)
 	GetRecurringExpenseRule(ctx context.Context, arg GetRecurringExpenseRuleParams) (GetRecurringExpenseRuleRow, error)
 	GetRecurringIncomeRule(ctx context.Context, arg GetRecurringIncomeRuleParams) (Rule, error)
 	GetSavingsRate(ctx context.Context, arg GetSavingsRateParams) (GetSavingsRateRow, error)
@@ -103,6 +108,10 @@ type Querier interface {
 	// Reconciling a rule's entries after a schedule change (#15, ADR-0001): the
 	// rule's entries that aren't skipped, with whether the user edited them.
 	ListRuleEntriesToReconcile(ctx context.Context, arg ListRuleEntriesToReconcileParams) ([]ListRuleEntriesToReconcileRow, error)
+	// Rule entries already written in a date range, skipped ones included: a
+	// skipped entry is still the owner's decision, and the materialize pass does
+	// not write it again. The projection skips these dates.
+	ListRuleEntryDates(ctx context.Context, arg ListRuleEntryDatesParams) ([]ListRuleEntryDatesRow, error)
 	ListTags(ctx context.Context, userID uuid.UUID) ([]Tag, error)
 	ListUserActiveRules(ctx context.Context, userID uuid.UUID) ([]Rule, error)
 	// Next-due scheduling (#16): users with an active rule whose next occurrence
