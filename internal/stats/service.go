@@ -269,15 +269,7 @@ func (s *Service) PeriodBudget(ctx context.Context, userID uuid.UUID, kind, anch
 		return PeriodBudget{}, err
 	}
 
-	// The projection covers this period only: for a future period that
-	// starts after today, occurrences in the gap before it are not part of
-	// its budget. Today is included because a rule due today that the worker
-	// has not written yet is still coming.
-	projectFrom := today
-	if period.start.After(projectFrom) {
-		projectFrom = period.start
-	}
-	projectedIncome, projectedExpenses, err := s.projectRuleOccurrences(ctx, userID, projectFrom, period.end)
+	projectedIncome, projectedExpenses, err := s.projectRuleOccurrences(ctx, userID, period, today)
 	if err != nil {
 		return PeriodBudget{}, err
 	}
@@ -323,14 +315,18 @@ type ruleEntryKey struct {
 }
 
 // projectRuleOccurrences sums the PHP amounts of active rules' due dates in
-// [from, through], the dates the materialize pass will still write. Dates
-// with an entry already are skipped, and a rule's projected reimbursement
-// income is not funding.
-func (s *Service) projectRuleOccurrences(ctx context.Context, userID uuid.UUID, from, through time.Time) (income, expense decimal.Decimal, err error) {
+// the period that the materialize pass has not written yet. The rule's
+// watermark says where its last pass stopped, so dates after it are still
+// owed even when they are in the past (a worker that was down catches them
+// up); dates still in the future are written when they fall due. Dates with
+// an entry already are skipped, and a rule's projected reimbursement income
+// is not funding.
+//
+// Owed income counts wherever it falls in the period. Owed expenses dated
+// before today are not bills still due, so only today onward is projected as
+// expense.
+func (s *Service) projectRuleOccurrences(ctx context.Context, userID uuid.UUID, window dateRange, today time.Time) (income, expense decimal.Decimal, err error) {
 	income, expense = decimal.Zero, decimal.Zero
-	if through.Before(from) {
-		return income, expense, nil
-	}
 	rules, err := s.queries.ListUserActiveRules(ctx, userID)
 	if err != nil {
 		return income, expense, fmt.Errorf("list active rules: %w", err)
@@ -340,8 +336,8 @@ func (s *Service) projectRuleOccurrences(ctx context.Context, userID uuid.UUID, 
 	}
 	writtenRows, err := s.queries.ListRuleEntryDates(ctx, db.ListRuleEntryDatesParams{
 		UserID:    userID,
-		StartDate: pgDate(from),
-		EndDate:   pgDate(through),
+		StartDate: pgDate(window.start),
+		EndDate:   pgDate(window.end),
 	})
 	if err != nil {
 		return income, expense, fmt.Errorf("list rule entry dates: %w", err)
@@ -352,11 +348,21 @@ func (s *Service) projectRuleOccurrences(ctx context.Context, userID uuid.UUID, 
 	}
 
 	for _, rule := range rules {
+		from := window.start
+		if rule.MaterializedThrough.Valid {
+			afterWatermark := dateOnly(rule.MaterializedThrough.Time).AddDate(0, 0, 1)
+			if afterWatermark.After(from) {
+				from = afterWatermark
+			}
+		}
+		if from.After(window.end) {
+			continue
+		}
 		var end *time.Time
 		if rule.EndDate.Valid {
 			end = &rule.EndDate.Time
 		}
-		for _, due := range materialize.OccurrencesBetween(rule.StartDate.Time, rule.RecurringType, end, from.AddDate(0, 0, -1), through) {
+		for _, due := range materialize.OccurrencesBetween(rule.StartDate.Time, rule.RecurringType, end, from.AddDate(0, 0, -1), window.end) {
 			if _, exists := written[ruleEntryKey{ruleID: rule.ID, date: formatDate(due)}]; exists {
 				continue
 			}
@@ -374,6 +380,9 @@ func (s *Service) projectRuleOccurrences(ctx context.Context, userID uuid.UUID, 
 				}
 				income = income.Add(conv.AmountPHP)
 			case "expense":
+				if due.Before(today) {
+					continue
+				}
 				expense = expense.Add(conv.AmountPHP)
 			}
 		}

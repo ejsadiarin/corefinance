@@ -316,15 +316,15 @@ func TestStatsService_PeriodBudget_Integration(t *testing.T) {
 		salaryID := salary.ID.String()
 		seedIncome(t, ctx, pool, userID, "1000", "2026-11-18", "posted")
 		seedIncomeInCategory(t, ctx, pool, userID, "200", "2026-11-18", "posted", &reimbursementID)
-		// Pending income is not funding, and a pending reimbursement has not
-		// reduced spending yet.
+		// Pending income is not funding, but a reimbursement still nets out
+		// of spent while pending.
 		seedIncome(t, ctx, pool, userID, "700", "2026-11-18", "pending")
-		seedIncomeInCategory(t, ctx, pool, userID, "400", "2026-11-18", "pending", &reimbursementID)
+		seedIncomeInCategory(t, ctx, pool, userID, "50", "2026-11-18", "pending", &reimbursementID)
 		seedExpense(t, ctx, pool, userID, "300", "2026-11-18", "posted")
 		seedExpense(t, ctx, pool, userID, "999", "2026-11-18", "skipped")
 		seedExpense(t, ctx, pool, userID, "500", "2026-11-19", "posted")
 		// Due today and not written yet: the worker will still write it.
-		seedRule(t, ctx, pool, userID, "income", "daily", "2026-11-18", "100", true, nil, &salaryID)
+		seedRule(t, ctx, pool, userID, "income", "daily", "2026-11-18", "100", true, nil, &salaryID, ptrDate("2026-11-17"))
 
 		budget, err := svc.PeriodBudget(ctx, userID, "day", "2026-11-18")
 		require.NoError(t, err)
@@ -333,11 +333,11 @@ func TestStatsService_PeriodBudget_Integration(t *testing.T) {
 		assert.Equal(t, "2026-11-18", budget.EndDate)
 		assert.True(t, decimal.NewFromInt(100).Equal(budget.ProjectedIncome), budget.ProjectedIncome.String())
 		assert.True(t, decimal.NewFromInt(1100).Equal(budget.Funded), budget.Funded.String())
-		assert.True(t, decimal.NewFromInt(100).Equal(budget.Spent), budget.Spent.String())
+		assert.True(t, decimal.NewFromInt(50).Equal(budget.Spent), budget.Spent.String())
 		assert.True(t, decimal.Zero.Equal(budget.BillsStillDue), budget.BillsStillDue.String())
-		assert.True(t, decimal.NewFromInt(1000).Equal(budget.Left), budget.Left.String())
+		assert.True(t, decimal.NewFromInt(1050).Equal(budget.Left), budget.Left.String())
 		require.NotNil(t, budget.SafeToSpendPerDay)
-		assert.True(t, decimal.NewFromInt(1000).Equal(*budget.SafeToSpendPerDay), budget.SafeToSpendPerDay.String())
+		assert.True(t, decimal.NewFromInt(1050).Equal(*budget.SafeToSpendPerDay), budget.SafeToSpendPerDay.String())
 		assert.Equal(t, "2026-11-17", budget.PreviousPeriodStart)
 		assert.Equal(t, "2026-11-17", budget.PreviousPeriodEnd)
 		assert.True(t, decimal.Zero.Equal(budget.PreviousSpentToPoint), budget.PreviousSpentToPoint.String())
@@ -409,8 +409,8 @@ func TestStatsService_PeriodBudget_Integration(t *testing.T) {
 		seedExpense(t, ctx, pool, userID, "700", "2026-11-25", "posted")
 		// Rules project only inside December, not the November gap between
 		// today and the period: 31 days each, not 43.
-		seedRule(t, ctx, pool, userID, "income", "daily", "2026-11-20", "10", true, nil, &salaryID)
-		seedRule(t, ctx, pool, userID, "expense", "daily", "2026-11-20", "5", true, nil, nil)
+		seedRule(t, ctx, pool, userID, "income", "daily", "2026-11-20", "10", true, nil, &salaryID, nil)
+		seedRule(t, ctx, pool, userID, "expense", "daily", "2026-11-20", "5", true, nil, nil, nil)
 
 		budget, err := svc.PeriodBudget(ctx, userID, "month", "2026-12-01")
 		require.NoError(t, err)
@@ -437,19 +437,19 @@ func TestStatsService_PeriodBudget_Integration(t *testing.T) {
 		require.True(t, found)
 		salaryID := salary.ID.String()
 
-		dailyIncome := seedRule(t, ctx, pool, userID, "income", "daily", "2026-02-01", "10", true, nil, &salaryID)
-		weeklyExpense := seedRule(t, ctx, pool, userID, "expense", "weekly", "2026-01-26", "100", true, nil, nil)
-		dailyExpense := seedRule(t, ctx, pool, userID, "expense", "daily", "2026-02-01", "7", true, nil, nil)
-		seedRule(t, ctx, pool, userID, "income", "monthly", "2026-01-31", "700", true, nil, &salaryID)
-		seedRule(t, ctx, pool, userID, "expense", "yearly", "2024-02-29", "1200", true, nil, nil)
+		dailyIncome := seedRule(t, ctx, pool, userID, "income", "daily", "2026-02-01", "10", true, nil, &salaryID, ptrDate("2026-02-14"))
+		weeklyExpense := seedRule(t, ctx, pool, userID, "expense", "weekly", "2026-01-26", "100", true, nil, nil, ptrDate("2026-02-14"))
+		dailyExpense := seedRule(t, ctx, pool, userID, "expense", "daily", "2026-02-01", "7", true, nil, nil, ptrDate("2026-02-14"))
+		seedRule(t, ctx, pool, userID, "income", "monthly", "2026-01-31", "700", true, nil, &salaryID, ptrDate("2026-02-14"))
+		seedRule(t, ctx, pool, userID, "expense", "yearly", "2024-02-29", "1200", true, nil, nil, ptrDate("2026-02-14"))
 		// Paused, ended and not-yet-started rules project nothing.
-		seedRule(t, ctx, pool, userID, "income", "daily", "2026-02-01", "999", false, nil, &salaryID)
+		seedRule(t, ctx, pool, userID, "income", "daily", "2026-02-01", "999", false, nil, &salaryID, ptrDate("2026-02-14"))
 		ended := "2026-02-10"
-		seedRule(t, ctx, pool, userID, "expense", "daily", "2026-02-01", "50", true, &ended, nil)
-		seedRule(t, ctx, pool, userID, "expense", "daily", "2026-03-01", "999", true, nil, nil)
+		seedRule(t, ctx, pool, userID, "expense", "daily", "2026-02-01", "50", true, &ended, nil, ptrDate("2026-02-14"))
+		seedRule(t, ctx, pool, userID, "expense", "daily", "2026-03-01", "999", true, nil, nil, ptrDate("2026-02-14"))
 		// A projected reimbursement is not funding.
 		reimbursementRuleCategory := category.Reimbursement.String()
-		seedRule(t, ctx, pool, userID, "income", "daily", "2026-02-01", "500", true, nil, &reimbursementRuleCategory)
+		seedRule(t, ctx, pool, userID, "income", "daily", "2026-02-01", "500", true, nil, &reimbursementRuleCategory, ptrDate("2026-02-14"))
 
 		// The weekly expense's 16 February entry is already written; the
 		// projection must not count that date again. The daily income's
@@ -514,6 +514,27 @@ func TestStatsService_PeriodBudget_Integration(t *testing.T) {
 		assert.Equal(t, "2028-02-29", leap.EndDate)
 	})
 
+	t.Run("a behind worker still owes a past period its rule entries", func(t *testing.T) {
+		svc.now = func() time.Time { return time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC) }
+		userID := uuid.New()
+		salary, found := category.ByName(category.Incomes, "salary")
+		require.True(t, found)
+		salaryID := salary.ID.String()
+		// Filled through 10 March, so 11-31 March (21 days) are still owed.
+		seedRule(t, ctx, pool, userID, "income", "daily", "2026-03-01", "10", true, nil, &salaryID, ptrDate("2026-03-10"))
+		// This one is caught up and adds nothing.
+		seedRule(t, ctx, pool, userID, "income", "daily", "2026-03-01", "100", true, nil, &salaryID, ptrDate("2026-03-31"))
+		// Owed past expenses are not bills still due.
+		seedRule(t, ctx, pool, userID, "expense", "daily", "2026-03-01", "5", true, nil, nil, ptrDate("2026-03-10"))
+
+		budget, err := svc.PeriodBudget(ctx, userID, "month", "2026-03-05")
+		require.NoError(t, err)
+		assert.True(t, decimal.NewFromInt(210).Equal(budget.ProjectedIncome), budget.ProjectedIncome.String())
+		assert.True(t, decimal.NewFromInt(210).Equal(budget.Funded), budget.Funded.String())
+		assert.True(t, decimal.Zero.Equal(budget.BillsStillDue), budget.BillsStillDue.String())
+		assert.Nil(t, budget.SafeToSpendPerDay)
+	})
+
 	t.Run("period bounds follow the owner's zone", func(t *testing.T) {
 		// 07:30 on 18 November in Manila, still 17 November in UTC.
 		svc.now = func() time.Time { return time.Date(2026, 11, 17, 23, 30, 0, 0, time.UTC) }
@@ -551,20 +572,25 @@ func TestStatsService_PeriodBudget_Integration(t *testing.T) {
 	})
 }
 
-func seedRule(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, kind, cadence, start, amount string, active bool, end, categoryID *string) uuid.UUID {
+func ptrDate(s string) *string { return &s }
+
+func seedRule(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, kind, cadence, start, amount string, active bool, end, categoryID, materializedThrough *string) uuid.UUID {
 	t.Helper()
 	id := uuid.New()
-	var endValue, categoryValue any
+	var endValue, categoryValue, throughValue any
 	if end != nil {
 		endValue = *end
 	}
 	if categoryID != nil {
 		categoryValue = *categoryID
 	}
+	if materializedThrough != nil {
+		throughValue = *materializedThrough
+	}
 	_, err := pool.Exec(ctx, `INSERT INTO rules
-		(id, kind, user_id, description, amount, currency, category_id, recurring_type, start_date, end_date, priority, is_active)
-		VALUES ($1, $2, $3, 'test rule', $4::numeric, 'PHP', $5::uuid, $6, $7::date, $8::date, 'want', $9)`,
-		id, kind, userID, amount, categoryValue, cadence, start, endValue, active)
+		(id, kind, user_id, description, amount, currency, category_id, recurring_type, start_date, end_date, priority, is_active, materialized_through)
+		VALUES ($1, $2, $3, 'test rule', $4::numeric, 'PHP', $5::uuid, $6, $7::date, $8::date, 'want', $9, $10::date)`,
+		id, kind, userID, amount, categoryValue, cadence, start, endValue, active, throughValue)
 	require.NoError(t, err)
 	return id
 }

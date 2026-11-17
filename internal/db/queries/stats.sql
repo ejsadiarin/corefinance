@@ -229,7 +229,7 @@ SELECT
        AND e.expense_date BETWEEN @period_start::date AND LEAST(@period_end::date, @today::date)) AS spent_expenses,
     (SELECT COALESCE(SUM(i.amount_php), 0)::numeric FROM incomes i
      WHERE i.user_id = @user_id
-       AND i.status = 'posted'
+       AND i.status != 'skipped'
        AND i.category_id = @reimbursement_id::uuid
        AND i.date BETWEEN @period_start::date AND LEAST(@period_end::date, @today::date)) AS spent_reimbursements,
     (SELECT COALESCE(SUM(e.amount_php), 0)::numeric FROM expenses e
@@ -242,7 +242,7 @@ SELECT
        AND e.expense_date BETWEEN @previous_start::date AND @previous_to_point_end::date) AS previous_spent_expenses,
     (SELECT COALESCE(SUM(i.amount_php), 0)::numeric FROM incomes i
      WHERE i.user_id = @user_id
-       AND i.status = 'posted'
+       AND i.status != 'skipped'
        AND i.category_id = @reimbursement_id::uuid
        AND i.date BETWEEN @previous_start::date AND @previous_to_point_end::date) AS previous_spent_reimbursements,
     (SELECT COALESCE(SUM(e.amount_php), 0)::numeric FROM expenses e
@@ -251,7 +251,7 @@ SELECT
        AND e.expense_date BETWEEN @previous_start::date AND @previous_end::date) AS previous_total_expenses,
     (SELECT COALESCE(SUM(i.amount_php), 0)::numeric FROM incomes i
      WHERE i.user_id = @user_id
-       AND i.status = 'posted'
+       AND i.status != 'skipped'
        AND i.category_id = @reimbursement_id::uuid
        AND i.date BETWEEN @previous_start::date AND @previous_end::date) AS previous_total_reimbursements;
 
