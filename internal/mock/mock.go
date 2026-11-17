@@ -373,7 +373,7 @@ func (m *MockQuerier) GetFeedHorizon(ctx context.Context) (uint64, error) {
 	return m.GetFeedHorizonFn(ctx)
 }
 
-// ListRuleEntriesFeed defaults to no entries.
+// ListRuleEntryDates defaults to no entries.
 func (m *MockQuerier) ListRuleEntryDates(ctx context.Context, arg db.ListRuleEntryDatesParams) ([]db.ListRuleEntryDatesRow, error) {
 	if m.ListRuleEntryDatesFn == nil {
 		return nil, nil
@@ -381,6 +381,7 @@ func (m *MockQuerier) ListRuleEntryDates(ctx context.Context, arg db.ListRuleEnt
 	return m.ListRuleEntryDatesFn(ctx, arg)
 }
 
+// ListRuleEntriesFeed defaults to no entries.
 func (m *MockQuerier) ListRuleEntriesFeed(ctx context.Context, arg db.ListRuleEntriesFeedParams) ([]db.ListRuleEntriesFeedRow, error) {
 	if m.ListRuleEntriesFeedFn == nil {
 		return nil, nil

@@ -92,34 +92,7 @@ func DueDates(start time.Time, cadence string, end *time.Time, today time.Time) 
 	if start.After(bound) {
 		return nil
 	}
-	var out []time.Time
-	switch cadence {
-	case "daily":
-		for d := start; !d.After(bound); d = d.AddDate(0, 0, 1) {
-			out = append(out, d)
-		}
-	case "weekly":
-		for d := start; !d.After(bound); d = d.AddDate(0, 0, 7) {
-			out = append(out, d)
-		}
-	case "monthly":
-		for i := 0; i < 1200; i++ {
-			d := addMonthsClamped(start, i)
-			if d.After(bound) {
-				break
-			}
-			out = append(out, d)
-		}
-	case "yearly":
-		for i := 0; i < 200; i++ {
-			d := addYearsClamped(start, i)
-			if d.After(bound) {
-				break
-			}
-			out = append(out, d)
-		}
-	}
-	return out
+	return OccurrencesBetween(start, cadence, end, start.AddDate(0, 0, -1), bound)
 }
 
 // NextDueDate is the rule's first occurrence after `after`, if it has one
@@ -127,6 +100,11 @@ func DueDates(start time.Time, cadence string, end *time.Time, today time.Time) 
 // listing every date since the start, since it runs for every rule a pass
 // touches.
 func NextDueDate(start time.Time, cadence string, end *time.Time, after time.Time) (time.Time, bool) {
+	switch cadence {
+	case "daily", "weekly", "monthly", "yearly":
+	default:
+		return time.Time{}, false
+	}
 	start, after = truncateDate(start), truncateDate(after)
 	var d time.Time
 	switch {

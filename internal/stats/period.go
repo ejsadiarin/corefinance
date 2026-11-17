@@ -12,40 +12,37 @@ type dateRange struct {
 	start, end time.Time
 }
 
-// periodRange is the day, week (Monday to Sunday) or month containing anchor.
-func periodRange(kind string, anchor time.Time) (dateRange, error) {
+// periodRanges is the day, week (Monday to Sunday) or month containing
+// anchor and the period immediately before it.
+func periodRanges(kind string, anchor time.Time) (current, previous dateRange, err error) {
 	anchor = dateOnly(anchor)
 	switch kind {
 	case "day":
-		return dateRange{start: anchor, end: anchor}, nil
+		previousDay := anchor.AddDate(0, 0, -1)
+		return dateRange{start: anchor, end: anchor},
+			dateRange{start: previousDay, end: previousDay}, nil
 	case "week":
 		offset := (int(anchor.Weekday()) + 6) % 7 // Monday is 0
 		start := anchor.AddDate(0, 0, -offset)
-		return dateRange{start: start, end: start.AddDate(0, 0, 6)}, nil
+		return dateRange{start: start, end: start.AddDate(0, 0, 6)},
+			dateRange{start: start.AddDate(0, 0, -7), end: start.AddDate(0, 0, -1)}, nil
 	case "month":
 		start := time.Date(anchor.Year(), anchor.Month(), 1, 0, 0, 0, 0, time.UTC)
-		return dateRange{start: start, end: start.AddDate(0, 1, -1)}, nil
+		previousStart := start.AddDate(0, -1, 0)
+		return dateRange{start: start, end: start.AddDate(0, 1, -1)},
+			dateRange{start: previousStart, end: start.AddDate(0, 0, -1)}, nil
 	}
-	return dateRange{}, fmt.Errorf("period must be day, week or month")
-}
-
-// previousRange is the period immediately before r.
-func previousRange(kind string, r dateRange) dateRange {
-	switch kind {
-	case "day":
-		day := r.start.AddDate(0, 0, -1)
-		return dateRange{start: day, end: day}
-	case "week":
-		return dateRange{start: r.start.AddDate(0, 0, -7), end: r.start.AddDate(0, 0, -1)}
-	default: // month
-		start := time.Date(r.start.Year(), r.start.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, -1, 0)
-		return dateRange{start: start, end: r.start.AddDate(0, 0, -1)}
-	}
+	return dateRange{}, dateRange{}, fmt.Errorf("period must be day, week or month")
 }
 
 // daysInRange counts both ends of a closed range.
 func daysInRange(r dateRange) int {
-	return int(r.end.Sub(r.start).Hours()/24) + 1
+	return daysBetween(r.start, r.end)
+}
+
+// daysBetween counts both ends of the range from through to.
+func daysBetween(from, to time.Time) int {
+	return int(dateOnly(to).Sub(dateOnly(from)).Hours()/24) + 1
 }
 
 func dateOnly(t time.Time) time.Time {

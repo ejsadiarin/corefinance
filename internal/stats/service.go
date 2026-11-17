@@ -231,16 +231,15 @@ func (s *Service) PeriodBudget(ctx context.Context, userID uuid.UUID, kind, anch
 			return PeriodBudget{}, fmt.Errorf("date must be YYYY-MM-DD")
 		}
 	}
-	period, err := periodRange(kind, anchorDate)
+	period, previous, err := periodRanges(kind, anchorDate)
 	if err != nil {
 		return PeriodBudget{}, err
 	}
-	previous := previousRange(kind, period)
 
 	// Spent through the same point in the previous period: clamp the elapsed
 	// days to the period so a past period compares in full and a future one
 	// has none yet.
-	elapsed := int(today.Sub(period.start).Hours()/24) + 1
+	elapsed := daysBetween(period.start, today)
 	if elapsed < 0 {
 		elapsed = 0
 	}
@@ -270,12 +269,20 @@ func (s *Service) PeriodBudget(ctx context.Context, userID uuid.UUID, kind, anch
 		return PeriodBudget{}, err
 	}
 
-	projectedIncome, projectedExpenses, err := s.projectRuleOccurrences(ctx, userID, today, period.end)
+	// The projection covers this period only: for a future period that
+	// starts after today, occurrences in the gap before it are not part of
+	// its budget. Today is included because a rule due today that the worker
+	// has not written yet is still coming.
+	projectFrom := today
+	if period.start.After(projectFrom) {
+		projectFrom = period.start
+	}
+	projectedIncome, projectedExpenses, err := s.projectRuleOccurrences(ctx, userID, projectFrom, period.end)
 	if err != nil {
 		return PeriodBudget{}, err
 	}
 
-	spent := row.SpentExpenses.Sub(row.SpentReimbursements)
+	spent := netSpend(row.SpentExpenses, row.SpentReimbursements)
 	funded := row.PostedIncome.Add(projectedIncome)
 	bills := row.FutureExpenses.Add(projectedExpenses)
 	left := funded.Sub(spent).Sub(bills)
@@ -286,7 +293,7 @@ func (s *Service) PeriodBudget(ctx context.Context, userID uuid.UUID, kind, anch
 	if !period.end.Before(today) {
 		remaining := daysInRange(period)
 		if !period.start.After(today) {
-			remaining = int(period.end.Sub(today).Hours()/24) + 1
+			remaining = daysBetween(today, period.end)
 		}
 		value := left.DivRound(decimal.NewFromInt(int64(remaining)), 2)
 		safe = &value
@@ -304,8 +311,8 @@ func (s *Service) PeriodBudget(ctx context.Context, userID uuid.UUID, kind, anch
 		SafeToSpendPerDay:    safe,
 		PreviousPeriodStart:  formatDate(previous.start),
 		PreviousPeriodEnd:    formatDate(previous.end),
-		PreviousSpentToPoint: row.PreviousSpentExpenses.Sub(row.PreviousSpentReimbursements),
-		PreviousSpentTotal:   row.PreviousTotalExpenses.Sub(row.PreviousTotalReimbursements),
+		PreviousSpentToPoint: netSpend(row.PreviousSpentExpenses, row.PreviousSpentReimbursements),
+		PreviousSpentTotal:   netSpend(row.PreviousTotalExpenses, row.PreviousTotalReimbursements),
 	}, nil
 }
 
@@ -315,13 +322,13 @@ type ruleEntryKey struct {
 	date   string
 }
 
-// projectRuleOccurrences sums the PHP amounts of active rules' due dates
-// after `after` through `through`, the dates the materialize pass will still
-// write. Dates with an entry already are skipped, and a rule's projected
-// reimbursement income is not funding.
-func (s *Service) projectRuleOccurrences(ctx context.Context, userID uuid.UUID, after, through time.Time) (income, expense decimal.Decimal, err error) {
+// projectRuleOccurrences sums the PHP amounts of active rules' due dates in
+// [from, through], the dates the materialize pass will still write. Dates
+// with an entry already are skipped, and a rule's projected reimbursement
+// income is not funding.
+func (s *Service) projectRuleOccurrences(ctx context.Context, userID uuid.UUID, from, through time.Time) (income, expense decimal.Decimal, err error) {
 	income, expense = decimal.Zero, decimal.Zero
-	if !through.After(after) {
+	if through.Before(from) {
 		return income, expense, nil
 	}
 	rules, err := s.queries.ListUserActiveRules(ctx, userID)
@@ -333,7 +340,7 @@ func (s *Service) projectRuleOccurrences(ctx context.Context, userID uuid.UUID, 
 	}
 	writtenRows, err := s.queries.ListRuleEntryDates(ctx, db.ListRuleEntryDatesParams{
 		UserID:    userID,
-		StartDate: pgDate(after.AddDate(0, 0, 1)),
+		StartDate: pgDate(from),
 		EndDate:   pgDate(through),
 	})
 	if err != nil {
@@ -349,7 +356,7 @@ func (s *Service) projectRuleOccurrences(ctx context.Context, userID uuid.UUID, 
 		if rule.EndDate.Valid {
 			end = &rule.EndDate.Time
 		}
-		for _, due := range materialize.OccurrencesBetween(rule.StartDate.Time, rule.RecurringType, end, after, through) {
+		for _, due := range materialize.OccurrencesBetween(rule.StartDate.Time, rule.RecurringType, end, from.AddDate(0, 0, -1), through) {
 			if _, exists := written[ruleEntryKey{ruleID: rule.ID, date: formatDate(due)}]; exists {
 				continue
 			}
@@ -362,7 +369,7 @@ func (s *Service) projectRuleOccurrences(ctx context.Context, userID uuid.UUID, 
 			}
 			switch rule.Kind {
 			case "income":
-				if rule.CategoryID.Valid && uuid.UUID(rule.CategoryID.Bytes) == category.Reimbursement {
+				if isReimbursement(rule.CategoryID) {
 					continue
 				}
 				income = income.Add(conv.AmountPHP)
@@ -372,6 +379,14 @@ func (s *Service) projectRuleOccurrences(ctx context.Context, userID uuid.UUID, 
 		}
 	}
 	return income, expense, nil
+}
+
+func netSpend(expenses, reimbursements decimal.Decimal) decimal.Decimal {
+	return expenses.Sub(reimbursements)
+}
+
+func isReimbursement(categoryID pgtype.UUID) bool {
+	return categoryID.Valid && uuid.UUID(categoryID.Bytes) == category.Reimbursement
 }
 
 func (s *Service) MonthOverMonthTrends(ctx context.Context, userID uuid.UUID, startDate, endDate *string) ([]MonthOverMonthTrend, error) {

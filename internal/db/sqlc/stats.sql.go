@@ -284,7 +284,7 @@ const getPeriodBudgetTotals = `-- name: GetPeriodBudgetTotals :one
 SELECT
     (SELECT COALESCE(SUM(i.amount_php), 0)::numeric FROM incomes i
      WHERE i.user_id = $1
-       AND i.status != 'skipped'
+       AND i.status = 'posted'
        AND i.category_id IS DISTINCT FROM $2::uuid
        AND i.date BETWEEN $3::date AND $4::date) AS posted_income,
     (SELECT COALESCE(SUM(e.amount_php), 0)::numeric FROM expenses e
@@ -293,7 +293,7 @@ SELECT
        AND e.expense_date BETWEEN $3::date AND LEAST($4::date, $5::date)) AS spent_expenses,
     (SELECT COALESCE(SUM(i.amount_php), 0)::numeric FROM incomes i
      WHERE i.user_id = $1
-       AND i.status != 'skipped'
+       AND i.status = 'posted'
        AND i.category_id = $2::uuid
        AND i.date BETWEEN $3::date AND LEAST($4::date, $5::date)) AS spent_reimbursements,
     (SELECT COALESCE(SUM(e.amount_php), 0)::numeric FROM expenses e
@@ -306,7 +306,7 @@ SELECT
        AND e.expense_date BETWEEN $7::date AND $8::date) AS previous_spent_expenses,
     (SELECT COALESCE(SUM(i.amount_php), 0)::numeric FROM incomes i
      WHERE i.user_id = $1
-       AND i.status != 'skipped'
+       AND i.status = 'posted'
        AND i.category_id = $2::uuid
        AND i.date BETWEEN $7::date AND $8::date) AS previous_spent_reimbursements,
     (SELECT COALESCE(SUM(e.amount_php), 0)::numeric FROM expenses e
@@ -315,7 +315,7 @@ SELECT
        AND e.expense_date BETWEEN $7::date AND $9::date) AS previous_total_expenses,
     (SELECT COALESCE(SUM(i.amount_php), 0)::numeric FROM incomes i
      WHERE i.user_id = $1
-       AND i.status != 'skipped'
+       AND i.status = 'posted'
        AND i.category_id = $2::uuid
        AND i.date BETWEEN $7::date AND $9::date) AS previous_total_reimbursements
 `
