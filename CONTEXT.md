@@ -74,6 +74,22 @@ _Avoid_: effective date, conversion date
 The original amount converted at the exchange rate and rounded to centavos, fixed when the record is saved.
 _Avoid_: converted amount, local amount
 
+**Money on hand**:
+The owner's money as of today: every income dated today or earlier, less every expense dated today or earlier, in the owner's timezone. Reimbursements count; skipped records don't.
+_Avoid_: total money, balance, current balance
+
+**Committed**:
+Money already promised to future-dated expenses: the total of not-skipped expenses dated after today in the owner's timezone.
+_Avoid_: pending, upcoming, reserved
+
+**Average daily spend**:
+Net spend over the trailing 30 days ending today — expenses less reimbursements, in the owner's timezone — divided by 30 calendar days.
+_Avoid_: burn rate, daily burn, spending rate
+
+**Runway**:
+Money on hand divided by the average daily spend, in whole days. It is empty when there is no spending to divide by.
+_Avoid_: days left, buffer
+
 ### Recurring rules
 
 **Recurring rule**:

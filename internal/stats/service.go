@@ -2,20 +2,42 @@ package stats
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
+
+	"github.com/ejsadiarin/corefinance/internal/auth"
 	"github.com/ejsadiarin/corefinance/internal/category"
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/helper"
+	"github.com/ejsadiarin/corefinance/internal/materialize"
 )
 
 type Service struct {
 	queries db.Querier
+	now     func() time.Time
 }
 
 func NewService(queries db.Querier) *Service {
-	return &Service{queries: queries}
+	return &Service{queries: queries, now: time.Now}
+}
+
+// ownerZone is the zone a read dates "today" in (coregateway ADR-0005): the
+// zone in the request's token, or the zone last seen for the owner (UTC if
+// none).
+func ownerZone(ctx context.Context, q db.Querier, userID uuid.UUID) (*time.Location, error) {
+	if tz := auth.TimezoneFromContext(ctx); tz != "" {
+		return materialize.LoadZone(tz), nil
+	}
+	loc, err := materialize.SeenZones{Queries: q}.Zone(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("owner timezone: %w", err)
+	}
+	return loc, nil
 }
 
 func (s *Service) Summary(ctx context.Context, userID uuid.UUID, startDate, endDate *string) (Summary, error) {
@@ -154,12 +176,33 @@ func (s *Service) SpendingVelocity(ctx context.Context, userID uuid.UUID, startD
 
 func (s *Service) CurrentTotalMoney(ctx context.Context, userID uuid.UUID) (CurrentTotalMoney, error) {
 	slog.Debug("stats.Service.CurrentTotalMoney", "user_id", userID)
-	totalMoney, err := s.queries.GetCurrentTotalMoney(ctx, userID)
+	loc, err := ownerZone(ctx, s.queries, userID)
 	if err != nil {
 		return CurrentTotalMoney{}, err
 	}
+	today := materialize.DateIn(s.now(), loc)
+	row, err := s.queries.GetMoneyOnHand(ctx, db.GetMoneyOnHandParams{
+		UserID:          userID,
+		Today:           pgtype.Date{Time: today, Valid: true},
+		WindowStart:     pgtype.Date{Time: today.AddDate(0, 0, -29), Valid: true},
+		ReimbursementID: category.Reimbursement,
+	})
+	if err != nil {
+		return CurrentTotalMoney{}, err
+	}
+	average := row.NetSpend.Div(decimal.NewFromInt(30))
+	var runway *int64
+	if row.NetSpend.IsPositive() {
+		// money / (net spend / 30), without dividing twice so exact
+		// multiples don't truncate a day early.
+		days := row.MoneyOnHand.Mul(decimal.NewFromInt(30)).Div(row.NetSpend).IntPart()
+		runway = &days
+	}
 	return CurrentTotalMoney{
-		TotalMoney: totalMoney,
+		TotalMoney:        row.MoneyOnHand,
+		Committed:         row.Committed,
+		AverageDailySpend: average.Round(2),
+		RunwayDays:        runway,
 	}, nil
 }
 

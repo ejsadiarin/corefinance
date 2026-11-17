@@ -12,5 +12,5 @@ import (
 // Pass it as ResumeThrough on every rule update; the update query only
 // applies it when is_active flips false->true.
 func ResumeThrough(loc *time.Location, now time.Time) pgtype.Date {
-	return pgDate(dateIn(now, loc).AddDate(0, 0, -1))
+	return pgDate(DateIn(now, loc).AddDate(0, 0, -1))
 }

@@ -37,7 +37,6 @@ type Querier interface {
 	DeleteRecurringIncomeRule(ctx context.Context, arg DeleteRecurringIncomeRuleParams) error
 	DeleteTag(ctx context.Context, arg DeleteTagParams) error
 	GetCategoryBreakdown(ctx context.Context, arg GetCategoryBreakdownParams) ([]GetCategoryBreakdownRow, error)
-	GetCurrentTotalMoney(ctx context.Context, userID uuid.UUID) (decimal.Decimal, error)
 	GetExpense(ctx context.Context, arg GetExpenseParams) (GetExpenseRow, error)
 	GetExpenseStatsByCategory(ctx context.Context, arg GetExpenseStatsByCategoryParams) ([]GetExpenseStatsByCategoryRow, error)
 	// Review feed (#13): every transaction before the horizon has finished, so
@@ -49,6 +48,10 @@ type Querier interface {
 	// Incomes a recurring rule created. The worker stamps them one-time with
 	// source_rule_id set, so the link, not the type, marks an occurrence.
 	GetIncomeOccurrences(ctx context.Context, arg GetIncomeOccurrencesParams) ([]Income, error)
+	// Money on hand counts only records dated today or earlier in the owner's
+	// timezone; future-dated expenses are committed instead. Net spend is the
+	// trailing 30-day window ending today, reimbursements subtracted.
+	GetMoneyOnHand(ctx context.Context, arg GetMoneyOnHandParams) (GetMoneyOnHandRow, error)
 	GetMonthOverMonthTrends(ctx context.Context, arg GetMonthOverMonthTrendsParams) ([]GetMonthOverMonthTrendsRow, error)
 	// The earliest next occurrence still to come, if any (NULL when none).
 	GetNextWake(ctx context.Context, now pgtype.Timestamptz) (pgtype.Timestamptz, error)

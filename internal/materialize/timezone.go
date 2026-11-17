@@ -64,9 +64,9 @@ func (z FixedZones) Zone(_ context.Context, userID uuid.UUID) (*time.Location, e
 	return LoadZone(z[userID]), nil
 }
 
-// dateIn is the calendar date at now in loc, as UTC midnight (the form rule
-// dates come back from Postgres in).
-func dateIn(now time.Time, loc *time.Location) time.Time {
+// DateIn is the calendar date at now in loc, as UTC midnight (the form dates
+// come back from Postgres in).
+func DateIn(now time.Time, loc *time.Location) time.Time {
 	y, m, d := now.In(loc).Date()
 	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 }

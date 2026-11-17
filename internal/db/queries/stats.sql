@@ -181,13 +181,36 @@ FROM (
     ORDER BY month
 ) AS monthly;
 
--- name: GetCurrentTotalMoney :one
-SELECT (
-    (SELECT COALESCE(SUM(i.amount_php), 0) FROM incomes i
-     WHERE i.user_id = @user_id AND i.status != 'skipped')
-    - (SELECT COALESCE(SUM(e.amount_php), 0) FROM expenses e
-     WHERE e.user_id = @user_id AND e.status != 'skipped')
-)::numeric AS total_money;
+-- name: GetMoneyOnHand :one
+-- Money on hand counts only records dated today or earlier in the owner's
+-- timezone; future-dated expenses are committed instead. Net spend is the
+-- trailing 30-day window ending today, reimbursements subtracted.
+SELECT
+    (
+        (SELECT COALESCE(SUM(i.amount_php), 0) FROM incomes i
+         WHERE i.user_id = @user_id
+           AND i.status != 'skipped'
+           AND i.date <= @today::date)
+        - (SELECT COALESCE(SUM(e.amount_php), 0) FROM expenses e
+           WHERE e.user_id = @user_id
+             AND e.status != 'skipped'
+             AND e.expense_date <= @today::date)
+    )::numeric AS money_on_hand,
+    (SELECT COALESCE(SUM(e.amount_php), 0)::numeric FROM expenses e
+     WHERE e.user_id = @user_id
+       AND e.status != 'skipped'
+       AND e.expense_date > @today::date) AS committed,
+    (
+        (SELECT COALESCE(SUM(e.amount_php), 0) FROM expenses e
+         WHERE e.user_id = @user_id
+           AND e.status != 'skipped'
+           AND e.expense_date BETWEEN @window_start::date AND @today::date)
+        - (SELECT COALESCE(SUM(i.amount_php), 0) FROM incomes i
+           WHERE i.user_id = @user_id
+             AND i.status != 'skipped'
+             AND i.category_id = @reimbursement_id::uuid
+             AND i.date BETWEEN @window_start::date AND @today::date)
+    )::numeric AS net_spend;
 
 -- name: GetMonthOverMonthTrends :many
 SELECT

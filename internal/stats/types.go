@@ -52,7 +52,10 @@ type SpendingVelocity struct {
 }
 
 type CurrentTotalMoney struct {
-	TotalMoney decimal.Decimal `json:"total_money"`
+	TotalMoney        decimal.Decimal `json:"total_money"`
+	Committed         decimal.Decimal `json:"committed"`
+	AverageDailySpend decimal.Decimal `json:"average_daily_spend"`
+	RunwayDays        *int64          `json:"runway_days"`
 }
 
 type MonthOverMonthTrend struct {

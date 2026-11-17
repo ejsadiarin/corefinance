@@ -71,22 +71,6 @@ func (q *Queries) GetCategoryBreakdown(ctx context.Context, arg GetCategoryBreak
 	return items, nil
 }
 
-const getCurrentTotalMoney = `-- name: GetCurrentTotalMoney :one
-SELECT (
-    (SELECT COALESCE(SUM(i.amount_php), 0) FROM incomes i
-     WHERE i.user_id = $1 AND i.status != 'skipped')
-    - (SELECT COALESCE(SUM(e.amount_php), 0) FROM expenses e
-     WHERE e.user_id = $1 AND e.status != 'skipped')
-)::numeric AS total_money
-`
-
-func (q *Queries) GetCurrentTotalMoney(ctx context.Context, userID uuid.UUID) (decimal.Decimal, error) {
-	row := q.db.QueryRow(ctx, getCurrentTotalMoney, userID)
-	var total_money decimal.Decimal
-	err := row.Scan(&total_money)
-	return total_money, err
-}
-
 const getFiftyThirtyTwenty = `-- name: GetFiftyThirtyTwenty :one
 WITH totals AS (
     SELECT
@@ -169,6 +153,63 @@ func (q *Queries) GetFiftyThirtyTwenty(ctx context.Context, arg GetFiftyThirtyTw
 		&i.WantsPct,
 		&i.SavingsPct,
 	)
+	return i, err
+}
+
+const getMoneyOnHand = `-- name: GetMoneyOnHand :one
+SELECT
+    (
+        (SELECT COALESCE(SUM(i.amount_php), 0) FROM incomes i
+         WHERE i.user_id = $1
+           AND i.status != 'skipped'
+           AND i.date <= $2::date)
+        - (SELECT COALESCE(SUM(e.amount_php), 0) FROM expenses e
+           WHERE e.user_id = $1
+             AND e.status != 'skipped'
+             AND e.expense_date <= $2::date)
+    )::numeric AS money_on_hand,
+    (SELECT COALESCE(SUM(e.amount_php), 0)::numeric FROM expenses e
+     WHERE e.user_id = $1
+       AND e.status != 'skipped'
+       AND e.expense_date > $2::date) AS committed,
+    (
+        (SELECT COALESCE(SUM(e.amount_php), 0) FROM expenses e
+         WHERE e.user_id = $1
+           AND e.status != 'skipped'
+           AND e.expense_date BETWEEN $3::date AND $2::date)
+        - (SELECT COALESCE(SUM(i.amount_php), 0) FROM incomes i
+           WHERE i.user_id = $1
+             AND i.status != 'skipped'
+             AND i.category_id = $4::uuid
+             AND i.date BETWEEN $3::date AND $2::date)
+    )::numeric AS net_spend
+`
+
+type GetMoneyOnHandParams struct {
+	UserID          uuid.UUID   `db:"user_id" json:"user_id"`
+	Today           pgtype.Date `db:"today" json:"today"`
+	WindowStart     pgtype.Date `db:"window_start" json:"window_start"`
+	ReimbursementID uuid.UUID   `db:"reimbursement_id" json:"reimbursement_id"`
+}
+
+type GetMoneyOnHandRow struct {
+	MoneyOnHand decimal.Decimal `db:"money_on_hand" json:"money_on_hand"`
+	Committed   decimal.Decimal `db:"committed" json:"committed"`
+	NetSpend    decimal.Decimal `db:"net_spend" json:"net_spend"`
+}
+
+// Money on hand counts only records dated today or earlier in the owner's
+// timezone; future-dated expenses are committed instead. Net spend is the
+// trailing 30-day window ending today, reimbursements subtracted.
+func (q *Queries) GetMoneyOnHand(ctx context.Context, arg GetMoneyOnHandParams) (GetMoneyOnHandRow, error) {
+	row := q.db.QueryRow(ctx, getMoneyOnHand,
+		arg.UserID,
+		arg.Today,
+		arg.WindowStart,
+		arg.ReimbursementID,
+	)
+	var i GetMoneyOnHandRow
+	err := row.Scan(&i.MoneyOnHand, &i.Committed, &i.NetSpend)
 	return i, err
 }
 

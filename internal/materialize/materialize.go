@@ -213,7 +213,7 @@ func MaterializeUserWithRates(ctx context.Context, q db.Querier, userID uuid.UUI
 	if err := q.LockUserMaterialize(ctx, userID); err != nil {
 		return 0, fmt.Errorf("lock user materialize: %w", err)
 	}
-	today := dateIn(now, loc)
+	today := DateIn(now, loc)
 	rules, err := q.ListUserActiveRules(ctx, userID)
 	if err != nil {
 		return 0, fmt.Errorf("list active rules: %w", err)

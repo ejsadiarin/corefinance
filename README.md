@@ -112,7 +112,7 @@ All routes are prefixed with `/budget`.
 | | `/analysis/503020` | 50/30/20 analysis by priority |
 | | `/velocity` | Average monthly spending |
 | | `/forecast/upcoming` | Upcoming recurring expenses |
-| | `/current-total-money` | Total income minus total expenses |
+| | `/current-total-money` | Money on hand, committed, average daily spend and runway |
 | | `/trends/month-over-month` | Month-over-month comparison |
 | | `/priority-groups` | Reference data (need/want/savings) |
 | | `/rule-entries` | Entries recurring rules created (expenses and incomes), newest-inserted first; filters `rule_id`, `start_date`/`end_date`, `created_since` (RFC 3339), paged with `page`/`page_size` |

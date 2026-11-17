@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -11,6 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ejsadiarin/corefinance/internal/auth"
+	"github.com/ejsadiarin/corefinance/internal/category"
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/mock"
 )
@@ -290,9 +293,9 @@ func TestStatsService_UpcomingBills(t *testing.T) {
 				assert.Equal(t, userID, uid)
 				return []db.GetUpcomingRecurringExpensesRow{
 					{
-						ID:          uuid.New(),
-						Description: "Rent",
-						Amount:      decimal.NewFromFloat(1500),
+						ID:           uuid.New(),
+						Description:  "Rent",
+						Amount:       decimal.NewFromFloat(1500),
 						CategoryName: pgtype.Text{String: "Housing", Valid: true},
 					},
 					{
@@ -371,28 +374,59 @@ func TestStatsService_SpendingVelocity(t *testing.T) {
 
 func TestStatsService_CurrentTotalMoney(t *testing.T) {
 	userID := uuid.New()
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	ctx := auth.WithTimezone(context.Background(), "Asia/Manila")
 
 	t.Run("success", func(t *testing.T) {
 		mock := &mock.MockQuerier{
-			GetCurrentTotalMoneyFn: func(ctx context.Context, uid uuid.UUID) (decimal.Decimal, error) {
-				assert.Equal(t, userID, uid)
-				return decimal.NewFromFloat(15000), nil
+			GetMoneyOnHandFn: func(ctx context.Context, arg db.GetMoneyOnHandParams) (db.GetMoneyOnHandRow, error) {
+				assert.Equal(t, userID, arg.UserID)
+				assert.Equal(t, "2026-11-17", arg.Today.Time.Format("2006-01-02"))
+				assert.Equal(t, "2026-10-19", arg.WindowStart.Time.Format("2006-01-02"))
+				assert.Equal(t, category.Reimbursement, arg.ReimbursementID)
+				return db.GetMoneyOnHandRow{
+					MoneyOnHand: decimal.NewFromInt(19500),
+					Committed:   decimal.NewFromInt(2716),
+					NetSpend:    decimal.NewFromInt(500),
+				}, nil
 			},
 		}
 		svc := NewService(mock)
-		result, err := svc.CurrentTotalMoney(context.Background(), userID)
+		svc.now = func() time.Time { return now }
+		result, err := svc.CurrentTotalMoney(ctx, userID)
 		require.NoError(t, err)
-		assert.Equal(t, "15000", result.TotalMoney.String())
+		assert.Equal(t, "19500", result.TotalMoney.String())
+		assert.Equal(t, "2716", result.Committed.String())
+		assert.Equal(t, "16.67", result.AverageDailySpend.String())
+		require.NotNil(t, result.RunwayDays)
+		assert.Equal(t, int64(1170), *result.RunwayDays)
+	})
+
+	t.Run("no spending means no runway", func(t *testing.T) {
+		mock := &mock.MockQuerier{
+			GetMoneyOnHandFn: func(ctx context.Context, arg db.GetMoneyOnHandParams) (db.GetMoneyOnHandRow, error) {
+				return db.GetMoneyOnHandRow{
+					MoneyOnHand: decimal.NewFromInt(500),
+					Committed:   decimal.Zero,
+					NetSpend:    decimal.Zero,
+				}, nil
+			},
+		}
+		svc := NewService(mock)
+		svc.now = func() time.Time { return now }
+		result, err := svc.CurrentTotalMoney(ctx, userID)
+		require.NoError(t, err)
+		assert.Nil(t, result.RunwayDays)
 	})
 
 	t.Run("error", func(t *testing.T) {
 		mock := &mock.MockQuerier{
-			GetCurrentTotalMoneyFn: func(ctx context.Context, uid uuid.UUID) (decimal.Decimal, error) {
-				return decimal.Zero, errors.New("db error")
+			GetMoneyOnHandFn: func(ctx context.Context, arg db.GetMoneyOnHandParams) (db.GetMoneyOnHandRow, error) {
+				return db.GetMoneyOnHandRow{}, errors.New("db error")
 			},
 		}
 		svc := NewService(mock)
-		_, err := svc.CurrentTotalMoney(context.Background(), userID)
+		_, err := svc.CurrentTotalMoney(ctx, userID)
 		require.Error(t, err)
 	})
 }

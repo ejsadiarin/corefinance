@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ejsadiarin/corefinance/internal/auth"
 	"github.com/ejsadiarin/corefinance/internal/category"
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/expense"
@@ -129,6 +130,7 @@ func TestStatsService_Reimbursements_Integration(t *testing.T) {
 	require.True(t, decimal.NewFromInt(28000).Equal(mom[0].TotalAmount), "expected total_amount=28000 for 2026-04, got %s", mom[0].TotalAmount.String())
 
 	// Money on hand still counts reimbursements; a skipped one counts nowhere.
+	svc.now = func() time.Time { return time.Date(2026, 12, 31, 12, 0, 0, 0, time.UTC) }
 	moneyUser := uuid.New()
 	seedIncomeInCategory(t, ctx, pool, moneyUser, "20000", "2026-04-01", "posted", &salaryID)
 	seedIncomeInCategory(t, ctx, pool, moneyUser, "500", "2026-04-10", "posted", &reimbursementID)
@@ -228,10 +230,74 @@ func TestStatsService_CurrentTotalMoney_Integration_Lifetime(t *testing.T) {
 	seedIncome(t, ctx, pool, userID, "500", "2026-05-01", "skipped")
 
 	expected := decimal.NewFromInt(800)
+	svc.now = func() time.Time { return time.Date(2026, 12, 31, 12, 0, 0, 0, time.UTC) }
 
 	res, err := svc.CurrentTotalMoney(ctx, userID)
 	require.NoError(t, err)
 	require.True(t, expected.Equal(res.TotalMoney), "expected lifetime total_money=800, got %s", res.TotalMoney.String())
+}
+
+// Spec (#25): money on hand counts only records dated today or earlier in
+// the owner's timezone. Future-dated expenses are committed, skipped records
+// count nowhere, reimbursements count as money, and runway is money on hand
+// over the trailing 30-day net spend.
+func TestStatsService_MoneyOnHand_Integration(t *testing.T) {
+	svc, pool := newStatsIntegrationService(t)
+	ctx := auth.WithTimezone(context.Background(), "Asia/Manila")
+	salary, found := category.ByName(category.Incomes, "salary")
+	require.True(t, found)
+	salaryID := salary.ID.String()
+	reimbursementID := category.Reimbursement.String()
+
+	t.Run("future expense, skipped records and a reimbursement", func(t *testing.T) {
+		// 20:00 on 17 November in Manila.
+		svc.now = func() time.Time { return time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC) }
+		userID := uuid.New()
+		seedIncomeInCategory(t, ctx, pool, userID, "20000", "2026-11-01", "posted", &salaryID)
+		seedIncomeInCategory(t, ctx, pool, userID, "500", "2026-11-10", "posted", &reimbursementID)
+		seedExpense(t, ctx, pool, userID, "1000", "2026-11-15", "posted")
+		seedExpense(t, ctx, pool, userID, "2716", "2026-12-15", "posted")
+		seedExpense(t, ctx, pool, userID, "999", "2026-11-20", "skipped")
+		seedExpense(t, ctx, pool, userID, "777", "2026-11-16", "skipped")
+
+		money, err := svc.CurrentTotalMoney(ctx, userID)
+		require.NoError(t, err)
+		assert.True(t, decimal.NewFromInt(19500).Equal(money.TotalMoney), money.TotalMoney.String())
+		assert.True(t, decimal.NewFromInt(2716).Equal(money.Committed), money.Committed.String())
+		assert.Equal(t, "16.67", money.AverageDailySpend.String())
+		require.NotNil(t, money.RunwayDays)
+		assert.Equal(t, int64(1170), *money.RunwayDays)
+	})
+
+	t.Run("day boundary follows the owner's zone", func(t *testing.T) {
+		// 07:30 on 18 November in Manila, still 17 November in UTC: the
+		// expense dated the 18th is today, the one on the 19th is committed.
+		svc.now = func() time.Time { return time.Date(2026, 11, 17, 23, 30, 0, 0, time.UTC) }
+		userID := uuid.New()
+		seedIncome(t, ctx, pool, userID, "1000", "2026-11-01", "posted")
+		seedExpense(t, ctx, pool, userID, "200", "2026-11-18", "posted")
+		seedExpense(t, ctx, pool, userID, "300", "2026-11-19", "posted")
+
+		money, err := svc.CurrentTotalMoney(ctx, userID)
+		require.NoError(t, err)
+		assert.True(t, decimal.NewFromInt(800).Equal(money.TotalMoney), money.TotalMoney.String())
+		assert.True(t, decimal.NewFromInt(300).Equal(money.Committed), money.Committed.String())
+		require.NotNil(t, money.RunwayDays)
+		assert.Equal(t, int64(120), *money.RunwayDays)
+	})
+
+	t.Run("no seen zone is UTC", func(t *testing.T) {
+		svc.now = func() time.Time { return time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC) }
+		userID := uuid.New()
+		seedIncome(t, ctx, pool, userID, "1000", "2026-11-17", "posted")
+		seedExpense(t, ctx, pool, userID, "200", "2026-11-18", "posted")
+
+		money, err := svc.CurrentTotalMoney(context.Background(), userID)
+		require.NoError(t, err)
+		assert.True(t, decimal.NewFromInt(1000).Equal(money.TotalMoney), money.TotalMoney.String())
+		assert.True(t, decimal.NewFromInt(200).Equal(money.Committed), money.Committed.String())
+		assert.Nil(t, money.RunwayDays)
+	})
 }
 
 // Reports total the fixed PHP amount, not the original amount (#3,
@@ -269,6 +335,7 @@ func TestStatsService_MultiCurrencyUsesPHPAmount_Integration(t *testing.T) {
 	assert.True(t, php.Equal(trends[0].TotalExpenses))
 	assert.True(t, php.Equal(trends[0].TotalIncomes))
 
+	svc.now = func() time.Time { return time.Date(2026, 12, 31, 12, 0, 0, 0, time.UTC) }
 	money, err := svc.CurrentTotalMoney(ctx, user)
 	require.NoError(t, err)
 	assert.True(t, decimal.Zero.Equal(money.TotalMoney), money.TotalMoney.String())
@@ -335,6 +402,8 @@ func TestStatsService_MultiCurrencyTripFixture_Integration(t *testing.T) {
 	assert.True(t, decimal.RequireFromString("63813").Equal(summary.TotalIncomes), summary.TotalIncomes.String())
 	assert.True(t, decimal.RequireFromString("23930.40").Equal(summary.TotalExpenses), summary.TotalExpenses.String())
 
+	// All trip days are behind this clock, so every expense counts.
+	svc.now = func() time.Time { return time.Date(2026, 12, 31, 12, 0, 0, 0, time.UTC) }
 	money, err := svc.CurrentTotalMoney(ctx, user)
 	require.NoError(t, err)
 	assert.True(t, decimal.RequireFromString("39882.60").Equal(money.TotalMoney), money.TotalMoney.String())
