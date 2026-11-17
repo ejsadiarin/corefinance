@@ -592,6 +592,7 @@ func TestStatsService_CashFlow_Integration(t *testing.T) {
 		seedIncome(t, ctx, pool, userID, "500", "2026-11-18", "posted")
 		seedIncomeInCategory(t, ctx, pool, userID, "100", "2026-11-18", "posted", &reimbursementCategory)
 		seedExpense(t, ctx, pool, userID, "300", "2026-11-18", "posted")
+		seedExpense(t, ctx, pool, userID, "777", "2026-11-18", "skipped")
 		seedExpense(t, ctx, pool, userID, "999", "2026-11-19", "posted")
 
 		series, err := svc.CashFlow(ctx, userID, "day", 3)
