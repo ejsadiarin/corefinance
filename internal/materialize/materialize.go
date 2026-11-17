@@ -155,6 +155,19 @@ func NextDueDate(start time.Time, cadence string, end *time.Time, after time.Tim
 	return d, true
 }
 
+// OccurrencesBetween returns a rule's due dates after `after` and no later
+// than `through`, honoring its end date. It steps with NextDueDate instead of
+// listing every date since the start, so a long-running daily rule costs only
+// the dates in range.
+func OccurrencesBetween(start time.Time, cadence string, end *time.Time, after, through time.Time) []time.Time {
+	after, through = truncateDate(after), truncateDate(through)
+	var out []time.Time
+	for d, ok := NextDueDate(start, cadence, end, after); ok && !d.After(through); d, ok = NextDueDate(start, cadence, end, d) {
+		out = append(out, d)
+	}
+	return out
+}
+
 // MaxDatesPerRulePass bounds how many dates one pass fills for a single rule.
 // A long outage (or a daily rule with a years-old start and no watermark)
 // fills in over several passes instead of one huge transaction; the

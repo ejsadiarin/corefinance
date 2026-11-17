@@ -51,3 +51,32 @@ func TestDueDates_StartAfterToday(t *testing.T) {
 func TestDueDates_UnknownCadence(t *testing.T) {
 	assert.Empty(t, DueDates(d("2026-01-01"), "hourly", nil, d("2026-09-10")))
 }
+
+func TestOccurrencesBetween_Weekly(t *testing.T) {
+	got := dates(OccurrencesBetween(d("2026-01-05"), "weekly", nil, d("2026-01-15"), d("2026-02-02")))
+	assert.Equal(t, []string{"2026-01-19", "2026-01-26", "2026-02-02"}, got)
+}
+
+func TestOccurrencesBetween_MonthlyClamps(t *testing.T) {
+	got := dates(OccurrencesBetween(d("2026-01-31"), "monthly", nil, d("2026-02-15"), d("2026-03-31")))
+	assert.Equal(t, []string{"2026-02-28", "2026-03-31"}, got)
+}
+
+func TestOccurrencesBetween_YearlyClampsFeb29(t *testing.T) {
+	got := dates(OccurrencesBetween(d("2024-02-29"), "yearly", nil, d("2026-01-01"), d("2027-12-31")))
+	assert.Equal(t, []string{"2026-02-28", "2027-02-28"}, got)
+}
+
+func TestOccurrencesBetween_BoundedByEnd(t *testing.T) {
+	end := d("2026-02-03")
+	got := dates(OccurrencesBetween(d("2026-02-01"), "daily", &end, d("2026-01-01"), d("2026-02-28")))
+	assert.Equal(t, []string{"2026-02-01", "2026-02-02", "2026-02-03"}, got)
+}
+
+func TestOccurrencesBetween_EmptyRange(t *testing.T) {
+	assert.Empty(t, OccurrencesBetween(d("2026-01-01"), "daily", nil, d("2026-02-02"), d("2026-02-01")))
+}
+
+func TestOccurrencesBetween_UnknownCadence(t *testing.T) {
+	assert.Empty(t, OccurrencesBetween(d("2026-01-01"), "hourly", nil, d("2026-01-01"), d("2026-01-31")))
+}
