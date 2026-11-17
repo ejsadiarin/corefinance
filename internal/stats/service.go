@@ -308,6 +308,68 @@ func (s *Service) PeriodBudget(ctx context.Context, userID uuid.UUID, kind, anch
 	}, nil
 }
 
+// MaxCashFlowBuckets bounds one series so the read stays cheap.
+const MaxCashFlowBuckets = 62
+
+func (s *Service) CashFlow(ctx context.Context, userID uuid.UUID, kind string, count int) (CashFlowSeries, error) {
+	slog.Debug("stats.Service.CashFlow", "user_id", userID, "bucket", kind, "count", count)
+	if !validPeriodKind(kind) {
+		return CashFlowSeries{}, fmt.Errorf("bucket must be day, week or month")
+	}
+	if count < 1 || count > MaxCashFlowBuckets {
+		return CashFlowSeries{}, fmt.Errorf("count must be between 1 and %d", MaxCashFlowBuckets)
+	}
+	loc, err := ownerZone(ctx, s.queries, userID)
+	if err != nil {
+		return CashFlowSeries{}, err
+	}
+	today := materialize.DateIn(s.now(), loc)
+
+	current, _, err := periodRanges(kind, today)
+	if err != nil {
+		return CashFlowSeries{}, err
+	}
+	ranges := make([]dateRange, count)
+	ranges[count-1] = current
+	for i := count - 2; i >= 0; i-- {
+		ranges[i], _, err = periodRanges(kind, ranges[i+1].start.AddDate(0, 0, -1))
+		if err != nil {
+			return CashFlowSeries{}, err
+		}
+	}
+
+	rows, err := s.queries.ListCashFlowBuckets(ctx, db.ListCashFlowBucketsParams{
+		Bucket:          kind,
+		UserID:          userID,
+		StartDate:       pgDate(ranges[0].start),
+		Today:           pgDate(today),
+		ReimbursementID: category.Reimbursement,
+	})
+	if err != nil {
+		return CashFlowSeries{}, err
+	}
+
+	buckets := make([]CashFlowBucket, count)
+	for i, r := range ranges {
+		buckets[i] = CashFlowBucket{
+			StartDate: formatDate(r.start),
+			EndDate:   formatDate(r.end),
+		}
+	}
+	for _, row := range rows {
+		i := bucketIndex(kind, ranges[0].start, row.BucketStart.Time)
+		if i < 0 || i >= count {
+			continue
+		}
+		income := row.Incomes
+		spent := netSpend(row.Expenses, row.Reimbursements)
+		buckets[i].Income = income
+		buckets[i].Spent = spent
+		buckets[i].Net = income.Sub(spent)
+	}
+	return CashFlowSeries{Bucket: kind, Buckets: buckets}, nil
+}
+
 // ruleEntryKey identifies a rule's entry on one date.
 type ruleEntryKey struct {
 	ruleID uuid.UUID

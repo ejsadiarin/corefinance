@@ -255,6 +255,37 @@ SELECT
        AND i.category_id = @reimbursement_id::uuid
        AND i.date BETWEEN @previous_start::date AND @previous_end::date) AS previous_total_reimbursements;
 
+-- name: ListCashFlowBuckets :many
+-- Daily records aggregated into day, week (Monday-start) or month buckets.
+-- Future-dated and skipped records are left out; reimbursements are kept
+-- apart from income so the service can net them out of spent.
+SELECT
+    bucket_start,
+    COALESCE(SUM(expenses), 0)::numeric AS expenses,
+    COALESCE(SUM(reimbursements), 0)::numeric AS reimbursements,
+    COALESCE(SUM(incomes), 0)::numeric AS incomes
+FROM (
+    SELECT date_trunc(@bucket::text, e.expense_date::timestamp)::date AS bucket_start,
+           e.amount_php AS expenses,
+           0::numeric AS reimbursements,
+           0::numeric AS incomes
+    FROM expenses e
+    WHERE e.user_id = @user_id
+      AND e.status != 'skipped'
+      AND e.expense_date BETWEEN @start_date::date AND @today::date
+    UNION ALL
+    SELECT date_trunc(@bucket::text, i.date::timestamp)::date AS bucket_start,
+           0::numeric AS expenses,
+           CASE WHEN i.category_id = @reimbursement_id::uuid THEN i.amount_php ELSE 0 END AS reimbursements,
+           CASE WHEN i.category_id IS DISTINCT FROM @reimbursement_id::uuid THEN i.amount_php ELSE 0 END AS incomes
+    FROM incomes i
+    WHERE i.user_id = @user_id
+      AND i.status != 'skipped'
+      AND i.date BETWEEN @start_date::date AND @today::date
+) daily
+GROUP BY bucket_start
+ORDER BY bucket_start;
+
 -- name: ListRuleEntryDates :many
 -- Rule entries already written in a date range, skipped ones included: a
 -- skipped entry is still the owner's decision, and the materialize pass does

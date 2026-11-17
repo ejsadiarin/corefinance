@@ -55,6 +55,19 @@ func daysBetween(from, to time.Time) int {
 	return int(dateOnly(to).Sub(dateOnly(from)).Hours()/24) + 1
 }
 
+// bucketIndex is where the bucket starting at start falls when buckets of
+// kind begin at firstStart. start must already be a bucket start.
+func bucketIndex(kind string, firstStart, start time.Time) int {
+	switch kind {
+	case "week":
+		return daysBetween(firstStart, start) / 7
+	case "month":
+		return (start.Year()-firstStart.Year())*12 + int(start.Month()-firstStart.Month())
+	default: // day
+		return daysBetween(firstStart, start) - 1
+	}
+}
+
 func dateOnly(t time.Time) time.Time {
 	y, m, d := t.Date()
 	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)

@@ -506,6 +506,12 @@ GET {{baseUrl}}/api/budget/period-budget?period=week&date=2026-11-18 HTTP/1.1
 Authorization: Bearer {{jwt}}
 
 
+### Get Cash Flow
+
+GET {{baseUrl}}/api/budget/cash-flow?bucket=day&count=14 HTTP/1.1
+Authorization: Bearer {{jwt}}
+
+
 ### Get Month-over-Month Trends
 
 GET {{baseUrl}}/api/budget/trends/month-over-month HTTP/1.1

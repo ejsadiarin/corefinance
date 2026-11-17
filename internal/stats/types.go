@@ -58,6 +58,19 @@ type CurrentTotalMoney struct {
 	RunwayDays        *int64          `json:"runway_days"`
 }
 
+type CashFlowBucket struct {
+	StartDate string          `json:"start_date"`
+	EndDate   string          `json:"end_date"`
+	Income    decimal.Decimal `json:"income"`
+	Spent     decimal.Decimal `json:"spent"`
+	Net       decimal.Decimal `json:"net"`
+}
+
+type CashFlowSeries struct {
+	Bucket  string           `json:"bucket"`
+	Buckets []CashFlowBucket `json:"buckets"`
+}
+
 type PeriodBudget struct {
 	Period               string           `json:"period"`
 	StartDate            string           `json:"start_date"`

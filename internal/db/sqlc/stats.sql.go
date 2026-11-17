@@ -689,6 +689,84 @@ func (q *Queries) GetUpcomingRecurringExpenses(ctx context.Context, userID uuid.
 	return items, nil
 }
 
+const listCashFlowBuckets = `-- name: ListCashFlowBuckets :many
+SELECT
+    bucket_start,
+    COALESCE(SUM(expenses), 0)::numeric AS expenses,
+    COALESCE(SUM(reimbursements), 0)::numeric AS reimbursements,
+    COALESCE(SUM(incomes), 0)::numeric AS incomes
+FROM (
+    SELECT date_trunc($1::text, e.expense_date::timestamp)::date AS bucket_start,
+           e.amount_php AS expenses,
+           0::numeric AS reimbursements,
+           0::numeric AS incomes
+    FROM expenses e
+    WHERE e.user_id = $2
+      AND e.status != 'skipped'
+      AND e.expense_date BETWEEN $3::date AND $4::date
+    UNION ALL
+    SELECT date_trunc($1::text, i.date::timestamp)::date AS bucket_start,
+           0::numeric AS expenses,
+           CASE WHEN i.category_id = $5::uuid THEN i.amount_php ELSE 0 END AS reimbursements,
+           CASE WHEN i.category_id IS DISTINCT FROM $5::uuid THEN i.amount_php ELSE 0 END AS incomes
+    FROM incomes i
+    WHERE i.user_id = $2
+      AND i.status != 'skipped'
+      AND i.date BETWEEN $3::date AND $4::date
+) daily
+GROUP BY bucket_start
+ORDER BY bucket_start
+`
+
+type ListCashFlowBucketsParams struct {
+	Bucket          string      `db:"bucket" json:"bucket"`
+	UserID          uuid.UUID   `db:"user_id" json:"user_id"`
+	StartDate       pgtype.Date `db:"start_date" json:"start_date"`
+	Today           pgtype.Date `db:"today" json:"today"`
+	ReimbursementID uuid.UUID   `db:"reimbursement_id" json:"reimbursement_id"`
+}
+
+type ListCashFlowBucketsRow struct {
+	BucketStart    pgtype.Date     `db:"bucket_start" json:"bucket_start"`
+	Expenses       decimal.Decimal `db:"expenses" json:"expenses"`
+	Reimbursements decimal.Decimal `db:"reimbursements" json:"reimbursements"`
+	Incomes        decimal.Decimal `db:"incomes" json:"incomes"`
+}
+
+// Daily records aggregated into day, week (Monday-start) or month buckets.
+// Future-dated and skipped records are left out; reimbursements are kept
+// apart from income so the service can net them out of spent.
+func (q *Queries) ListCashFlowBuckets(ctx context.Context, arg ListCashFlowBucketsParams) ([]ListCashFlowBucketsRow, error) {
+	rows, err := q.db.Query(ctx, listCashFlowBuckets,
+		arg.Bucket,
+		arg.UserID,
+		arg.StartDate,
+		arg.Today,
+		arg.ReimbursementID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCashFlowBucketsRow{}
+	for rows.Next() {
+		var i ListCashFlowBucketsRow
+		if err := rows.Scan(
+			&i.BucketStart,
+			&i.Expenses,
+			&i.Reimbursements,
+			&i.Incomes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRuleEntryDates = `-- name: ListRuleEntryDates :many
 SELECT e.source_rule_id::uuid AS source_rule_id, e.expense_date AS entry_date
 FROM expenses e

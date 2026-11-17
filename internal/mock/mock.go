@@ -37,6 +37,7 @@ type MockQuerier struct {
 	GetFiftyThirtyTwentyFn                func(ctx context.Context, arg db.GetFiftyThirtyTwentyParams) (db.GetFiftyThirtyTwentyRow, error)
 	GetIncomeFn                           func(ctx context.Context, arg db.GetIncomeParams) (db.GetIncomeRow, error)
 	ListRuleEntriesFn                     func(ctx context.Context, arg db.ListRuleEntriesParams) ([]db.ListRuleEntriesRow, error)
+	ListCashFlowBucketsFn                 func(ctx context.Context, arg db.ListCashFlowBucketsParams) ([]db.ListCashFlowBucketsRow, error)
 	ListRuleEntryDatesFn                  func(ctx context.Context, arg db.ListRuleEntryDatesParams) ([]db.ListRuleEntryDatesRow, error)
 	GetFeedHorizonFn                      func(ctx context.Context) (uint64, error)
 	ListRuleEntriesFeedFn                 func(ctx context.Context, arg db.ListRuleEntriesFeedParams) ([]db.ListRuleEntriesFeedRow, error)
@@ -371,6 +372,14 @@ func (m *MockQuerier) GetFeedHorizon(ctx context.Context) (uint64, error) {
 		return 0, nil
 	}
 	return m.GetFeedHorizonFn(ctx)
+}
+
+// ListCashFlowBuckets defaults to no buckets.
+func (m *MockQuerier) ListCashFlowBuckets(ctx context.Context, arg db.ListCashFlowBucketsParams) ([]db.ListCashFlowBucketsRow, error) {
+	if m.ListCashFlowBucketsFn == nil {
+		return nil, nil
+	}
+	return m.ListCashFlowBucketsFn(ctx, arg)
 }
 
 // ListRuleEntryDates defaults to no entries.

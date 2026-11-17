@@ -3,6 +3,7 @@ package stats
 import (
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/ejsadiarin/corefinance/internal/helper"
 )
@@ -185,6 +186,32 @@ func (h *Handler) PeriodBudget(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Debug("stats.PeriodBudget: success", "user_id", userID)
 	helper.RespondJSON(w, http.StatusOK, budget)
+}
+
+func (h *Handler) CashFlow(w http.ResponseWriter, r *http.Request) {
+	bucket := r.URL.Query().Get("bucket")
+	if !validPeriodKind(bucket) {
+		helper.RespondErrorJSON(w, http.StatusBadRequest, "bucket must be day, week or month")
+		return
+	}
+	count, err := strconv.Atoi(r.URL.Query().Get("count"))
+	if err != nil || count < 1 || count > MaxCashFlowBuckets {
+		helper.RespondErrorJSON(w, http.StatusBadRequest, "count must be between 1 and 62")
+		return
+	}
+	userID, ok := helper.ResolveTargetUser(w, r)
+	if !ok {
+		return
+	}
+	slog.Debug("stats.CashFlow: request received", "user_id", userID, "bucket", bucket, "count", count)
+	series, err := h.service.CashFlow(r.Context(), userID, bucket, count)
+	if err != nil {
+		slog.Error("stats.CashFlow: failed", "error", err, "user_id", userID)
+		helper.RespondErrorJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	slog.Debug("stats.CashFlow: success", "user_id", userID)
+	helper.RespondJSON(w, http.StatusOK, series)
 }
 
 func (h *Handler) MonthOverMonthTrends(w http.ResponseWriter, r *http.Request) {

@@ -80,6 +80,10 @@ type Querier interface {
 	ListAllExpensesByUser(ctx context.Context, userID uuid.UUID) ([]Expense, error)
 	ListAllIncomeTagsByUser(ctx context.Context, userID uuid.UUID) ([]IncomeTag, error)
 	ListAllIncomesByUser(ctx context.Context, userID uuid.UUID) ([]Income, error)
+	// Daily records aggregated into day, week (Monday-start) or month buckets.
+	// Future-dated and skipped records are left out; reimbursements are kept
+	// apart from income so the service can net them out of spent.
+	ListCashFlowBuckets(ctx context.Context, arg ListCashFlowBucketsParams) ([]ListCashFlowBucketsRow, error)
 	// Categories are one fixed, system-defined list per kind (ADR-0002): rows
 	// with no owner, seeded by migration 00015. Owners can't write them.
 	ListExpenseCategories(ctx context.Context) ([]ExpenseCategory, error)

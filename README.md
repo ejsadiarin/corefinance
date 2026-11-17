@@ -114,6 +114,7 @@ All routes are prefixed with `/budget`.
 | | `/forecast/upcoming` | Upcoming recurring expenses |
 | | `/current-total-money` | Money on hand, committed, average daily spend and runway |
 | | `/period-budget` | Day/week/month budget: funded, spent, bills still due, left, safe to spend per day, previous period |
+| | `/cash-flow` | Last N day/week/month buckets: income, spent and net, ending at today |
 | | `/trends/month-over-month` | Month-over-month comparison |
 | | `/priority-groups` | Reference data (need/want/savings) |
 | | `/rule-entries` | Entries recurring rules created (expenses and incomes), newest-inserted first; filters `rule_id`, `start_date`/`end_date`, `created_since` (RFC 3339), paged with `page`/`page_size` |

@@ -572,6 +572,103 @@ func TestStatsService_PeriodBudget_Integration(t *testing.T) {
 	})
 }
 
+// Spec (#27): cash flow buckets are contiguous ranges ending at the bucket
+// containing today, in the owner's timezone. Skipped and future records do
+// not count, reimbursements reduce spent and are not income, and empty
+// buckets come back as zeros.
+func TestStatsService_CashFlow_Integration(t *testing.T) {
+	svc, pool := newStatsIntegrationService(t)
+	ctx := auth.WithTimezone(context.Background(), "Asia/Manila")
+	reimbursementCategory := category.Reimbursement.String()
+
+	t.Run("day buckets are contiguous and net reimbursements", func(t *testing.T) {
+		svc.now = func() time.Time { return time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC) }
+		userID := uuid.New()
+		seedIncome(t, ctx, pool, userID, "1000", "2026-11-16", "posted")
+		seedExpense(t, ctx, pool, userID, "200", "2026-11-16", "posted")
+		seedIncomeInCategory(t, ctx, pool, userID, "50", "2026-11-16", "posted", &reimbursementCategory)
+		seedExpense(t, ctx, pool, userID, "100", "2026-11-17", "posted")
+		seedIncome(t, ctx, pool, userID, "999", "2026-11-17", "skipped")
+		seedIncome(t, ctx, pool, userID, "500", "2026-11-18", "posted")
+		seedIncomeInCategory(t, ctx, pool, userID, "100", "2026-11-18", "posted", &reimbursementCategory)
+		seedExpense(t, ctx, pool, userID, "300", "2026-11-18", "posted")
+		seedExpense(t, ctx, pool, userID, "999", "2026-11-19", "posted")
+
+		series, err := svc.CashFlow(ctx, userID, "day", 3)
+		require.NoError(t, err)
+		assert.Equal(t, "day", series.Bucket)
+		require.Len(t, series.Buckets, 3)
+		assert.Equal(t, "2026-11-16", series.Buckets[0].StartDate)
+		assert.Equal(t, "2026-11-18", series.Buckets[2].EndDate)
+		assert.True(t, decimal.NewFromInt(1000).Equal(series.Buckets[0].Income), series.Buckets[0].Income.String())
+		assert.True(t, decimal.NewFromInt(150).Equal(series.Buckets[0].Spent), series.Buckets[0].Spent.String())
+		assert.True(t, decimal.NewFromInt(850).Equal(series.Buckets[0].Net), series.Buckets[0].Net.String())
+		assert.True(t, decimal.Zero.Equal(series.Buckets[1].Income), series.Buckets[1].Income.String())
+		assert.True(t, decimal.NewFromInt(100).Equal(series.Buckets[1].Spent), series.Buckets[1].Spent.String())
+		assert.True(t, decimal.NewFromInt(-100).Equal(series.Buckets[1].Net), series.Buckets[1].Net.String())
+		assert.True(t, decimal.NewFromInt(500).Equal(series.Buckets[2].Income), series.Buckets[2].Income.String())
+		assert.True(t, decimal.NewFromInt(200).Equal(series.Buckets[2].Spent), series.Buckets[2].Spent.String())
+		assert.True(t, decimal.NewFromInt(300).Equal(series.Buckets[2].Net), series.Buckets[2].Net.String())
+	})
+
+	t.Run("day buckets follow the owner's zone", func(t *testing.T) {
+		// 07:30 on 18 November in Manila, still 17 November in UTC.
+		svc.now = func() time.Time { return time.Date(2026, 11, 17, 23, 30, 0, 0, time.UTC) }
+		userID := uuid.New()
+		seedExpense(t, ctx, pool, userID, "50", "2026-11-17", "posted")
+		seedExpense(t, ctx, pool, userID, "100", "2026-11-18", "posted")
+
+		series, err := svc.CashFlow(ctx, userID, "day", 2)
+		require.NoError(t, err)
+		require.Len(t, series.Buckets, 2)
+		assert.Equal(t, "2026-11-17", series.Buckets[0].StartDate)
+		assert.True(t, decimal.NewFromInt(50).Equal(series.Buckets[0].Spent), series.Buckets[0].Spent.String())
+		assert.Equal(t, "2026-11-18", series.Buckets[1].StartDate)
+		assert.True(t, decimal.NewFromInt(100).Equal(series.Buckets[1].Spent), series.Buckets[1].Spent.String())
+	})
+
+	t.Run("week buckets cross a month and leave future records out", func(t *testing.T) {
+		svc.now = func() time.Time { return time.Date(2027, 1, 2, 12, 0, 0, 0, time.UTC) }
+		userID := uuid.New()
+		seedIncome(t, ctx, pool, userID, "100", "2026-12-22", "posted")
+		seedExpense(t, ctx, pool, userID, "40", "2026-12-29", "posted")
+		seedIncome(t, ctx, pool, userID, "200", "2027-01-01", "posted")
+		seedExpense(t, ctx, pool, userID, "10", "2027-01-01", "posted")
+		seedExpense(t, ctx, pool, userID, "999", "2027-01-03", "posted")
+
+		series, err := svc.CashFlow(ctx, userID, "week", 2)
+		require.NoError(t, err)
+		require.Len(t, series.Buckets, 2)
+		assert.Equal(t, "2026-12-21", series.Buckets[0].StartDate)
+		assert.Equal(t, "2026-12-27", series.Buckets[0].EndDate)
+		assert.True(t, decimal.NewFromInt(100).Equal(series.Buckets[0].Income), series.Buckets[0].Income.String())
+		assert.Equal(t, "2026-12-28", series.Buckets[1].StartDate)
+		assert.Equal(t, "2027-01-03", series.Buckets[1].EndDate)
+		assert.True(t, decimal.NewFromInt(200).Equal(series.Buckets[1].Income), series.Buckets[1].Income.String())
+		assert.True(t, decimal.NewFromInt(50).Equal(series.Buckets[1].Spent), series.Buckets[1].Spent.String())
+		assert.True(t, decimal.NewFromInt(150).Equal(series.Buckets[1].Net), series.Buckets[1].Net.String())
+	})
+
+	t.Run("month buckets fill empty periods with zeros", func(t *testing.T) {
+		svc.now = func() time.Time { return time.Date(2027, 1, 2, 12, 0, 0, 0, time.UTC) }
+		userID := uuid.New()
+		seedIncome(t, ctx, pool, userID, "300", "2026-12-15", "posted")
+		seedExpense(t, ctx, pool, userID, "100", "2027-01-01", "posted")
+
+		series, err := svc.CashFlow(ctx, userID, "month", 3)
+		require.NoError(t, err)
+		require.Len(t, series.Buckets, 3)
+		assert.Equal(t, "2026-11-01", series.Buckets[0].StartDate)
+		assert.Equal(t, "2026-11-30", series.Buckets[0].EndDate)
+		assert.True(t, decimal.Zero.Equal(series.Buckets[0].Income), series.Buckets[0].Income.String())
+		assert.True(t, decimal.Zero.Equal(series.Buckets[0].Spent), series.Buckets[0].Spent.String())
+		assert.Equal(t, "2026-12-01", series.Buckets[1].StartDate)
+		assert.True(t, decimal.NewFromInt(300).Equal(series.Buckets[1].Income), series.Buckets[1].Income.String())
+		assert.Equal(t, "2027-01-01", series.Buckets[2].StartDate)
+		assert.True(t, decimal.NewFromInt(100).Equal(series.Buckets[2].Spent), series.Buckets[2].Spent.String())
+	})
+}
+
 func ptrDate(s string) *string { return &s }
 
 func seedRule(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, kind, cadence, start, amount string, active bool, end, categoryID, materializedThrough *string) uuid.UUID {
