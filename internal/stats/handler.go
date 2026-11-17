@@ -3,7 +3,6 @@ package stats
 import (
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/ejsadiarin/corefinance/internal/helper"
 )
@@ -162,14 +161,14 @@ func (h *Handler) CurrentTotalMoney(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) PeriodBudget(w http.ResponseWriter, r *http.Request) {
 	period := r.URL.Query().Get("period")
-	if period != "day" && period != "week" && period != "month" {
+	if !validPeriodKind(period) {
 		helper.RespondErrorJSON(w, http.StatusBadRequest, "period must be day, week or month")
 		return
 	}
 	anchor := r.URL.Query().Get("date")
 	if anchor != "" {
-		if _, err := time.Parse("2006-01-02", anchor); err != nil {
-			helper.RespondErrorJSON(w, http.StatusBadRequest, "date must be YYYY-MM-DD")
+		if err := helper.ValidateDate(anchor, "date"); err != nil {
+			helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	}

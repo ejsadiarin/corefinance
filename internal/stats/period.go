@@ -12,6 +12,16 @@ type dateRange struct {
 	start, end time.Time
 }
 
+// validPeriodKind reports whether kind is one of the periods the budget
+// reads: day, week or month.
+func validPeriodKind(kind string) bool {
+	switch kind {
+	case "day", "week", "month":
+		return true
+	}
+	return false
+}
+
 // periodRanges is the day, week (Monday to Sunday) or month containing
 // anchor and the period immediately before it.
 func periodRanges(kind string, anchor time.Time) (current, previous dateRange, err error) {
