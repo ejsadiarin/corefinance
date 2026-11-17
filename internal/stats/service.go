@@ -308,16 +308,13 @@ func (s *Service) PeriodBudget(ctx context.Context, userID uuid.UUID, kind, anch
 	}, nil
 }
 
-// MaxCashFlowBuckets bounds one series so the read stays cheap.
-const MaxCashFlowBuckets = 62
+// maxCashFlowBuckets bounds one series so the read stays cheap.
+const maxCashFlowBuckets = 62
 
 func (s *Service) CashFlow(ctx context.Context, userID uuid.UUID, kind string, count int) (CashFlowSeries, error) {
 	slog.Debug("stats.Service.CashFlow", "user_id", userID, "bucket", kind, "count", count)
-	if !validPeriodKind(kind) {
-		return CashFlowSeries{}, fmt.Errorf("bucket must be day, week or month")
-	}
-	if count < 1 || count > MaxCashFlowBuckets {
-		return CashFlowSeries{}, fmt.Errorf("count must be between 1 and %d", MaxCashFlowBuckets)
+	if count < 1 || count > maxCashFlowBuckets {
+		return CashFlowSeries{}, fmt.Errorf("count must be between 1 and %d", maxCashFlowBuckets)
 	}
 	loc, err := ownerZone(ctx, s.queries, userID)
 	if err != nil {

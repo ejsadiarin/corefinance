@@ -59,13 +59,14 @@ func daysBetween(from, to time.Time) int {
 // kind begin at firstStart. start must already be a bucket start.
 func bucketIndex(kind string, firstStart, start time.Time) int {
 	switch kind {
+	case "day":
+		return daysBetween(firstStart, start) - 1
 	case "week":
 		return daysBetween(firstStart, start) / 7
 	case "month":
 		return (start.Year()-firstStart.Year())*12 + int(start.Month()-firstStart.Month())
-	default: // day
-		return daysBetween(firstStart, start) - 1
 	}
+	return -1
 }
 
 func dateOnly(t time.Time) time.Time {

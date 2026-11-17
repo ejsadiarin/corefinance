@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -195,8 +196,8 @@ func (h *Handler) CashFlow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	count, err := strconv.Atoi(r.URL.Query().Get("count"))
-	if err != nil || count < 1 || count > MaxCashFlowBuckets {
-		helper.RespondErrorJSON(w, http.StatusBadRequest, "count must be between 1 and 62")
+	if err != nil || count < 1 || count > maxCashFlowBuckets {
+		helper.RespondErrorJSON(w, http.StatusBadRequest, fmt.Sprintf("count must be between 1 and %d", maxCashFlowBuckets))
 		return
 	}
 	userID, ok := helper.ResolveTargetUser(w, r)
