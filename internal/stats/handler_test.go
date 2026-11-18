@@ -18,7 +18,7 @@ func TestCashFlowHandler_RejectsBadInput(t *testing.T) {
 		{"unknown bucket", "/cash-flow?bucket=year&count=7"},
 		{"missing count", "/cash-flow?bucket=day"},
 		{"zero count", "/cash-flow?bucket=day&count=0"},
-		{"count over the bound", "/cash-flow?bucket=day&count=63"},
+		{"count over the bound", "/cash-flow?bucket=day&count=367"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()

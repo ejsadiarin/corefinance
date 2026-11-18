@@ -309,7 +309,7 @@ func (s *Service) PeriodBudget(ctx context.Context, userID uuid.UUID, kind, anch
 }
 
 // maxCashFlowBuckets bounds one series so the read stays cheap.
-const maxCashFlowBuckets = 62
+const maxCashFlowBuckets = 366
 
 func (s *Service) CashFlow(ctx context.Context, userID uuid.UUID, kind string, count int) (CashFlowSeries, error) {
 	slog.Debug("stats.Service.CashFlow", "user_id", userID, "bucket", kind, "count", count)
