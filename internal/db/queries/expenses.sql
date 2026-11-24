@@ -1,6 +1,6 @@
 -- name: CreateExpense :one
-INSERT INTO expenses (user_id, category_id, amount, currency, exchange_rate, amount_php, rate_date, description, notes, expense_date, priority, status, is_debt, source_rule_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+INSERT INTO expenses (user_id, category_id, amount, currency, exchange_rate, amount_php, rate_date, description, notes, expense_date, priority, status, is_debt, source_rule_id, occurred_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 RETURNING *;
 
 -- name: GetExpense :one
@@ -19,7 +19,7 @@ WHERE e.user_id = @user_id
   AND ('00000000-0000-0000-0000-000000000000' = @category_id::uuid OR e.category_id = @category_id)
   AND ('' = @priority OR e.priority = @priority)
   AND ('' = @status OR e.status = @status)
-ORDER BY e.expense_date DESC, e.created_at DESC
+ORDER BY e.expense_date DESC, e.occurred_at DESC NULLS LAST, e.created_at DESC
 LIMIT @page_limit OFFSET @page_offset;
 
 -- name: SearchExpenses :many
@@ -28,7 +28,7 @@ FROM expenses e
 LEFT JOIN expense_categories ec ON e.category_id = ec.id
 WHERE e.user_id = @user_id
   AND (e.description ILIKE '%' || @query || '%' OR e.notes ILIKE '%' || @query || '%')
-ORDER BY e.expense_date DESC, e.created_at DESC
+ORDER BY e.expense_date DESC, e.occurred_at DESC NULLS LAST, e.created_at DESC
 LIMIT @page_limit OFFSET @page_offset;
 
 -- name: UpdateExpense :one
@@ -36,7 +36,7 @@ UPDATE expenses
 SET category_id = $3, amount = $4, currency = $5, exchange_rate = $6,
     amount_php = $7, rate_date = $8, description = $9, notes = $10,
     expense_date = $11, priority = $12, status = $13,
-    is_debt = $14, source_rule_id = $15,
+    is_debt = $14, source_rule_id = $15, occurred_at = $16,
     updated_at = now(), user_edited_at = now()
 WHERE id = $1 AND user_id = $2
 RETURNING *;
@@ -87,7 +87,7 @@ WHERE user_id = $1
 -- name: ListAllExpensesByUser :many
 SELECT * FROM expenses
 WHERE user_id = $1
-ORDER BY expense_date DESC, created_at DESC;
+ORDER BY expense_date DESC, occurred_at DESC NULLS LAST, created_at DESC;
 
 -- name: ListExpensesByIDs :many
 -- The caller's expenses among the given ids; ids that don't exist or
@@ -96,4 +96,4 @@ SELECT e.*, ec.name AS category_name, ec.color AS category_color, ec.icon AS cat
 FROM expenses e
 LEFT JOIN expense_categories ec ON e.category_id = ec.id
 WHERE e.user_id = @user_id AND e.id = ANY(@ids::uuid[])
-ORDER BY e.expense_date DESC, e.created_at DESC;
+ORDER BY e.expense_date DESC, e.occurred_at DESC NULLS LAST, e.created_at DESC;

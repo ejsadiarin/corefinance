@@ -264,6 +264,7 @@ func (s *Service) Import(ctx context.Context, userID uuid.UUID, export *BudgetEx
 			Status:       exp.Status,
 			IsDebt:       exp.IsDebt,
 			SourceRuleID: helper.ToPgUUIDFromUUID(newRuleID),
+			OccurredAt:   exp.OccurredAt,
 		})
 		if err != nil {
 			slog.Error("budget.Service.Import: failed to import expenses", "error", err, "user_id", userID)
@@ -311,6 +312,7 @@ func (s *Service) Import(ctx context.Context, userID uuid.UUID, export *BudgetEx
 			Priority:     inc.Priority,
 			Status:       inc.Status,
 			SourceRuleID: helper.ToPgUUIDFromUUID(newRuleID),
+			OccurredAt:   inc.OccurredAt,
 		})
 		if err != nil {
 			slog.Error("budget.Service.Import: failed to import incomes", "error", err, "user_id", userID)

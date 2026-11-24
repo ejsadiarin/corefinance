@@ -9,6 +9,7 @@ import (
 
 	"github.com/ejsadiarin/corefinance/internal/category"
 	"github.com/ejsadiarin/corefinance/internal/helper"
+	"github.com/ejsadiarin/corefinance/internal/occurred"
 )
 
 type Handler struct {
@@ -42,6 +43,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := helper.ValidateDate(req.Date, "date"); err != nil {
+		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := occurred.ValidateTime(req.Time); err != nil {
 		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -154,6 +159,10 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := helper.ValidateDate(req.Date, "date"); err != nil {
+		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := occurred.ValidateTime(req.Time); err != nil {
 		helper.RespondErrorJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}

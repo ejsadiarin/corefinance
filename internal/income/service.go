@@ -12,6 +12,7 @@ import (
 
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/helper"
+	"github.com/ejsadiarin/corefinance/internal/occurred"
 	"github.com/ejsadiarin/corefinance/internal/rates"
 )
 
@@ -44,6 +45,10 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, req CreateReques
 	if err != nil {
 		return db.Income{}, err
 	}
+	at, err := occurred.For(ctx, s.queries, userID, req.Date, req.Time)
+	if err != nil {
+		return db.Income{}, err
+	}
 	return s.queries.CreateIncome(ctx, db.CreateIncomeParams{
 		UserID:       userID,
 		CategoryID:   helper.ToPgUUID(req.CategoryID),
@@ -58,6 +63,7 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, req CreateReques
 		Priority:     req.Priority,
 		Status:       req.Status,
 		SourceRuleID: helper.ToPgUUID(req.SourceRuleID),
+		OccurredAt:   at,
 	})
 }
 
@@ -120,6 +126,10 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, userID uuid.UUID, re
 	if err != nil {
 		return db.Income{}, err
 	}
+	at, err := occurred.For(ctx, s.queries, userID, req.Date, req.Time)
+	if err != nil {
+		return db.Income{}, err
+	}
 	return s.queries.UpdateIncome(ctx, db.UpdateIncomeParams{
 		ID:           id,
 		UserID:       userID,
@@ -135,6 +145,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, userID uuid.UUID, re
 		Priority:     req.Priority,
 		Status:       req.Status,
 		SourceRuleID: helper.ToPgUUID(req.SourceRuleID),
+		OccurredAt:   at,
 	})
 }
 

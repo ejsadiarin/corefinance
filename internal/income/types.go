@@ -6,24 +6,30 @@ import (
 )
 
 type CreateRequest struct {
-	CategoryID   *string `json:"category_id,omitempty"`
-	Amount       float64 `json:"amount"`
-	Currency     string  `json:"currency"`
-	Description  string  `json:"description"`
-	Notes        *string `json:"notes,omitempty"`
-	Date         string  `json:"date"`
+	CategoryID  *string `json:"category_id,omitempty"`
+	Amount      float64 `json:"amount"`
+	Currency    string  `json:"currency"`
+	Description string  `json:"description"`
+	Notes       *string `json:"notes,omitempty"`
+	Date        string  `json:"date"`
+	// Time is when on Date it happened, HH:mm in the owner's zone; absent
+	// for a record without a time (#28).
+	Time         *string `json:"time,omitempty"`
 	Priority     string  `json:"priority"`
 	Status       string  `json:"status"`
 	SourceRuleID *string `json:"source_rule_id,omitempty"`
 }
 
 type UpdateRequest struct {
-	CategoryID   *string `json:"category_id,omitempty"`
-	Amount       float64 `json:"amount"`
-	Currency     string  `json:"currency"`
-	Description  string  `json:"description"`
-	Notes        *string `json:"notes,omitempty"`
-	Date         string  `json:"date"`
+	CategoryID  *string `json:"category_id,omitempty"`
+	Amount      float64 `json:"amount"`
+	Currency    string  `json:"currency"`
+	Description string  `json:"description"`
+	Notes       *string `json:"notes,omitempty"`
+	Date        string  `json:"date"`
+	// Time is when on Date it happened, HH:mm in the owner's zone; absent
+	// for a record without a time (#28).
+	Time         *string `json:"time,omitempty"`
 	Priority     string  `json:"priority"`
 	Status       string  `json:"status"`
 	SourceRuleID *string `json:"source_rule_id,omitempty"`

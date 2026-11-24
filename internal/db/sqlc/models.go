@@ -30,6 +30,7 @@ type Expense struct {
 	ExchangeRate decimal.Decimal    `db:"exchange_rate" json:"exchange_rate"`
 	AmountPhp    decimal.Decimal    `db:"amount_php" json:"amount_php"`
 	RateDate     pgtype.Date        `db:"rate_date" json:"rate_date"`
+	OccurredAt   pgtype.Timestamptz `db:"occurred_at" json:"occurred_at"`
 }
 
 type ExpenseCategory struct {
@@ -67,6 +68,7 @@ type Income struct {
 	ExchangeRate decimal.Decimal    `db:"exchange_rate" json:"exchange_rate"`
 	AmountPhp    decimal.Decimal    `db:"amount_php" json:"amount_php"`
 	RateDate     pgtype.Date        `db:"rate_date" json:"rate_date"`
+	OccurredAt   pgtype.Timestamptz `db:"occurred_at" json:"occurred_at"`
 }
 
 type IncomeCategory struct {

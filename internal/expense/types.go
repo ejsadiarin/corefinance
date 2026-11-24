@@ -6,12 +6,15 @@ import (
 )
 
 type CreateRequest struct {
-	CategoryID   *string `json:"category_id,omitempty"`
-	Amount       float64 `json:"amount"`
-	Currency     string  `json:"currency"`
-	Description  string  `json:"description"`
-	Notes        *string `json:"notes,omitempty"`
-	ExpenseDate  string  `json:"expense_date"`
+	CategoryID  *string `json:"category_id,omitempty"`
+	Amount      float64 `json:"amount"`
+	Currency    string  `json:"currency"`
+	Description string  `json:"description"`
+	Notes       *string `json:"notes,omitempty"`
+	ExpenseDate string  `json:"expense_date"`
+	// Time is when on ExpenseDate it happened, HH:mm in the owner's zone;
+	// absent for a record without a time (#28).
+	Time         *string `json:"time,omitempty"`
 	Priority     string  `json:"priority"`
 	Status       string  `json:"status"`
 	IsDebt       bool    `json:"is_debt"`
@@ -19,12 +22,15 @@ type CreateRequest struct {
 }
 
 type UpdateRequest struct {
-	CategoryID   *string `json:"category_id,omitempty"`
-	Amount       float64 `json:"amount"`
-	Currency     string  `json:"currency"`
-	Description  string  `json:"description"`
-	Notes        *string `json:"notes,omitempty"`
-	ExpenseDate  string  `json:"expense_date"`
+	CategoryID  *string `json:"category_id,omitempty"`
+	Amount      float64 `json:"amount"`
+	Currency    string  `json:"currency"`
+	Description string  `json:"description"`
+	Notes       *string `json:"notes,omitempty"`
+	ExpenseDate string  `json:"expense_date"`
+	// Time is when on ExpenseDate it happened, HH:mm in the owner's zone;
+	// absent for a record without a time (#28).
+	Time         *string `json:"time,omitempty"`
 	Priority     string  `json:"priority"`
 	Status       string  `json:"status"`
 	IsDebt       bool    `json:"is_debt"`

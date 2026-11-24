@@ -28,6 +28,10 @@ _Avoid_: cost, spending, payment, debit
 Money the owner received, on one date. Like an expense, always a single record.
 _Avoid_: earning, revenue, credit, deposit
 
+**Occurred at**:
+The moment a budget record happened, when the owner gives a time: their wall clock on the record's date, read in their timezone and kept as UTC. Optional; rule entries and records entered by day have none. The record's date stays what every figure counts, so a later timezone change moves how the time reads, never the day.
+_Avoid_: timestamp, transaction time, created at
+
 **Category**:
 One slice of a fixed, system-defined list that a budget record is filed under, at most one per record. Expenses and incomes have separate lists, and owners can't add to either (ADR-0002).
 _Avoid_: tag, type, bucket
