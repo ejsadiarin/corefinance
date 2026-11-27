@@ -74,7 +74,7 @@ func runOnce(ctx context.Context, pool *pgxpool.Pool, queries *db.Queries, zones
 		slog.Warn("main.runOnce: materialize pass skipped some users", "inserted", n, "error", err)
 		return 1
 	}
-	// Passes run at least once a minute; only ones that did something are news.
+	// Passes run at least every maxSleep; only ones that did something are news.
 	if n > 0 {
 		slog.Info("main.runOnce: materialize pass complete", "inserted", n)
 	} else {
@@ -101,8 +101,9 @@ func main() {
 	}
 
 	// Long-running mode (#16): a pass, then sleep until the earliest rule's
-	// next occurrence starts, checking at least once a minute so rules saved
-	// in the meantime (by the API, in another process) are never late by more.
+	// next occurrence starts, checking at least every maxSleep (15 minutes) so
+	// rules saved in the meantime (by the API, in another process) are never
+	// late by more.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -121,12 +122,14 @@ func main() {
 	}
 }
 
-// maxSleep caps how long the worker sleeps between passes.
-const maxSleep = time.Minute
+// maxSleep caps how long the worker sleeps between passes, so a rule saved
+// while it sleeps (by the API, in another process) is at most this late. Each
+// pass queries the database, so a short cap keeps Neon from scaling to zero.
+const maxSleep = 15 * time.Minute
 
 // untilNextWake is how long to sleep before the next pass: until the earliest
 // next occurrence, at least a second and at most maxSleep.
-func untilNextWake(ctx context.Context, queries *db.Queries, now time.Time) time.Duration {
+func untilNextWake(ctx context.Context, queries db.Querier, now time.Time) time.Duration {
 	wake, err := materialize.NextWake(ctx, queries, now)
 	if err != nil {
 		if !errors.Is(err, materialize.ErrNothingDue) {
