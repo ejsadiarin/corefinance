@@ -122,7 +122,8 @@ All routes are prefixed with `/budget`.
 | | `/remaining` | Current month budget remaining |
 | | `/export` | Export all budget data as JSON |
 | | `/import` | Import budget data (with ID remapping) |
-| `/` | `/health` | Health check (pgxpool ping + stats) |
+| `/` | `/health` | Liveness: `{"status":"up"}`, never touches the database |
+| | `/ready` | Readiness: database ping + pool stats; 503 when the ping fails |
 
 ## Timezone
 

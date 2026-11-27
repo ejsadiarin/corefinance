@@ -28,7 +28,11 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	r.Get("/", s.HelloWorldHandler)
 
+	// Liveness and readiness, outside the verifier. Monitors poll /health,
+	// which must never touch the database (a ping wakes Neon); /ready is for
+	// on-demand and orchestrator readiness checks.
 	r.Get("/health", s.healthHandler)
+	r.Get("/ready", s.readyHandler)
 
 	r.Get("/websocket", s.websocketHandler)
 
@@ -161,16 +165,20 @@ func (s *Server) HelloWorldHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(jsonResp)
 }
 
+// healthHandler is liveness: the process is serving requests.
 func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
-	stats := make(map[string]string)
+	writeProbe(w, http.StatusOK, map[string]string{"status": "up"})
+}
 
-	ctx := r.Context()
-	if err := s.Pool.Ping(ctx); err != nil {
+// readyHandler is readiness: the database answers a ping. The error is
+// logged, not returned, since it can name the host and role.
+func (s *Server) readyHandler(w http.ResponseWriter, r *http.Request) {
+	stats := map[string]string{"status": "up"}
+	code := http.StatusOK
+	if err := s.Pool.Ping(r.Context()); err != nil {
+		slog.Warn("server.readyHandler: database ping failed", "error", err)
 		stats["status"] = "down"
-		stats["error"] = err.Error()
-	} else {
-		stats["status"] = "up"
-		stats["message"] = "It's healthy"
+		code = http.StatusServiceUnavailable
 	}
 
 	poolStats := s.Pool.Stat()
@@ -178,8 +186,13 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	stats["acquired_conns"] = fmt.Sprintf("%d", poolStats.AcquiredConns())
 	stats["idle_conns"] = fmt.Sprintf("%d", poolStats.IdleConns())
 
-	jsonResp, _ := json.Marshal(stats)
-	_, _ = w.Write(jsonResp)
+	writeProbe(w, code, stats)
+}
+
+func writeProbe(w http.ResponseWriter, code int, body map[string]string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(body)
 }
 
 func (s *Server) websocketHandler(w http.ResponseWriter, r *http.Request) {

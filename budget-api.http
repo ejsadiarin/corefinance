@@ -14,7 +14,7 @@
 #    below as @jwt (5-minute TTL).
 # 2. Run any request - Authorization: Bearer {{jwt}} is sent automatically.
 #
-# Auth: every route except /health, /, /websocket and
+# Auth: every route except /health, /ready, /, /websocket and
 # /api/budget/priority-groups requires a gateway-created internal JWT.
 # X-User-ID is NOT accepted from the wire (spoofing returns 401).
 #
@@ -37,12 +37,16 @@
 # - Export/Import: JSON backup with ID remapping
 # - Admin Backfill: per-user legacy inline-rule conversion (admin scope only;
 #   POST only, ?dry_run=true counts without mutating, ?user_id targets anyone)
-# - Health: pgxpool ping + connection stats
+# - Health: liveness, no database. Ready: pgxpool ping + connection stats
 
 
 ### Health Check
 
 GET {{baseUrl}}/health HTTP/1.1
+
+### Readiness (pings the database)
+
+GET {{baseUrl}}/ready HTTP/1.1
 
 ### Categories (system-defined, read-only: ADR-0002)
 
