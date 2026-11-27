@@ -14,6 +14,12 @@ import (
 var _ db.Querier = (*MockQuerier)(nil)
 
 type MockQuerier struct {
+	ImportExpenseFn                       func(ctx context.Context, arg db.ImportExpenseParams) (int64, error)
+	ImportIncomeFn                        func(ctx context.Context, arg db.ImportIncomeParams) (int64, error)
+	ImportRuleFn                          func(ctx context.Context, arg db.ImportRuleParams) (int64, error)
+	ImportTagFn                           func(ctx context.Context, arg db.ImportTagParams) (int64, error)
+	ListAllRulesByUserFn                  func(ctx context.Context, userID uuid.UUID) ([]db.Rule, error)
+	ListForeignBudgetIDsFn                func(ctx context.Context, arg db.ListForeignBudgetIDsParams) ([]db.ListForeignBudgetIDsRow, error)
 	AddTagToExpenseFn                     func(ctx context.Context, arg db.AddTagToExpenseParams) error
 	AddTagToIncomeFn                      func(ctx context.Context, arg db.AddTagToIncomeParams) error
 	CheckSkippedExpenseFn                 func(ctx context.Context, arg db.CheckSkippedExpenseParams) (bool, error)
@@ -500,4 +506,28 @@ func (m *MockQuerier) RecordUserTimezone(ctx context.Context, arg db.RecordUserT
 		return false, nil
 	}
 	return m.RecordUserTimezoneFn(ctx, arg)
+}
+
+func (m *MockQuerier) ImportExpense(ctx context.Context, arg db.ImportExpenseParams) (int64, error) {
+	return m.ImportExpenseFn(ctx, arg)
+}
+
+func (m *MockQuerier) ImportIncome(ctx context.Context, arg db.ImportIncomeParams) (int64, error) {
+	return m.ImportIncomeFn(ctx, arg)
+}
+
+func (m *MockQuerier) ImportRule(ctx context.Context, arg db.ImportRuleParams) (int64, error) {
+	return m.ImportRuleFn(ctx, arg)
+}
+
+func (m *MockQuerier) ImportTag(ctx context.Context, arg db.ImportTagParams) (int64, error) {
+	return m.ImportTagFn(ctx, arg)
+}
+
+func (m *MockQuerier) ListAllRulesByUser(ctx context.Context, userID uuid.UUID) ([]db.Rule, error) {
+	return m.ListAllRulesByUserFn(ctx, userID)
+}
+
+func (m *MockQuerier) ListForeignBudgetIDs(ctx context.Context, arg db.ListForeignBudgetIDsParams) ([]db.ListForeignBudgetIDsRow, error) {
+	return m.ListForeignBudgetIDsFn(ctx, arg)
 }

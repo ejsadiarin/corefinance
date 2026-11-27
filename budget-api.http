@@ -685,28 +685,24 @@ Authorization: Bearer {{jwt}}
 ### ============================================
 
 
-### Export Budget Data
+### Export the budget part (coregateway ADR-0008; schema in schemas/budget.v1.json)
 
 GET {{baseUrl}}/api/budget/export HTTP/1.1
 Authorization: Bearer {{jwt}}
 
 
-### Import Budget Data
+### Import a budget part, or an unversioned export (version 0). Ids are kept:
+### rows you already have are skipped. Drop ?dry_run=true to write.
 
-POST {{baseUrl}}/api/budget/import HTTP/1.1
+POST {{baseUrl}}/api/budget/import?dry_run=true HTTP/1.1
 Content-Type: application/json
 Authorization: Bearer {{jwt}}
 
 {
-  "expense_categories": [],
-  "income_categories": [],
-  "tags": [],
-  "expenses": [],
-  "incomes": [],
-  "recurring_expense_rules": [],
-  "recurring_income_rules": [],
-  "expense_tags": [],
-  "income_tags": []
+  "format": "coregateway.budget",
+  "version": 1,
+  "exported_at": "2026-11-27T00:00:00Z",
+  "data": { "tags": [], "rules": [], "expenses": [], "incomes": [] }
 }
 
 

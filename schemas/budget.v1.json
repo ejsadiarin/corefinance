@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/ejsadiarin/corefinance/main/schemas/budget.v1.json",
+  "title": "coregateway budget part, version 1",
+  "description": "One owner's budget: tags, recurring rules, expenses and incomes (coregateway ADR-0008). Ids are kept on import; a record the importing owner already has is skipped.",
+  "type": "object",
+  "required": ["format", "version", "exported_at", "data"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "format": { "const": "coregateway.budget" },
+    "version": { "const": 1 },
+    "exported_at": { "type": "string", "format": "date-time" },
+    "source": {
+      "type": "object",
+      "properties": { "service": { "type": "string" } }
+    },
+    "data": {
+      "type": "object",
+      "required": ["tags", "rules", "expenses", "incomes"],
+      "additionalProperties": false,
+      "properties": {
+        "tags": { "type": "array", "items": { "$ref": "#/$defs/tag" } },
+        "rules": { "type": "array", "items": { "$ref": "#/$defs/rule" } },
+        "expenses": { "type": "array", "items": { "$ref": "#/$defs/expense" } },
+        "incomes": { "type": "array", "items": { "$ref": "#/$defs/income" } }
+      }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "format": "uuid" },
+    "date": { "type": "string", "format": "date" },
+    "optionalDate": { "type": ["string", "null"], "format": "date" },
+    "optionalTime": { "type": ["string", "null"], "format": "date-time" },
+    "optionalText": { "type": ["string", "null"] },
+    "amount": {
+      "description": "A decimal, written as a string so no precision is lost.",
+      "type": ["string", "number"],
+      "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+    },
+    "currency": { "type": "string", "pattern": "^[A-Za-z]{3}$" },
+    "category": {
+      "description": "A system category's name. A name with no system match imports as `other` plus a tag of that name.",
+      "type": ["string", "null"]
+    },
+    "priority": { "enum": ["need", "want", "savings"] },
+    "tag": {
+      "type": "object",
+      "required": ["id", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "color": { "type": ["string", "null"], "maxLength": 7 },
+        "created_at": { "$ref": "#/$defs/optionalTime" }
+      }
+    },
+    "rule": {
+      "description": "A recurring rule. materialized_through is the last date it has filled: an imported rule carries on after it.",
+      "type": "object",
+      "required": ["id", "kind", "description", "amount", "currency", "recurrence", "start_date", "priority", "paused"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": { "enum": ["expense", "income"] },
+        "description": { "type": "string" },
+        "notes": { "$ref": "#/$defs/optionalText" },
+        "amount": { "$ref": "#/$defs/amount" },
+        "currency": { "$ref": "#/$defs/currency" },
+        "category": { "$ref": "#/$defs/category" },
+        "recurrence": { "enum": ["daily", "weekly", "monthly", "yearly"] },
+        "start_date": { "$ref": "#/$defs/date" },
+        "end_date": { "$ref": "#/$defs/optionalDate" },
+        "priority": { "$ref": "#/$defs/priority" },
+        "paused": { "type": "boolean" },
+        "materialized_through": { "$ref": "#/$defs/optionalDate" },
+        "created_at": { "$ref": "#/$defs/optionalTime" }
+      }
+    },
+    "record": {
+      "type": "object",
+      "required": ["id", "description", "amount", "currency", "date", "priority", "status", "tags"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "description": { "type": "string" },
+        "notes": { "$ref": "#/$defs/optionalText" },
+        "amount": { "$ref": "#/$defs/amount" },
+        "currency": { "$ref": "#/$defs/currency" },
+        "exchange_rate": {
+          "description": "PHP per unit of currency, kept as recorded (corefinance ADR-0003). Required, with amount_php and rate_date, for a currency other than PHP.",
+          "$ref": "#/$defs/amount"
+        },
+        "amount_php": { "$ref": "#/$defs/amount" },
+        "rate_date": { "$ref": "#/$defs/optionalDate" },
+        "date": { "$ref": "#/$defs/date" },
+        "occurred_at": { "$ref": "#/$defs/optionalTime" },
+        "category": { "$ref": "#/$defs/category" },
+        "priority": { "$ref": "#/$defs/priority" },
+        "status": { "enum": ["pending", "posted", "skipped"] },
+        "rule_id": {
+          "description": "The rule this record is an entry of.",
+          "type": ["string", "null"],
+          "format": "uuid"
+        },
+        "edited_at": {
+          "description": "When the owner edited this rule entry; a later schedule change keeps edited entries for review.",
+          "$ref": "#/$defs/optionalTime"
+        },
+        "tags": { "type": "array", "items": { "$ref": "#/$defs/id" } },
+        "created_at": { "$ref": "#/$defs/optionalTime" }
+      }
+    },
+    "expense": {
+      "allOf": [{ "$ref": "#/$defs/record" }],
+      "required": ["is_debt"],
+      "properties": { "is_debt": { "type": "boolean" } },
+      "unevaluatedProperties": false
+    },
+    "income": {
+      "allOf": [{ "$ref": "#/$defs/record" }],
+      "unevaluatedProperties": false
+    }
+  }
+}

@@ -143,3 +143,9 @@ _Avoid_: rebuild, regenerate, cleanup
 **What's new**:
 The feed of rule entries in the order they were written, so the owner can review what their rules posted since they last looked.
 _Avoid_: inbox, activity log, notifications
+
+### Export
+
+**Budget part**:
+The owner's budget as one part of a coregateway export: tags, rules and budget records, with the state that stops a rule repeating itself (how far it has filled, whether it is paused, which entries were edited). Importing it keeps every id, so a coreban note's link to a record survives; what the owner already has is skipped.
+_Avoid_: backup, dump, budget export file

@@ -2,7 +2,6 @@ package budget
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -52,11 +51,9 @@ func TestExportImport_KeepsTheTime_Integration(t *testing.T) {
 
 	export, err := svc.Export(ctx, source)
 	require.NoError(t, err)
-	file, err := json.Marshal(export)
-	require.NoError(t, err)
-	var read BudgetExport
-	require.NoError(t, json.Unmarshal(file, &read))
-	require.NoError(t, svc.Import(ctx, target, &read))
+	data, version := writeAndRead(t, export)
+	clearOwner(t, pool, source)
+	importOK(t, svc, target, data, version)
 
 	expenses, err := q.ListAllExpensesByUser(ctx, target)
 	require.NoError(t, err)
@@ -78,10 +75,11 @@ func TestExportImport_KeepsTheTime_Integration(t *testing.T) {
 	old := []byte(`{"expenses": [{"id": "` + uuid.NewString() + `", "amount": "5", "currency": "PHP",
 		"exchange_rate": "1", "amount_php": "5", "rate_date": "2026-11-20", "description": "old",
 		"expense_date": "2026-11-20", "priority": "want", "status": "posted"}]}`)
-	var legacy BudgetExport
-	require.NoError(t, json.Unmarshal(old, &legacy))
+	legacy, v0, err := ReadPart(old)
+	require.NoError(t, err)
+	require.Equal(t, 0, v0)
 	other := uuid.New()
-	require.NoError(t, svc.Import(ctx, other, &legacy))
+	importOK(t, svc, other, legacy, v0)
 	got, err := q.ListAllExpensesByUser(ctx, other)
 	require.NoError(t, err)
 	require.Len(t, got, 1)

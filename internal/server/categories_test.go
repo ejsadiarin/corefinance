@@ -171,7 +171,13 @@ func TestImportMapsCategoriesByName_Integration(t *testing.T) {
 		Incomes: []db.Income{{ID: uuid.New(), CategoryID: pgtype.UUID{Bytes: fileGig, Valid: true},
 			Amount: decimal.NewFromInt(500), Currency: "PHP", Description: "gig", Date: day, Priority: "want", Status: "posted"}},
 	}
-	require.NoError(t, budget.NewService(q, pool).Import(ctx, me, file))
+	raw, err := json.Marshal(file)
+	require.NoError(t, err)
+	data, version, err := budget.ReadPart(raw)
+	require.NoError(t, err)
+	res, err := budget.NewService(q, pool).Import(ctx, me, data, version, false)
+	require.NoError(t, err)
+	require.Equal(t, budget.StatusImported, res.Status, "errors: %+v", res.Errors)
 
 	type row struct {
 		Category uuid.UUID

@@ -2,6 +2,7 @@ package budget
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ejsadiarin/corefinance/internal/category"
 	db "github.com/ejsadiarin/corefinance/internal/db/sqlc"
 	"github.com/ejsadiarin/corefinance/internal/mock"
 	"github.com/ejsadiarin/corefinance/internal/rates"
@@ -113,322 +115,62 @@ func TestService_Remaining(t *testing.T) {
 }
 
 func TestService_Export(t *testing.T) {
-	userID := uuid.New()
+	userID, tagID, expID, ruleID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	food, _ := category.ByName(category.Expenses, "food")
+	day := pgtype.Date{Time: time.Date(2026, 11, 24, 0, 0, 0, 0, time.UTC), Valid: true}
+	m := &mock.MockQuerier{
+		ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {
+			return []db.Tag{{ID: tagID, UserID: userID, Name: "essential"}}, nil
+		},
+		ListAllRulesByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.Rule, error) {
+			return []db.Rule{{ID: ruleID, Kind: "expense", UserID: userID, Amount: decimal.NewFromInt(500),
+				Currency: "PHP", CategoryID: pgtype.UUID{Bytes: food.ID, Valid: true}, RecurringType: "monthly",
+				StartDate: day, Priority: "need", IsActive: false, MaterializedThrough: day,
+				NextDueAt: pgtype.Timestamptz{Time: time.Now(), Valid: true}}}, nil
+		},
+		ListAllExpensesByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.Expense, error) {
+			return []db.Expense{{ID: expID, UserID: userID, CategoryID: pgtype.UUID{Bytes: food.ID, Valid: true},
+				Amount: decimal.NewFromInt(500), Currency: "PHP", Description: "Groceries", ExpenseDate: day,
+				SourceRuleID: pgtype.UUID{Bytes: ruleID, Valid: true}}}, nil
+		},
+		ListAllIncomesByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.Income, error) {
+			return []db.Income{}, nil
+		},
+		ListAllExpenseTagsByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.ExpenseTag, error) {
+			return []db.ExpenseTag{{ExpenseID: expID, TagID: tagID}}, nil
+		},
+		ListAllIncomeTagsByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.IncomeTag, error) {
+			return []db.IncomeTag{}, nil
+		},
+	}
 
-	t.Run("success", func(t *testing.T) {
-		m := &mock.MockQuerier{
-			ListExpenseCategoriesFn: func(ctx context.Context) ([]db.ExpenseCategory, error) {
-				return []db.ExpenseCategory{
-					{ID: uuid.New(), Name: "Food", IsActive: true},
-				}, nil
-			},
-			ListIncomeCategoriesFn: func(ctx context.Context) ([]db.IncomeCategory, error) {
-				return []db.IncomeCategory{
-					{ID: uuid.New(), Name: "Salary", IsActive: true},
-				}, nil
-			},
-			ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {
-				return []db.Tag{
-					{ID: uuid.New(), UserID: userID, Name: "essential"},
-				}, nil
-			},
-			ListAllExpensesByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.Expense, error) {
-				return []db.Expense{}, nil
-			},
-			ListAllIncomesByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.Income, error) {
-				return []db.Income{}, nil
-			},
-			ListRecurringExpenseRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ListRecurringExpenseRulesRow, error) {
-				return []db.ListRecurringExpenseRulesRow{}, nil
-			},
-			ListRecurringIncomeRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.Rule, error) {
-				return []db.Rule{}, nil
-			},
-			ListAllExpenseTagsByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.ExpenseTag, error) {
-				return []db.ExpenseTag{}, nil
-			},
-			ListAllIncomeTagsByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.IncomeTag, error) {
-				return []db.IncomeTag{}, nil
-			},
-		}
-		svc := NewService(m, nil)
+	part, err := NewService(m, nil).Export(context.Background(), userID)
+	require.NoError(t, err)
+	assert.Equal(t, PartFormat, part.Format)
+	assert.Equal(t, PartVersion, part.Version)
+	assert.Equal(t, PartSchema, part.Schema)
+	require.Len(t, part.Data.Expenses, 1)
+	e := part.Data.Expenses[0]
+	assert.Equal(t, "2026-11-24", e.Date)
+	assert.Equal(t, "food", *e.Category)
+	assert.Equal(t, ruleID, *e.RuleID)
+	assert.Equal(t, []uuid.UUID{tagID}, e.Tags)
+	require.Len(t, part.Data.Rules, 1)
+	assert.True(t, part.Data.Rules[0].Paused)
+	assert.Equal(t, "2026-11-24", *part.Data.Rules[0].MaterializedThrough)
+	assert.Empty(t, part.Data.Incomes)
 
-		result, err := svc.Export(context.Background(), userID)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		assert.Len(t, result.ExpenseCategories, 1)
-		assert.Len(t, result.IncomeCategories, 1)
-		assert.Len(t, result.Tags, 1)
-		assert.Empty(t, result.Expenses)
-		assert.Empty(t, result.Incomes)
-	})
+	file, err := json.Marshal(part)
+	require.NoError(t, err)
+	assert.NotContains(t, string(file), "user_id")
+	assert.NotContains(t, string(file), "next_due_at")
 
-	t.Run("expense categories query error", func(t *testing.T) {
-		m := &mock.MockQuerier{
-			ListExpenseCategoriesFn: func(ctx context.Context) ([]db.ExpenseCategory, error) {
-				return nil, errors.New("db error")
-			},
-		}
-		svc := NewService(m, nil)
-
-		_, err := svc.Export(context.Background(), userID)
-		require.Error(t, err)
-	})
-
-	t.Run("tags query error", func(t *testing.T) {
-		m := &mock.MockQuerier{
-			ListExpenseCategoriesFn: func(ctx context.Context) ([]db.ExpenseCategory, error) {
-				return []db.ExpenseCategory{}, nil
-			},
-			ListIncomeCategoriesFn: func(ctx context.Context) ([]db.IncomeCategory, error) {
-				return []db.IncomeCategory{}, nil
-			},
-			ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {
-				return nil, errors.New("tags query failed")
-			},
-		}
-		svc := NewService(m, nil)
-
-		_, err := svc.Export(context.Background(), userID)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "tags query failed")
-	})
-
-	t.Run("expenses query error", func(t *testing.T) {
-		m := &mock.MockQuerier{
-			ListExpenseCategoriesFn: func(ctx context.Context) ([]db.ExpenseCategory, error) {
-				return []db.ExpenseCategory{}, nil
-			},
-			ListIncomeCategoriesFn: func(ctx context.Context) ([]db.IncomeCategory, error) {
-				return []db.IncomeCategory{}, nil
-			},
-			ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {
-				return []db.Tag{}, nil
-			},
-			ListAllExpensesByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.Expense, error) {
-				return nil, errors.New("expenses query failed")
-			},
-		}
-		svc := NewService(m, nil)
-
-		_, err := svc.Export(context.Background(), userID)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "expenses query failed")
-	})
-
-	t.Run("incomes query error", func(t *testing.T) {
-		m := &mock.MockQuerier{
-			ListExpenseCategoriesFn: func(ctx context.Context) ([]db.ExpenseCategory, error) {
-				return []db.ExpenseCategory{}, nil
-			},
-			ListIncomeCategoriesFn: func(ctx context.Context) ([]db.IncomeCategory, error) {
-				return []db.IncomeCategory{}, nil
-			},
-			ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {
-				return []db.Tag{}, nil
-			},
-			ListAllExpensesByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.Expense, error) {
-				return []db.Expense{}, nil
-			},
-			ListAllIncomesByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.Income, error) {
-				return nil, errors.New("incomes query failed")
-			},
-		}
-		svc := NewService(m, nil)
-
-		_, err := svc.Export(context.Background(), userID)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "incomes query failed")
-	})
-
-	t.Run("recurring expenses query error", func(t *testing.T) {
-		m := &mock.MockQuerier{
-			ListExpenseCategoriesFn: func(ctx context.Context) ([]db.ExpenseCategory, error) {
-				return []db.ExpenseCategory{}, nil
-			},
-			ListIncomeCategoriesFn: func(ctx context.Context) ([]db.IncomeCategory, error) {
-				return []db.IncomeCategory{}, nil
-			},
-			ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {
-				return []db.Tag{}, nil
-			},
-			ListAllExpensesByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.Expense, error) {
-				return []db.Expense{}, nil
-			},
-			ListAllIncomesByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.Income, error) {
-				return []db.Income{}, nil
-			},
-			ListRecurringExpenseRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ListRecurringExpenseRulesRow, error) {
-				return nil, errors.New("recurring expenses failed")
-			},
-		}
-		svc := NewService(m, nil)
-
-		_, err := svc.Export(context.Background(), userID)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "recurring expenses failed")
-	})
-
-	t.Run("recurring incomes query error", func(t *testing.T) {
-		m := &mock.MockQuerier{
-			ListExpenseCategoriesFn: func(ctx context.Context) ([]db.ExpenseCategory, error) {
-				return []db.ExpenseCategory{}, nil
-			},
-			ListIncomeCategoriesFn: func(ctx context.Context) ([]db.IncomeCategory, error) {
-				return []db.IncomeCategory{}, nil
-			},
-			ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {
-				return []db.Tag{}, nil
-			},
-			ListAllExpensesByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.Expense, error) {
-				return []db.Expense{}, nil
-			},
-			ListAllIncomesByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.Income, error) {
-				return []db.Income{}, nil
-			},
-			ListRecurringExpenseRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ListRecurringExpenseRulesRow, error) {
-				return []db.ListRecurringExpenseRulesRow{}, nil
-			},
-			ListRecurringIncomeRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.Rule, error) {
-				return nil, errors.New("recurring incomes failed")
-			},
-		}
-		svc := NewService(m, nil)
-
-		_, err := svc.Export(context.Background(), userID)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "recurring incomes failed")
-	})
-
-	t.Run("expense tags query error", func(t *testing.T) {
-		m := &mock.MockQuerier{
-			ListExpenseCategoriesFn: func(ctx context.Context) ([]db.ExpenseCategory, error) {
-				return []db.ExpenseCategory{}, nil
-			},
-			ListIncomeCategoriesFn: func(ctx context.Context) ([]db.IncomeCategory, error) {
-				return []db.IncomeCategory{}, nil
-			},
-			ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {
-				return []db.Tag{}, nil
-			},
-			ListAllExpensesByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.Expense, error) {
-				return []db.Expense{}, nil
-			},
-			ListAllIncomesByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.Income, error) {
-				return []db.Income{}, nil
-			},
-			ListRecurringExpenseRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ListRecurringExpenseRulesRow, error) {
-				return []db.ListRecurringExpenseRulesRow{}, nil
-			},
-			ListRecurringIncomeRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.Rule, error) {
-				return []db.Rule{}, nil
-			},
-			ListAllExpenseTagsByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.ExpenseTag, error) {
-				return nil, errors.New("expense tags failed")
-			},
-		}
-		svc := NewService(m, nil)
-
-		_, err := svc.Export(context.Background(), userID)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "expense tags failed")
-	})
-
-	t.Run("income tags query error", func(t *testing.T) {
-		m := &mock.MockQuerier{
-			ListExpenseCategoriesFn: func(ctx context.Context) ([]db.ExpenseCategory, error) {
-				return []db.ExpenseCategory{}, nil
-			},
-			ListIncomeCategoriesFn: func(ctx context.Context) ([]db.IncomeCategory, error) {
-				return []db.IncomeCategory{}, nil
-			},
-			ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {
-				return []db.Tag{}, nil
-			},
-			ListAllExpensesByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.Expense, error) {
-				return []db.Expense{}, nil
-			},
-			ListAllIncomesByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.Income, error) {
-				return []db.Income{}, nil
-			},
-			ListRecurringExpenseRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ListRecurringExpenseRulesRow, error) {
-				return []db.ListRecurringExpenseRulesRow{}, nil
-			},
-			ListRecurringIncomeRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.Rule, error) {
-				return []db.Rule{}, nil
-			},
-			ListAllExpenseTagsByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.ExpenseTag, error) {
-				return []db.ExpenseTag{}, nil
-			},
-			ListAllIncomeTagsByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.IncomeTag, error) {
-				return nil, errors.New("income tags failed")
-			},
-		}
-		svc := NewService(m, nil)
-
-		_, err := svc.Export(context.Background(), userID)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "income tags failed")
-	})
-
-	t.Run("export with real data", func(t *testing.T) {
-		catID := uuid.New()
-		tagID := uuid.New()
-		expID := uuid.New()
-
-		m := &mock.MockQuerier{
-			ListExpenseCategoriesFn: func(ctx context.Context) ([]db.ExpenseCategory, error) {
-				return []db.ExpenseCategory{
-					{ID: catID, Name: "Food", Color: pgtype.Text{String: "#FF0000", Valid: true}, IsActive: true},
-				}, nil
-			},
-			ListIncomeCategoriesFn: func(ctx context.Context) ([]db.IncomeCategory, error) {
-				return []db.IncomeCategory{}, nil
-			},
-			ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {
-				return []db.Tag{
-					{ID: tagID, UserID: userID, Name: "essential"},
-				}, nil
-			},
-			ListAllExpensesByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.Expense, error) {
-				return []db.Expense{
-					{
-						ID:          expID,
-						UserID:      userID,
-						CategoryID:  pgtype.UUID{Bytes: catID, Valid: true},
-						Amount:      decimal.NewFromFloat(500),
-						Currency:    "PHP",
-						Description: "Groceries",
-					},
-				}, nil
-			},
-			ListAllIncomesByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.Income, error) {
-				return []db.Income{}, nil
-			},
-			ListRecurringExpenseRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.ListRecurringExpenseRulesRow, error) {
-				return []db.ListRecurringExpenseRulesRow{}, nil
-			},
-			ListRecurringIncomeRulesFn: func(ctx context.Context, uid uuid.UUID) ([]db.Rule, error) {
-				return []db.Rule{}, nil
-			},
-			ListAllExpenseTagsByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.ExpenseTag, error) {
-				return []db.ExpenseTag{
-					{ExpenseID: expID, TagID: tagID},
-				}, nil
-			},
-			ListAllIncomeTagsByUserFn: func(ctx context.Context, uid uuid.UUID) ([]db.IncomeTag, error) {
-				return []db.IncomeTag{}, nil
-			},
-		}
-		svc := NewService(m, nil)
-
-		result, err := svc.Export(context.Background(), userID)
-		require.NoError(t, err)
-		assert.Len(t, result.ExpenseCategories, 1)
-		assert.Equal(t, "Food", result.ExpenseCategories[0].Name)
-		assert.Len(t, result.Expenses, 1)
-		assert.Equal(t, "500", result.Expenses[0].Amount.String())
-		assert.Len(t, result.ExpenseTags, 1)
+	t.Run("a query error is returned", func(t *testing.T) {
+		m := &mock.MockQuerier{ListTagsFn: func(ctx context.Context, uid uuid.UUID) ([]db.Tag, error) {
+			return nil, errors.New("tags query failed")
+		}}
+		_, err := NewService(m, nil).Export(context.Background(), userID)
+		require.ErrorContains(t, err, "tags query failed")
 	})
 }
 

@@ -128,7 +128,9 @@ func TestImportKeepsConvertedFields_Integration(t *testing.T) {
 
 	export, err := svc.Export(ctx, source)
 	require.NoError(t, err)
-	require.NoError(t, svc.Import(ctx, target, export))
+	data, version := writeAndRead(t, export)
+	clearOwner(t, pool, source)
+	importOK(t, svc, target, data, version)
 
 	got, err := q.ListAllIncomesByUser(ctx, target)
 	require.NoError(t, err)

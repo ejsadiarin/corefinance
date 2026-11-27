@@ -11,6 +11,8 @@ import (
 // trusted.
 var ErrLegacyCurrency = errors.New("legacy export has a non-PHP row without an exchange rate")
 
+// BudgetExport is the unversioned export that came before the budget part:
+// database rows as they were. ReadPart reads it as version 0.
 type BudgetExport struct {
 	ExpenseCategories []db.ExpenseCategory              `json:"expense_categories"`
 	IncomeCategories  []db.IncomeCategory               `json:"income_categories"`

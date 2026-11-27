@@ -76,10 +76,21 @@ type Querier interface {
 	GetTotalIncomesByDateRange(ctx context.Context, arg GetTotalIncomesByDateRangeParams) (decimal.Decimal, error)
 	GetTrends(ctx context.Context, arg GetTrendsParams) ([]GetTrendsRow, error)
 	GetUpcomingRecurringExpenses(ctx context.Context, userID uuid.UUID) ([]GetUpcomingRecurringExpensesRow, error)
+	// Also skips an entry whose rule already has one on that date for the owner.
+	ImportExpense(ctx context.Context, arg ImportExpenseParams) (int64, error)
+	ImportIncome(ctx context.Context, arg ImportIncomeParams) (int64, error)
+	// next_due_at is left NULL: the worker computes it from materialized_through
+	// on its next pass, as for a rule it has never scheduled (ADR-0001).
+	ImportRule(ctx context.Context, arg ImportRuleParams) (int64, error)
+	ImportTag(ctx context.Context, arg ImportTagParams) (int64, error)
 	ListAllExpenseTagsByUser(ctx context.Context, userID uuid.UUID) ([]ExpenseTag, error)
 	ListAllExpensesByUser(ctx context.Context, userID uuid.UUID) ([]Expense, error)
 	ListAllIncomeTagsByUser(ctx context.Context, userID uuid.UUID) ([]IncomeTag, error)
 	ListAllIncomesByUser(ctx context.Context, userID uuid.UUID) ([]Income, error)
+	// The budget part of an export (coregateway ADR-0008). Import keeps each
+	// record's id: a row the owner already has is skipped (ON CONFLICT DO
+	// NOTHING), and ids another owner holds are found first and fail the import.
+	ListAllRulesByUser(ctx context.Context, userID uuid.UUID) ([]Rule, error)
 	// Daily records aggregated into day, week (Monday-start) or month buckets.
 	// Future-dated and skipped records are left out; reimbursements are kept
 	// apart from income so the service can net them out of spent.
@@ -91,6 +102,8 @@ type Querier interface {
 	// The caller's expenses among the given ids; ids that don't exist or
 	// belong to someone else are simply absent.
 	ListExpensesByIDs(ctx context.Context, arg ListExpensesByIDsParams) ([]ListExpensesByIDsRow, error)
+	// Ids in the file that belong to someone other than the importing owner.
+	ListForeignBudgetIDs(ctx context.Context, arg ListForeignBudgetIDsParams) ([]ListForeignBudgetIDsRow, error)
 	ListIncomeCategories(ctx context.Context) ([]IncomeCategory, error)
 	ListIncomes(ctx context.Context, arg ListIncomesParams) ([]ListIncomesRow, error)
 	// The caller's incomes among the given ids; ids that don't exist or
