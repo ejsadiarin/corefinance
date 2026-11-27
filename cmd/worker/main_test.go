@@ -30,19 +30,23 @@ func TestUntilNextWake(t *testing.T) {
 	}
 
 	cases := []struct {
-		name string
-		q    wakeQuerier
-		want time.Duration
+		name   string
+		q      wakeQuerier
+		failed bool // the pass before skipped some users
+		want   time.Duration
 	}{
-		{"nothing due sleeps 15 minutes", wakeQuerier{}, 15 * time.Minute},
-		{"a rule due in 3 minutes wakes on time", wakeQuerier{wake: at(3 * time.Minute)}, 3 * time.Minute},
-		{"a rule due in an hour still checks after 15 minutes", wakeQuerier{wake: at(time.Hour)}, 15 * time.Minute},
-		{"an overdue rule waits at least a second", wakeQuerier{wake: at(-time.Minute)}, time.Second},
-		{"a failed lookup sleeps 15 minutes", wakeQuerier{err: errors.New("boom")}, 15 * time.Minute},
+		{"nothing due sleeps 6 hours", wakeQuerier{}, false, 6 * time.Hour},
+		{"a rule due in 3 minutes wakes on time", wakeQuerier{wake: at(3 * time.Minute)}, false, 3 * time.Minute},
+		{"a rule due in an hour wakes on time", wakeQuerier{wake: at(time.Hour)}, false, time.Hour},
+		{"a rule due in a week still checks after 6 hours", wakeQuerier{wake: at(7 * 24 * time.Hour)}, false, 6 * time.Hour},
+		{"an overdue rule waits at least a second", wakeQuerier{wake: at(-time.Minute)}, false, time.Second},
+		{"a failed lookup retries after 15 minutes", wakeQuerier{err: errors.New("boom")}, false, 15 * time.Minute},
+		{"a pass that skipped users retries after 15 minutes", wakeQuerier{wake: at(7 * 24 * time.Hour)}, true, 15 * time.Minute},
+		{"a pass that skipped users still wakes for a rule due sooner", wakeQuerier{wake: at(3 * time.Minute)}, true, 3 * time.Minute},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := untilNextWake(context.Background(), tc.q, now); got != tc.want {
+			if got := untilNextWake(context.Background(), tc.q, now, tc.failed); got != tc.want {
 				t.Fatalf("untilNextWake = %v, want %v", got, tc.want)
 			}
 		})

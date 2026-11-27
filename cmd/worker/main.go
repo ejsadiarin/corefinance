@@ -101,18 +101,18 @@ func main() {
 	}
 
 	// Long-running mode (#16): a pass, then sleep until the earliest rule's
-	// next occurrence starts, checking at least every maxSleep (15 minutes) so
-	// rules saved in the meantime (by the API, in another process) are never
-	// late by more.
+	// next occurrence starts, checking at least every maxSleep (6 hours) for
+	// rules saved in the meantime (by the API, in another process).
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	slog.Info("main: worker started, filling rules as they fall due")
 	for {
-		if code := runOnce(ctx, pool, queries, zones, provider); code != 0 {
+		failed := runOnce(ctx, pool, queries, zones, provider) != 0
+		if failed {
 			slog.Info("main: retrying skipped users at the next wake")
 		}
-		wait := untilNextWake(ctx, queries, time.Now())
+		wait := untilNextWake(ctx, queries, time.Now(), failed)
 		select {
 		case <-ctx.Done():
 			slog.Info("main: worker shutting down")
@@ -122,20 +122,34 @@ func main() {
 	}
 }
 
-// maxSleep caps how long the worker sleeps between passes, so a rule saved
-// while it sleeps (by the API, in another process) is at most this late. Each
-// pass queries the database, so a short cap keeps Neon from scaling to zero.
-const maxSleep = 15 * time.Minute
+// maxSleep caps how long the worker sleeps between passes. Saving a rule
+// already fills its due entries (the API runs the same pass), so the cap only
+// bounds one case: a rule saved while the worker sleeps whose first future
+// occurrence falls before the planned wake. Rules are daily or longer and
+// entries are dated, so that entry is at most this late on its own day. Each
+// pass wakes Neon, which then stays up about 5 minutes, so a short cap keeps
+// its compute from scaling to zero.
+const maxSleep = 6 * time.Hour
+
+// retrySleep is the cap after a failed pass or wake lookup (a database blip),
+// so the skipped work is retried soon instead of at the next 6-hour wake.
+const retrySleep = 15 * time.Minute
 
 // untilNextWake is how long to sleep before the next pass: until the earliest
-// next occurrence, at least a second and at most maxSleep.
-func untilNextWake(ctx context.Context, queries db.Querier, now time.Time) time.Duration {
+// next occurrence, at least a second and at most maxSleep, or retrySleep
+// when the pass before failed.
+func untilNextWake(ctx context.Context, queries db.Querier, now time.Time, passFailed bool) time.Duration {
+	limit := maxSleep
+	if passFailed {
+		limit = retrySleep
+	}
 	wake, err := materialize.NextWake(ctx, queries, now)
 	if err != nil {
-		if !errors.Is(err, materialize.ErrNothingDue) {
-			slog.Error("main.untilNextWake: next wake lookup failed", "error", err)
+		if errors.Is(err, materialize.ErrNothingDue) {
+			return limit
 		}
-		return maxSleep
+		slog.Error("main.untilNextWake: next wake lookup failed", "error", err)
+		return retrySleep
 	}
-	return min(max(wake.Sub(now), time.Second), maxSleep)
+	return min(max(wake.Sub(now), time.Second), limit)
 }
