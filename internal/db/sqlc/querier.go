@@ -88,8 +88,9 @@ type Querier interface {
 	ListAllIncomeTagsByUser(ctx context.Context, userID uuid.UUID) ([]IncomeTag, error)
 	ListAllIncomesByUser(ctx context.Context, userID uuid.UUID) ([]Income, error)
 	// The budget part of an export (coregateway ADR-0008). Import keeps each
-	// record's id: a row the owner already has is skipped (ON CONFLICT DO
-	// NOTHING), and ids another owner holds are found first and fail the import.
+	// record's id, or gives every row one derived from the owner when the file
+	// is another account's: a row the owner already has is skipped (ON CONFLICT
+	// DO NOTHING).
 	ListAllRulesByUser(ctx context.Context, userID uuid.UUID) ([]Rule, error)
 	// Daily records aggregated into day, week (Monday-start) or month buckets.
 	// Future-dated and skipped records are left out; reimbursements are kept
@@ -109,6 +110,8 @@ type Querier interface {
 	// The caller's incomes among the given ids; ids that don't exist or
 	// belong to someone else are simply absent.
 	ListIncomesByIDs(ctx context.Context, arg ListIncomesByIDsParams) ([]ListIncomesByIDsRow, error)
+	// Which of these ids the owner already has, of any kind.
+	ListOwnBudgetIDs(ctx context.Context, arg ListOwnBudgetIDsParams) ([]uuid.UUID, error)
 	ListRecurringExpenseRules(ctx context.Context, userID uuid.UUID) ([]ListRecurringExpenseRulesRow, error)
 	// ListRecurringExpenseRulesWithPaused lists every rule, paused ones too, so
 	// the web can show a paused rule and resume it.

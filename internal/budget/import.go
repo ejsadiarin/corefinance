@@ -144,9 +144,10 @@ func (s *Service) Export(ctx context.Context, userID uuid.UUID) (*Part, error) {
 }
 
 // Import loads a budget part into the owner's data in one transaction, all
-// or nothing (coregateway ADR-0008). Ids are kept: a row the owner already
-// has is skipped, and an id another owner holds fails the import. A dry run
-// does the same work and rolls it back. The error is the service's; a
+// or nothing (coregateway ADR-0008). Ids are kept, unless the file is
+// another account's: then every row gets an id derived from the owner (see
+// adoptIDs). A row the owner already has is skipped. A dry run does the
+// same work and rolls it back. The error is the service's; a
 // problem with the file is a failed result.
 func (s *Service) Import(ctx context.Context, userID uuid.UUID, data *BudgetData, version int, dryRun bool) (*ImportResult, error) {
 	res := &ImportResult{
@@ -188,6 +189,9 @@ func (s *Service) Import(ctx context.Context, userID uuid.UUID, data *BudgetData
 
 func (s *Service) importInto(ctx context.Context, q *db.Queries, userID uuid.UUID, data *BudgetData, counts map[string]*ImportCount) error {
 	if err := checkIDs(data); err != nil {
+		return err
+	}
+	if err := adoptIDs(ctx, q, userID, data); err != nil {
 		return err
 	}
 	if err := checkForeignIDs(ctx, q, userID, data); err != nil {
@@ -359,8 +363,91 @@ func checkIDs(data *BudgetData) error {
 	return nil
 }
 
+// adoptIDs decides whether the file is a copy of another account's data
+// and, if so, gives every row the id it derives for this owner, links and
+// all (coregateway ADR-0008). It is a copy when any of its ids is held by
+// another account, or when the owner already holds any derived id (an
+// earlier copy of it). Otherwise the ids are kept, so restoring into the
+// same account is unchanged.
+func adoptIDs(ctx context.Context, q *db.Queries, userID uuid.UUID, data *BudgetData) error {
+	var ids, derived []uuid.UUID
+	add := func(id uuid.UUID) {
+		ids = append(ids, id)
+		derived = append(derived, DeriveID(userID, id))
+	}
+	for _, t := range data.Tags {
+		add(t.ID)
+	}
+	for _, r := range data.Rules {
+		add(r.ID)
+	}
+	for _, e := range data.Expenses {
+		add(e.ID)
+	}
+	for _, i := range data.Incomes {
+		add(i.ID)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	foreign, err := q.ListForeignBudgetIDs(ctx, db.ListForeignBudgetIDsParams{UserID: userID, TagIds: ids,
+		RuleIds: ids, ExpenseIds: ids, IncomeIds: ids})
+	if err != nil {
+		return err
+	}
+	if len(foreign) == 0 {
+		copied, err := q.ListOwnBudgetIDs(ctx, db.ListOwnBudgetIDsParams{UserID: userID, Ids: derived})
+		if err != nil {
+			return err
+		}
+		if len(copied) == 0 {
+			return nil
+		}
+	}
+
+	to := func(id uuid.UUID) uuid.UUID { return DeriveID(userID, id) }
+	toAll := func(ids []uuid.UUID) []uuid.UUID {
+		out := make([]uuid.UUID, len(ids))
+		for i, id := range ids {
+			out[i] = to(id)
+		}
+		return out
+	}
+	toOpt := func(id *uuid.UUID) *uuid.UUID {
+		if id == nil {
+			return nil
+		}
+		v := to(*id)
+		return &v
+	}
+	for i := range data.Tags {
+		data.Tags[i].ID = to(data.Tags[i].ID)
+	}
+	for i := range data.Rules {
+		data.Rules[i].ID = to(data.Rules[i].ID)
+	}
+	for i := range data.Expenses {
+		e := &data.Expenses[i]
+		e.ID, e.RuleID, e.Tags = to(e.ID), toOpt(e.RuleID), toAll(e.Tags)
+	}
+	for i := range data.Incomes {
+		r := &data.Incomes[i]
+		r.ID, r.RuleID, r.Tags = to(r.ID), toOpt(r.RuleID), toAll(r.Tags)
+	}
+	return nil
+}
+
+// DeriveID is the id a row copied from another account gets in the owner's:
+// a name-based UUID (version 5) of the original id in the owner's
+// namespace. Every service derives the same way, so links between parts
+// still meet (coregateway ADR-0008).
+func DeriveID(owner, id uuid.UUID) uuid.UUID {
+	return uuid.NewSHA1(owner, id[:])
+}
+
 // checkForeignIDs fails the import when any id in the file is another
-// owner's: importing must never touch, or collide with, their data.
+// owner's: importing must never touch, or collide with, their data. After
+// adoptIDs only a derived id could be, which no real file reaches.
 func checkForeignIDs(ctx context.Context, q *db.Queries, userID uuid.UUID, data *BudgetData) error {
 	p := db.ListForeignBudgetIDsParams{UserID: userID, TagIds: []uuid.UUID{}, RuleIds: []uuid.UUID{},
 		ExpenseIds: []uuid.UUID{}, IncomeIds: []uuid.UUID{}}

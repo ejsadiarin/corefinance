@@ -168,33 +168,74 @@ func TestBudgetPart_ImportIntoAnEmptyOwner_Integration(t *testing.T) {
 	assert.Zero(t, n, "no entry is filled for a date the file holds")
 }
 
-// An id another owner holds fails the whole part, and nothing is written.
-func TestBudgetPart_AnotherOwnersIDFailsThePart_Integration(t *testing.T) {
+// A file from another account is copied: the source keeps its rows, and the
+// target gets the same data under ids derived for it, with its links
+// (rule entries, tags) pointing at the copies. Importing it again, even
+// after the source has deleted everything, adds nothing.
+func TestBudgetPart_CopiesAnotherAccountsFile_Integration(t *testing.T) {
 	ctx := context.Background()
 	pool := testutil.SetupTestDB(t)
 	q := db.New(pool)
 	svc := NewServiceWithRates(q, pool, importRates{})
 	source, target := uuid.New(), uuid.New()
-	seedBudget(t, pool, source)
+	ruleID := seedBudget(t, pool, source)
+	before, err := q.ListAllExpensesByUser(ctx, source)
+	require.NoError(t, err)
 
 	part, err := svc.Export(ctx, source)
 	require.NoError(t, err)
 	data, version := writeAndRead(t, part)
-	res, err := svc.Import(ctx, target, data, version, false)
-	require.NoError(t, err)
+	res := importOK(t, svc, target, data, version)
+	assert.Equal(t, ImportCount{Created: 6}, *res.Counts["expenses"])
+	assert.Equal(t, ImportCount{Created: 1}, *res.Counts["incomes"])
+	assert.Equal(t, ImportCount{Created: 1}, *res.Counts["rules"])
+	assert.Equal(t, ImportCount{Created: 1}, *res.Counts["tags"])
 
-	assert.Equal(t, StatusFailed, res.Status)
-	require.NotEmpty(t, res.Errors)
-	assert.Equal(t, "id belongs to another user", res.Errors[0].Reason)
-	for entity, c := range res.Counts {
-		assert.Zero(t, *c, entity)
+	after, err := q.ListAllExpensesByUser(ctx, source)
+	require.NoError(t, err)
+	assert.Equal(t, before, after, "the source's rows are untouched")
+
+	copied, err := svc.Export(ctx, target)
+	require.NoError(t, err)
+	want, _ := writeAndRead(t, part)
+	for i := range want.Tags {
+		want.Tags[i].ID = DeriveID(target, want.Tags[i].ID)
 	}
-	got, err := q.ListAllExpensesByUser(ctx, target)
-	require.NoError(t, err)
-	assert.Empty(t, got)
-	tags, err := q.ListTags(ctx, target)
-	require.NoError(t, err)
-	assert.Empty(t, tags)
+	for i := range want.Rules {
+		want.Rules[i].ID = DeriveID(target, want.Rules[i].ID)
+	}
+	for i := range want.Expenses {
+		e := &want.Expenses[i]
+		e.ID = DeriveID(target, e.ID)
+		if e.RuleID != nil {
+			id := DeriveID(target, *e.RuleID)
+			e.RuleID = &id
+		}
+		for j := range e.Tags {
+			e.Tags[j] = DeriveID(target, e.Tags[j])
+		}
+	}
+	for i := range want.Incomes {
+		want.Incomes[i].ID = DeriveID(target, want.Incomes[i].ID)
+	}
+	got, _ := writeAndRead(t, copied)
+	assert.Equal(t, want, got, "the same data under derived ids, links included")
+
+	var entries int
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM expenses WHERE user_id = $1 AND source_rule_id = $2`,
+		target, DeriveID(target, ruleID)).Scan(&entries))
+	assert.Equal(t, 5, entries, "the rule's entries follow the copied rule")
+
+	for _, clear := range []bool{false, true} {
+		if clear {
+			clearOwner(t, pool, source)
+		}
+		data, version := writeAndRead(t, part)
+		res := importOK(t, svc, target, data, version)
+		for entity, c := range res.Counts {
+			assert.Zero(t, c.Created, "%s (source cleared: %v)", entity, clear)
+		}
+	}
 }
 
 // A dry run reports what an import would do and writes nothing.

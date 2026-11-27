@@ -221,8 +221,9 @@ ORDER BY kind, start_date, id
 `
 
 // The budget part of an export (coregateway ADR-0008). Import keeps each
-// record's id: a row the owner already has is skipped (ON CONFLICT DO
-// NOTHING), and ids another owner holds are found first and fail the import.
+// record's id, or gives every row one derived from the owner when the file
+// is another account's: a row the owner already has is skipped (ON CONFLICT
+// DO NOTHING).
 func (q *Queries) ListAllRulesByUser(ctx context.Context, userID uuid.UUID) ([]Rule, error) {
 	rows, err := q.db.Query(ctx, listAllRulesByUser, userID)
 	if err != nil {
@@ -308,6 +309,42 @@ func (q *Queries) ListForeignBudgetIDs(ctx context.Context, arg ListForeignBudge
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOwnBudgetIDs = `-- name: ListOwnBudgetIDs :many
+SELECT id FROM tags WHERE id = ANY($1::uuid[]) AND user_id = $2::uuid
+UNION ALL
+SELECT id FROM rules WHERE id = ANY($1::uuid[]) AND user_id = $2::uuid
+UNION ALL
+SELECT id FROM expenses WHERE id = ANY($1::uuid[]) AND user_id = $2::uuid
+UNION ALL
+SELECT id FROM incomes WHERE id = ANY($1::uuid[]) AND user_id = $2::uuid
+`
+
+type ListOwnBudgetIDsParams struct {
+	Ids    []uuid.UUID `db:"ids" json:"ids"`
+	UserID uuid.UUID   `db:"user_id" json:"user_id"`
+}
+
+// Which of these ids the owner already has, of any kind.
+func (q *Queries) ListOwnBudgetIDs(ctx context.Context, arg ListOwnBudgetIDsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listOwnBudgetIDs, arg.Ids, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

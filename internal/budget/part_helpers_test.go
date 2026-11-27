@@ -22,7 +22,7 @@ func writeAndRead(t *testing.T, part *Part) (*BudgetData, int) {
 }
 
 // clearOwner deletes an owner's budget data, so their exported ids are free
-// for another owner: ids are kept on import, and another owner's are refused.
+// and another owner's import keeps them.
 func clearOwner(t *testing.T, pool *pgxpool.Pool, owner uuid.UUID) {
 	t.Helper()
 	for _, stmt := range []string{

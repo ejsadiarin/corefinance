@@ -1,6 +1,7 @@
 -- The budget part of an export (coregateway ADR-0008). Import keeps each
--- record's id: a row the owner already has is skipped (ON CONFLICT DO
--- NOTHING), and ids another owner holds are found first and fail the import.
+-- record's id, or gives every row one derived from the owner when the file
+-- is another account's: a row the owner already has is skipped (ON CONFLICT
+-- DO NOTHING).
 
 -- name: ListAllRulesByUser :many
 SELECT * FROM rules
@@ -20,6 +21,16 @@ WHERE id = ANY(sqlc.arg(expense_ids)::uuid[]) AND user_id <> sqlc.arg(user_id)::
 UNION ALL
 SELECT id, 'income'::text FROM incomes
 WHERE id = ANY(sqlc.arg(income_ids)::uuid[]) AND user_id <> sqlc.arg(user_id)::uuid;
+
+-- Which of these ids the owner already has, of any kind.
+-- name: ListOwnBudgetIDs :many
+SELECT id FROM tags WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND user_id = sqlc.arg(user_id)::uuid
+UNION ALL
+SELECT id FROM rules WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND user_id = sqlc.arg(user_id)::uuid
+UNION ALL
+SELECT id FROM expenses WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND user_id = sqlc.arg(user_id)::uuid
+UNION ALL
+SELECT id FROM incomes WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND user_id = sqlc.arg(user_id)::uuid;
 
 -- name: ImportTag :execrows
 INSERT INTO tags (id, user_id, name, color, created_at)

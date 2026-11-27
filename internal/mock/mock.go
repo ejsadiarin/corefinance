@@ -20,6 +20,7 @@ type MockQuerier struct {
 	ImportTagFn                           func(ctx context.Context, arg db.ImportTagParams) (int64, error)
 	ListAllRulesByUserFn                  func(ctx context.Context, userID uuid.UUID) ([]db.Rule, error)
 	ListForeignBudgetIDsFn                func(ctx context.Context, arg db.ListForeignBudgetIDsParams) ([]db.ListForeignBudgetIDsRow, error)
+	ListOwnBudgetIDsFn                    func(ctx context.Context, arg db.ListOwnBudgetIDsParams) ([]uuid.UUID, error)
 	AddTagToExpenseFn                     func(ctx context.Context, arg db.AddTagToExpenseParams) error
 	AddTagToIncomeFn                      func(ctx context.Context, arg db.AddTagToIncomeParams) error
 	CheckSkippedExpenseFn                 func(ctx context.Context, arg db.CheckSkippedExpenseParams) (bool, error)
@@ -526,6 +527,10 @@ func (m *MockQuerier) ImportTag(ctx context.Context, arg db.ImportTagParams) (in
 
 func (m *MockQuerier) ListAllRulesByUser(ctx context.Context, userID uuid.UUID) ([]db.Rule, error) {
 	return m.ListAllRulesByUserFn(ctx, userID)
+}
+
+func (m *MockQuerier) ListOwnBudgetIDs(ctx context.Context, arg db.ListOwnBudgetIDsParams) ([]uuid.UUID, error) {
+	return m.ListOwnBudgetIDsFn(ctx, arg)
 }
 
 func (m *MockQuerier) ListForeignBudgetIDs(ctx context.Context, arg db.ListForeignBudgetIDsParams) ([]db.ListForeignBudgetIDsRow, error) {

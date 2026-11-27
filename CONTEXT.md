@@ -147,5 +147,5 @@ _Avoid_: inbox, activity log, notifications
 ### Export
 
 **Budget part**:
-The owner's budget as one part of a coregateway export: tags, rules and budget records, with the state that stops a rule repeating itself (how far it has filled, whether it is paused, which entries were edited). Importing it keeps every id, so a coreban note's link to a record survives; what the owner already has is skipped.
+The owner's budget as one part of a coregateway export: tags, rules and budget records, with the state that stops a rule repeating itself (how far it has filled, whether it is paused, which entries were edited). Importing it keeps every id, or, for another account's file, gives every row an id derived for the owner the same way coreban does; either way a coreban note's link to a record survives, and what the owner already has is skipped.
 _Avoid_: backup, dump, budget export file
